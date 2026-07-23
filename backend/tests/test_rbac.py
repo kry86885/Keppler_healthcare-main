@@ -67,6 +67,8 @@ def _patient_payload(seed):
 
 
 def test_signup_cannot_self_assign_admin(app_client):
+    # Public self-signup has been removed entirely (see test_auth.py::test_signup_endpoint_removed);
+    # account creation is admin-only via /api/employees, so self-assigning admin via signup is not possible.
     username = f"public.{uuid.uuid4().hex[:8]}"
     response = app_client.post(
         "/api/auth/signup",
@@ -84,15 +86,7 @@ def test_signup_cannot_self_assign_admin(app_client):
             "emergency_contact": "",
         },
     )
-    assert response.status_code == 201
-    login = app_client.post(
-        "/api/auth/login",
-        json={"username": username, "password": "secret123"},
-    )
-    assert login.status_code == 200
-    user = login.get_json()["user"]
-    assert user["user_type"] == "normal"
-    assert "employees.write" not in user.get("permissions", [])
+    assert response.status_code in (404, 405)
 
 
 def test_module_access_controls_patients_and_billing(app_client):

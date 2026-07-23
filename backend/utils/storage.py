@@ -38,6 +38,7 @@ class ObjectStorage:
         self.bucket = None
         self.prefix = ""
         self.client = None
+        self.local_base = os.path.join(PROJECT_ROOT, "uploads")
 
         if not BUCKET_URL:
             raise RuntimeError("BUCKET_URL is required for document storage.")
@@ -140,8 +141,15 @@ class ObjectStorage:
             return file_path
 
     def read(self, storage_path: str):
-        if not storage_path.startswith("s3://"):
+        if not storage_path:
             return None
+        if not storage_path.startswith("s3://"):
+            # Local-fallback path (see store()'s exception handler).
+            try:
+                with open(storage_path, "rb") as f:
+                    return f.read()
+            except OSError:
+                return None
         bucket, key = _normalize_s3_parts(storage_path)
         if not bucket or not key:
             return None
@@ -152,7 +160,14 @@ class ObjectStorage:
             return None
 
     def delete(self, storage_path: str):
+        if not storage_path:
+            return
         if not storage_path.startswith("s3://"):
+            # Local-fallback path (see store()'s exception handler).
+            try:
+                os.remove(storage_path)
+            except OSError:
+                pass
             return
         bucket, key = _normalize_s3_parts(storage_path)
         if not bucket or not key:

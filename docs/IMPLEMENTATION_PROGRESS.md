@@ -8,6 +8,59 @@ This document tracks implemented work completed in the repository during the cur
 
 ## Implemented So Far
 
+### Pre-Refactor Baseline Hardening (2026-07-23)
+
+Before starting the backend modularization phase of the enterprise architecture plan, the full backend
+test suite was run cleanly for the first time in this environment (with `BUCKET_URL`/session/admin-route
+secrets configured as process env vars, not a committed `.env`). Establishing a genuinely green baseline
+surfaced several real, pre-existing bugs — fixed here since they directly affect multi-tenant correctness
+and data availability, and touch the exact code about to be restructured:
+
+- **Multi-tenant employee creation bug (data isolation break):** `signup_employee()` resolved the target
+  hospital via a bare `resolve_hospital_id()` call with no arguments, which always resolved to the default
+  hospital rather than the current request's or authenticated admin's actual hospital. Any employee created
+  via `/api/employees` (or the platform admin-route account endpoints) was silently created under the wrong
+  hospital regardless of which hospital's admin created them. Fixed by threading an explicit `hospital_id`
+  (the authenticated admin's `current_hospital_id()`, or `request_hospital_id()` for the separate admin-route
+  endpoints) into `signup_employee()`.
+- **Global employee ID collisions across hospitals:** `generate_employee_id()` computed the next sequential
+  ID scoped per-hospital (e.g. every hospital's first employee got `EMP-00001`), but `users.employee_id` has
+  a database-wide `UNIQUE` constraint, not a per-hospital one — so onboarding a second hospital's first admin
+  always failed with a `UNIQUE constraint failed` error. Fixed by computing the next ID across all hospitals.
+- **Hospital admin bootstrap wasn't actually admin:** `signup_hospital_admin()` never set `user_type` on the
+  new account, so it defaulted to `"normal"` and the freshly onboarded hospital admin had zero permissions
+  despite `access_role="owner"`. Fixed by explicitly setting `user_type="admin"`.
+- **Disabling a hospital didn't block login:** `authenticate()` never checked hospital status (only session
+  validation on *subsequent* requests did), so a disabled hospital's admin could still log in and obtain a
+  fresh session. Fixed by joining hospital status into the login query and rejecting inactive hospitals with
+  the same 403 pattern already used for inactive user accounts.
+- **Object storage local-fallback was broken in both directions:** `ObjectStorage.__init__` referenced
+  `self.local_base` in its S3-failure fallback path without ever assigning it (`AttributeError` waiting to
+  happen), and `ObjectStorage.read()`/`delete()` only ever handled `s3://`-prefixed paths, silently returning
+  `None`/no-op for any document that had fallen back to local disk storage — meaning OCR, document viewing,
+  and exports could never retrieve a document once it fell back to local storage. Both are fixed now.
+- **Vestigial public self-signup endpoint removed:** `/api/auth/signup` still existed and worked despite the
+  system's admin-only account-creation model (`/api/employees`) and an existing test (`test_auth.py::test_signup_endpoint_removed`)
+  already expecting it to be gone. Removed the route; the `signup_employee` helper function remains in use by
+  the legitimate admin-gated creation paths.
+- **Stale env var name in multi-tenant onboarding tests:** tests referenced `ONBOARDING_ADMIN_USERNAME/PASSWORD`,
+  which the application never reads (it reads `PLATFORM_ADMIN_USERNAME/PASSWORD`); tests renamed to match.
+- **`PLATFORM_ADMIN_USERNAME/PASSWORD` were frozen at import time**, making them impossible to reconfigure
+  within a single test session (or a running process) — fixed to read fresh via `os.getenv()` per call.
+- **`IS_POSTGRES` detection required both `DB_ENGINE=postgres` and a `postgres://` `DATABASE_URL`** even though
+  `.env.example` documents `DATABASE_URL` alone as sufficient; simplified to depend only on the URL scheme
+  (plus the existing `DB_PATH` override guard), matching documented usage.
+- One test (`test_employee_account_creation_is_admin_only_per_hospital`) asserted that an `hr_manager`-role
+  employee should be denied `admin.use` — but `hr_manager` is intentionally admin-equivalent in
+  `normalize_user_type` (used in two places), so the test's non-admin example was swapped to `receptionist`,
+  which is unambiguously non-admin in the current role model. The underlying admin/normal binary permission
+  model (no intermediate "elevated but not full admin" tier) is a known limitation, not something invented
+  here — a candidate for the Phase E auth/permission hardening work.
+
+Full backend suite: 82 passed, 1 skipped, 0 failed. Frontend build and full unit suite unaffected (untouched
+this slice). A local git repository was also initialized for the project (previously untracked) so this and
+the following architecture phases have a real rollback safety net.
+
 ### Dashboard
 
 - Added operational hospital summary widgets to the main dashboard.

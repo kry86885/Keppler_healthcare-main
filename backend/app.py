@@ -278,8 +278,6 @@ def rows_to_dicts(rows):
     return [row_to_dict(row) for row in rows]
 
 
-PLATFORM_ADMIN_USERNAME = (os.getenv("PLATFORM_ADMIN_USERNAME") or "").strip()
-PLATFORM_ADMIN_PASSWORD = (os.getenv("PLATFORM_ADMIN_PASSWORD") or "").strip()
 RAZORPAY_KEY_ID = (os.getenv("RAZORPAY_KEY_ID") or "").strip()
 RAZORPAY_KEY_SECRET = (os.getenv("RAZORPAY_KEY_SECRET") or "").strip()
 RAZORPAY_API_BASE = "https://api.razorpay.com/v1"
@@ -309,7 +307,9 @@ def current_hospital_id() -> int:
 
 
 def require_platform_admin():
-    if not PLATFORM_ADMIN_USERNAME or not PLATFORM_ADMIN_PASSWORD:
+    configured_username = (os.getenv("PLATFORM_ADMIN_USERNAME") or "").strip()
+    configured_password = (os.getenv("PLATFORM_ADMIN_PASSWORD") or "").strip()
+    if not configured_username or not configured_password:
         return jsonify({"error": "Platform admin credentials are not configured"}), 503
     username = (
         request.headers.get("X-Platform-Admin-Username")
@@ -323,7 +323,7 @@ def require_platform_admin():
         or (request.get_json(silent=True) or {}).get("platform_admin_password")
         or ""
     )
-    if username != PLATFORM_ADMIN_USERNAME or password != PLATFORM_ADMIN_PASSWORD:
+    if username != configured_username or password != configured_password:
         return jsonify({"error": "Platform admin authentication failed"}), 403
     return None
 
@@ -545,14 +545,6 @@ def login():
         SESSION_COOKIE_NAME, session_token, **_session_cookie_settings()
     )
     return response
-
-
-@app.post("/api/auth/signup")
-def signup():
-    payload = request.get_json(force=True)
-    result = signup_employee(payload, allow_admin_creation=False)
-    status = 201 if result.get("success") else 400
-    return jsonify(result), status
 
 
 @app.get("/api/auth/check-username")
@@ -779,7 +771,7 @@ def admin_create_account():
             "symptom_ai",
         ],
     }
-    result = signup_employee(forced_payload, allow_admin_creation=True)
+    result = signup_employee(forced_payload, allow_admin_creation=True, hospital_id=request_hospital_id())
     status = 201 if result.get("success") else 400
     return jsonify(result), status
 
@@ -807,7 +799,7 @@ def admin_users_create():
         "user_type": user_type,
         "module_access": module_access,
     }
-    result = signup_employee(created_payload, allow_admin_creation=True)
+    result = signup_employee(created_payload, allow_admin_creation=True, hospital_id=request_hospital_id())
     status = 201 if result.get("success") else 400
     return jsonify(result), status
 
@@ -1762,7 +1754,7 @@ def employees_list():
 @require_permissions("admin.use")
 def employees_create():
     payload = request.get_json(force=True)
-    result = signup_employee(payload, allow_admin_creation=True)
+    result = signup_employee(payload, allow_admin_creation=True, hospital_id=current_hospital_id())
     status = 201 if result.get("success") else 400
     return jsonify(result), status
 

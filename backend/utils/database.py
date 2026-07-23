@@ -28,10 +28,8 @@ DB_PATH = DB_PATH_ENV or DEFAULT_DB_PATH
 DB_ENGINE = (os.getenv("DB_ENGINE") or "sqlite").strip().lower()
 IST_TIMEZONE = timezone(timedelta(hours=5, minutes=30))
 DEFAULT_HOSPITAL_CODE = (os.getenv("DEFAULT_HOSPITAL_CODE") or "hosp-default").strip().lower()
-IS_POSTGRES = (
-    DB_ENGINE in {"postgres", "postgresql"}
-    and not DB_PATH_ENV
-    and (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://"))
+IS_POSTGRES = not DB_PATH_ENV and (
+    DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")
 )
 
 
@@ -1977,12 +1975,12 @@ def delete_patient(patient_id, hospital_id=None):
 # ==================== Employee management ====================
 
 def generate_employee_id(hospital_id=None):
-    scoped_hospital_id = hospital_id or resolve_hospital_id()
+    # employee_id has a global UNIQUE constraint (not scoped per hospital), so the
+    # next-id counter must scan across all hospitals, not just the current one.
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT employee_id FROM users WHERE hospital_id = ? AND employee_id LIKE 'EMP-%'",
-            (scoped_hospital_id,),
+            "SELECT employee_id FROM users WHERE employee_id LIKE 'EMP-%'",
         )
         ids = [row[0] for row in cursor.fetchall()]
         

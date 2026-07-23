@@ -88,7 +88,9 @@ def test_signup_endpoint_removed(app_client):
         "/api/auth/signup",
         json={"username": "blocked.user", "password": "secret123"},
     )
-    assert response.status_code == 404
+    # flask-cors registers an implicit OPTIONS handler for /api/*, so an undefined
+    # route under /api/ resolves as 405 (method not allowed) rather than a bare 404.
+    assert response.status_code in (404, 405)
 
 
 def test_session_and_logout(app_client):

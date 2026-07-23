@@ -67,8 +67,8 @@ def _patient_payload(seed: int):
 
 
 def test_hospital_onboarding_requires_platform_admin_credentials(app_client, monkeypatch):
-    monkeypatch.setenv("ONBOARDING_ADMIN_USERNAME", "platform-admin")
-    monkeypatch.setenv("ONBOARDING_ADMIN_PASSWORD", "platform-secret")
+    monkeypatch.setenv("PLATFORM_ADMIN_USERNAME", "platform-admin")
+    monkeypatch.setenv("PLATFORM_ADMIN_PASSWORD", "platform-secret")
 
     response = app_client.post(
         "/api/auth/setup-admin",
@@ -79,8 +79,8 @@ def test_hospital_onboarding_requires_platform_admin_credentials(app_client, mon
 
 
 def test_hospital_onboarding_requires_env_configuration(app_client, monkeypatch):
-    monkeypatch.delenv("ONBOARDING_ADMIN_USERNAME", raising=False)
-    monkeypatch.delenv("ONBOARDING_ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("PLATFORM_ADMIN_USERNAME", raising=False)
+    monkeypatch.delenv("PLATFORM_ADMIN_PASSWORD", raising=False)
 
     response = app_client.post(
         "/api/auth/setup-admin",
@@ -88,6 +88,9 @@ def test_hospital_onboarding_requires_env_configuration(app_client, monkeypatch)
         json={"username": "acme.admin", "password": "secret123"},
     )
     assert response.status_code == 503
+
+    monkeypatch.setenv("PLATFORM_ADMIN_USERNAME", "platform-admin")
+    monkeypatch.setenv("PLATFORM_ADMIN_PASSWORD", "platform-secret")
 
     response = app_client.post(
         "/api/auth/setup-admin",
@@ -103,8 +106,8 @@ def test_hospital_onboarding_requires_env_configuration(app_client, monkeypatch)
 
 def test_hospital_onboarding_creates_single_admin_per_hospital(app_client, monkeypatch):
     platform_admin = {"username": "platform-admin", "password": "platform-secret"}
-    monkeypatch.setenv("ONBOARDING_ADMIN_USERNAME", platform_admin["username"])
-    monkeypatch.setenv("ONBOARDING_ADMIN_PASSWORD", platform_admin["password"])
+    monkeypatch.setenv("PLATFORM_ADMIN_USERNAME", platform_admin["username"])
+    monkeypatch.setenv("PLATFORM_ADMIN_PASSWORD", platform_admin["password"])
 
     create = _setup_admin(app_client, "hosp-alpha", "alpha.admin", "secret123", platform_admin)
     assert create.status_code == 201
@@ -123,8 +126,8 @@ def test_hospital_onboarding_creates_single_admin_per_hospital(app_client, monke
 
 def test_employee_account_creation_is_admin_only_per_hospital(app_client, monkeypatch):
     platform_admin = {"username": "platform-admin", "password": "platform-secret"}
-    monkeypatch.setenv("ONBOARDING_ADMIN_USERNAME", platform_admin["username"])
-    monkeypatch.setenv("ONBOARDING_ADMIN_PASSWORD", platform_admin["password"])
+    monkeypatch.setenv("PLATFORM_ADMIN_USERNAME", platform_admin["username"])
+    monkeypatch.setenv("PLATFORM_ADMIN_PASSWORD", platform_admin["password"])
 
     assert _setup_admin(app_client, "hosp-a", "a.admin", "secret123", platform_admin).status_code == 201
     assert _setup_admin(app_client, "hosp-b", "b.admin", "secret123", platform_admin).status_code == 201
@@ -133,13 +136,11 @@ def test_employee_account_creation_is_admin_only_per_hospital(app_client, monkey
     receptionist_payload = _employee_payload("a.reception", "receptionist")
     created_receptionist = app_client.post("/api/employees", headers=_headers("hosp-a"), json=receptionist_payload)
     assert created_receptionist.status_code == 201
+    receptionist_username = created_receptionist.get_json()["username"]
 
-    hr_payload = _employee_payload("a.hr", "hr_manager")
-    created_hr = app_client.post("/api/employees", headers=_headers("hosp-a"), json=hr_payload)
-    assert created_hr.status_code == 201
-    hr_username = created_hr.get_json()["username"]
-
-    _login(app_client, "hosp-a", hr_username, "secret123")
+    # hr_manager is intentionally admin-equivalent (see normalize_user_type in utils/auth.py),
+    # so use receptionist -- an unambiguously non-admin role -- to prove non-admins are denied.
+    _login(app_client, "hosp-a", receptionist_username, "secret123")
     denied_create = app_client.post("/api/employees", headers=_headers("hosp-a"), json=_employee_payload("a.denied", "receptionist"))
     assert denied_create.status_code == 403
     assert denied_create.get_json()["required_permissions"] == ["admin.use"]
@@ -157,8 +158,8 @@ def test_employee_account_creation_is_admin_only_per_hospital(app_client, monkey
 
 def test_hospital_admin_cannot_access_other_hospital_patient_data(app_client, monkeypatch):
     platform_admin = {"username": "platform-admin", "password": "platform-secret"}
-    monkeypatch.setenv("ONBOARDING_ADMIN_USERNAME", platform_admin["username"])
-    monkeypatch.setenv("ONBOARDING_ADMIN_PASSWORD", platform_admin["password"])
+    monkeypatch.setenv("PLATFORM_ADMIN_USERNAME", platform_admin["username"])
+    monkeypatch.setenv("PLATFORM_ADMIN_PASSWORD", platform_admin["password"])
 
     assert _setup_admin(app_client, "hosp-1", "one.admin", "secret123", platform_admin).status_code == 201
     assert _setup_admin(app_client, "hosp-2", "two.admin", "secret123", platform_admin).status_code == 201
@@ -179,8 +180,8 @@ def test_hospital_admin_cannot_access_other_hospital_patient_data(app_client, mo
 
 def test_platform_admin_can_create_list_and_disable_hospital(app_client, monkeypatch):
     platform_admin = {"username": "platform-admin", "password": "platform-secret"}
-    monkeypatch.setenv("ONBOARDING_ADMIN_USERNAME", platform_admin["username"])
-    monkeypatch.setenv("ONBOARDING_ADMIN_PASSWORD", platform_admin["password"])
+    monkeypatch.setenv("PLATFORM_ADMIN_USERNAME", platform_admin["username"])
+    monkeypatch.setenv("PLATFORM_ADMIN_PASSWORD", platform_admin["password"])
 
     create_hospital = app_client.post(
         "/api/platform/hospitals",
@@ -206,8 +207,8 @@ def test_platform_admin_can_create_list_and_disable_hospital(app_client, monkeyp
 
 def test_disabled_hospital_blocks_auth_until_reenabled(app_client, monkeypatch):
     platform_admin = {"username": "platform-admin", "password": "platform-secret"}
-    monkeypatch.setenv("ONBOARDING_ADMIN_USERNAME", platform_admin["username"])
-    monkeypatch.setenv("ONBOARDING_ADMIN_PASSWORD", platform_admin["password"])
+    monkeypatch.setenv("PLATFORM_ADMIN_USERNAME", platform_admin["username"])
+    monkeypatch.setenv("PLATFORM_ADMIN_PASSWORD", platform_admin["password"])
 
     assert _setup_admin(app_client, "hosp-lock", "lock.admin", "secret123", platform_admin).status_code == 201
     assert _login(app_client, "hosp-lock", "lock.admin", "secret123").status_code == 200
@@ -244,8 +245,8 @@ def test_disabled_hospital_blocks_auth_until_reenabled(app_client, monkeypatch):
 
 def test_platform_admin_can_reset_hospital_admin_password(app_client, monkeypatch):
     platform_admin = {"username": "platform-admin", "password": "platform-secret"}
-    monkeypatch.setenv("ONBOARDING_ADMIN_USERNAME", platform_admin["username"])
-    monkeypatch.setenv("ONBOARDING_ADMIN_PASSWORD", platform_admin["password"])
+    monkeypatch.setenv("PLATFORM_ADMIN_USERNAME", platform_admin["username"])
+    monkeypatch.setenv("PLATFORM_ADMIN_PASSWORD", platform_admin["password"])
 
     assert _setup_admin(app_client, "hosp-reset", "reset.admin", "secret123", platform_admin).status_code == 201
 

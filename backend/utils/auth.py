@@ -244,6 +244,7 @@ def resolve_user_profile(user_row) -> dict:
         "phone": user_row.get("phone"),
         "employee_id": user_row.get("employee_id"),
         "status": user_row.get("status"),
+        "hospital_code": user_row.get("hospital_code"),
     }
 
 
@@ -370,8 +371,12 @@ def authenticate(username: str, password: str, hospital_id: Optional[int] = None
         try:
             cursor.execute(
                 """
-                SELECT id, hospital_id, password_hash, role, access_role, user_type, module_access, full_name, email, phone, employee_id, status
-                FROM users WHERE username = ? AND hospital_id = ?
+                SELECT u.id, u.hospital_id, u.password_hash, u.role, u.access_role, u.user_type,
+                       u.module_access, u.full_name, u.email, u.phone, u.employee_id, u.status,
+                       h.code as hospital_code, h.status as hospital_status
+                FROM users u
+                LEFT JOIN hospitals h ON h.id = u.hospital_id
+                WHERE u.username = ? AND u.hospital_id = ?
             """,
                 (username, scoped_hospital_id),
             )
@@ -395,6 +400,8 @@ def authenticate(username: str, password: str, hospital_id: Optional[int] = None
         if verify_password(password, user_map.get("password_hash", "")):
             if user_map.get("status") == "inactive":
                 return {"error": "Account is inactive. Please contact administrator."}
+            if user_map.get("hospital_status") not in (None, "active"):
+                return {"error": "Hospital account is disabled. Please contact administrator."}
             profile = resolve_user_profile(
                 {
                     "username": username,
@@ -407,6 +414,7 @@ def authenticate(username: str, password: str, hospital_id: Optional[int] = None
                     "phone": user_map.get("phone"),
                     "employee_id": user_map.get("employee_id"),
                     "status": user_map.get("status"),
+                    "hospital_code": user_map.get("hospital_code"),
                 }
             )
             profile["id"] = user_map.get("id")
@@ -415,9 +423,9 @@ def authenticate(username: str, password: str, hospital_id: Optional[int] = None
     return None
 
 
-def signup_employee(data: dict, allow_admin_creation: bool = True) -> dict:
+def signup_employee(data: dict, allow_admin_creation: bool = True, hospital_id: Optional[int] = None) -> dict:
     """Register a new employee account."""
-    scoped_hospital_id = resolve_hospital_id()
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     password_error = validate_password(data.get("password", ""))
     if password_error:
         return {"success": False, "message": password_error}
@@ -498,6 +506,7 @@ def signup_hospital_admin(data: dict, hospital_id: Optional[int] = None) -> dict
         "password_hash": hash_password(data["password"]),
         "role": "employee",
         "access_role": "owner",
+        "user_type": "admin",
         "job_role": data.get("job_role") or "Hospital Admin",
         "full_name": data.get("full_name") or "Hospital Admin",
         "email": data.get("email"),
@@ -662,6 +671,7 @@ def get_session_user(token: Optional[str]):
             "phone": row["phone"],
             "employee_id": row["employee_id"],
             "status": row["status"],
+            "hospital_code": row["hospital_code"],
         }
     )
 

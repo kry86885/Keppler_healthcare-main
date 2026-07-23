@@ -68,13 +68,14 @@ def test_database_uses_postgres_when_database_url_is_set(monkeypatch):
     assert db.IS_POSTGRES is True
 
 
-def test_database_raises_when_database_url_is_missing(monkeypatch):
+def test_database_falls_back_to_sqlite_when_database_url_is_missing(monkeypatch, tmp_path):
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "fallback.db"))
     db = _reload_database_module(monkeypatch, database_url=None)
     assert db.IS_POSTGRES is False
 
-    with pytest.raises(RuntimeError, match="DATABASE_URL is required"):
-        with db.get_connection():
-            pass
+    # No DATABASE_URL configured means SQLite mode, which must work without one.
+    with db.get_connection():
+        pass
 
 
 def test_database_raises_clear_error_when_no_postgres_driver(monkeypatch):
