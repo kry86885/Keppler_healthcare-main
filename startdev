@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PORTS=("5001" "5002" "5173")
+RUN_DIR="${ROOT_DIR}/.devrun"
+BACKEND_VENV="${ROOT_DIR}/.venv-backend"
+BACKEND_LOG="${RUN_DIR}/backend.log"
+FRONTEND_LOG="${RUN_DIR}/frontend.log"
+SYMPTOM_LOG="${RUN_DIR}/symptom-backend.log"
+BACKEND_PID_FILE="${RUN_DIR}/backend.pid"
+FRONTEND_PID_FILE="${RUN_DIR}/frontend.pid"
+SYMPTOM_PID_FILE="${RUN_DIR}/symptom-backend.pid"
+BACKEND_PID=""
+FRONTEND_PID=""
+SYMPTOM_PID=""
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  echo "Usage: ./startdev"
+  echo "Starts HospAI backend + symptom backend + Electron app locally (no Docker/Podman)."
+  echo "Backend: python backend/app.py (Flask debug reload)"
+  echo "Symptom backend: python symptom_backend/app.py (Flask debug reload)"
+  echo "Desktop app: npm run electron:dev (Vite + Electron)"
+  exit 0
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "Error: python3 is not installed or not in PATH."
+  exit 1
+fi
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "Error: npm is not installed or not in PATH."
+  exit 1
+fi
+
+for port in "${PORTS[@]}"; do
+  if lsof -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "Error: port ${port} is already in use. Stop the conflicting service and retry."
+    exit 1
+  fi
+done
+
+mkdir -p "${RUN_DIR}"
+touch "${BACKEND_LOG}" "${FRONTEND_LOG}" "${SYMPTOM_LOG}"
+
+if [[ ! -d "${ROOT_DIR}/frontend/node_modules" ]]; then
+  echo "Installing frontend dependencies..."
+  (cd "${ROOT_DIR}/frontend" && npm install)
+fi
+
+if [[ ! -d "${BACKEND_VENV}" ]]; then
+  echo "Creating backend virtual environment..."
+  python3 -m venv "${BACKEND_VENV}"
+fi
+
+echo "Installing backend dependencies..."
+"${BACKEND_VENV}/bin/pip" install -r "${ROOT_DIR}/backend/requirements.txt"
+echo "Installing symptom backend dependencies..."
+"${BACKEND_VENV}/bin/pip" install -r "${ROOT_DIR}/symptom_backend/requirements.txt"
+
+cleanup() {
+  echo
+  echo "Stopping dev services..."
+  if [[ -n "${FRONTEND_PID}" ]] && kill -0 "${FRONTEND_PID}" 2>/dev/null; then
+    kill "${FRONTEND_PID}" 2>/dev/null || true
+  fi
+  if [[ -n "${BACKEND_PID}" ]] && kill -0 "${BACKEND_PID}" 2>/dev/null; then
+    kill "${BACKEND_PID}" 2>/dev/null || true
+  fi
+  if [[ -n "${SYMPTOM_PID}" ]] && kill -0 "${SYMPTOM_PID}" 2>/dev/null; then
+    kill "${SYMPTOM_PID}" 2>/dev/null || true
+  fi
+  rm -f "${BACKEND_PID_FILE}" "${FRONTEND_PID_FILE}" "${SYMPTOM_PID_FILE}"
+  wait 2>/dev/null || true
+}
+
+trap cleanup INT TERM EXIT
+
+echo "Starting backend..."
+(
+  cd "${ROOT_DIR}/backend"
+  export PORT=5001
+  export DB_ENGINE=sqlite
+  export DB_PATH="${ROOT_DIR}/healthcare.db"
+  export FLASK_ENV=development
+  export CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}"
+  export SESSION_COOKIE_SECURE=false
+  "${BACKEND_VENV}/bin/python" app.py \
+    > >(tee -a "${BACKEND_LOG}") \
+    2> >(tee -a "${BACKEND_LOG}" >&2)
+) &
+BACKEND_PID=$!
+echo "${BACKEND_PID}" > "${BACKEND_PID_FILE}"
+
+echo "Starting symptom backend..."
+(
+  cd "${ROOT_DIR}/symptom_backend"
+  export PORT=5002
+  export FLASK_ENV=development
+  "${BACKEND_VENV}/bin/python" app.py \
+    > >(tee -a "${SYMPTOM_LOG}") \
+    2> >(tee -a "${SYMPTOM_LOG}" >&2)
+) &
+SYMPTOM_PID=$!
+echo "${SYMPTOM_PID}" > "${SYMPTOM_PID_FILE}"
+
+echo "Starting frontend..."
+(
+  cd "${ROOT_DIR}/frontend"
+  export VITE_API_BASE="${VITE_API_BASE:-http://localhost:5001}"
+  export VITE_API_URL="${VITE_API_URL:-http://localhost:5001}"
+  export VITE_SYMPTOM_API_BASE="${VITE_SYMPTOM_API_BASE:-http://localhost:5002}"
+  export CHOKIDAR_USEPOLLING=true
+  export WATCHPACK_POLLING=true
+  npm run electron:dev \
+    > >(tee -a "${FRONTEND_LOG}") \
+    2> >(tee -a "${FRONTEND_LOG}" >&2)
+) &
+FRONTEND_PID=$!
+echo "${FRONTEND_PID}" > "${FRONTEND_PID_FILE}"
+
+echo
+echo "Dev services started:"
+echo "Backend PID:  ${BACKEND_PID}"
+echo "Symptom PID:  ${SYMPTOM_PID}"
+echo "Frontend PID: ${FRONTEND_PID}"
+echo "Backend log:  ${BACKEND_LOG}"
+echo "Symptom log:  ${SYMPTOM_LOG}"
+echo "Frontend log: ${FRONTEND_LOG}"
+
+echo
+echo "Frontend: http://localhost:5173"
+echo "Backend:  http://localhost:5001"
+echo "Symptom:  http://localhost:5002"
+echo "Electron app: opens automatically"
+
+wait

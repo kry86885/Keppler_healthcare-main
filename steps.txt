@@ -1,0 +1,20 @@
+create venv - conda create -p venv python==3.12 
+create git repo for same without readme
+on local do git init
+add remote - git remote add origin url
+git branch -M main
+git fetch origin
+git checkout -b main
+git pull origin main --for gitignore
+git add .
+git commit -m "add app"
+git push -u origin main
+make your app run local
+create docker file
+create docker access token
+got to github secrets add docker username and token as password
+create .github/workflows for docker as this one
+create hugging face token and create space note space name, use docker sdk, remember to have readme md according to hugging face frontmatter
+add token and space name in github secrets 
+add aikeys in hugingface secrets for hf to use
+for hugging face add git attributes and lfs binary files  after installing git lfs install , exclude uploads file

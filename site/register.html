@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HospAI Register</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script type="module" src="/src/auth.js"></script>
+  </head>
+  <body>
+    <main class="min-h-screen bg-gradient-to-b from-white via-mist to-slate-100 px-4 py-10 md:px-8">
+      <div class="mx-auto grid max-w-6xl gap-8 md:grid-cols-2">
+        <section class="rounded-3xl bg-white p-8 shadow-lg shadow-slate-200/60">
+          <a href="/index.html" class="text-sm font-semibold text-slate-500">← Back to homepage</a>
+          <h1 class="mt-4 font-heading text-4xl font-bold text-deep">Create your HospAI account</h1>
+          <p class="mt-3 text-slate-600">On submit, this page redirects to your application URL where real authentication lives.</p>
+
+          <form id="register-form" class="mt-8 grid gap-4">
+            <label class="text-sm font-semibold text-slate-700">Full Name
+              <input required value="Anita Sharma" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none ring-aqua/35 focus:ring" />
+            </label>
+            <label class="text-sm font-semibold text-slate-700">Work Email
+              <input required type="email" value="anita.sharma@hospai.local" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none ring-aqua/35 focus:ring" />
+            </label>
+            <div class="grid gap-4 md:grid-cols-2">
+              <label class="text-sm font-semibold text-slate-700">Role
+                <select class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none ring-aqua/35 focus:ring">
+                  <option>Admin</option>
+                  <option selected>Normal User</option>
+                </select>
+              </label>
+              <label class="text-sm font-semibold text-slate-700">Department
+                <select class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none ring-aqua/35 focus:ring">
+                  <option>Emergency</option>
+                  <option>Diagnostics</option>
+                  <option selected>Pharmacy</option>
+                  <option>Billing</option>
+                </select>
+              </label>
+            </div>
+            <label class="text-sm font-semibold text-slate-700">Password
+              <input type="password" required value="Nurse@123" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none ring-aqua/35 focus:ring" />
+            </label>
+            <button type="submit" class="rounded-xl bg-coral px-5 py-3 text-sm font-bold text-white">Create Account</button>
+          </form>
+          <div class="mt-4 rounded-xl bg-slate-100 p-3 text-xs text-slate-600">Redirect target from env: <span data-app-url-text class="font-semibold text-deep"></span></div>
+          <p class="mt-4 text-sm text-slate-500">Already onboarded? <a href="/login.html" class="font-semibold text-deep">Login</a></p>
+        </section>
+
+        <section class="rounded-3xl bg-deep p-8 text-white shadow-glow">
+          <h2 class="font-heading text-3xl font-bold">Sample onboarding data</h2>
+          <div class="mt-6 space-y-4 text-sm text-slate-200">
+            <p>Hospital: Keppler General Hospital</p>
+            <p>Locations: Main Campus, North Clinic, East Diagnostics Center</p>
+            <p>Users: 1,248 active staff members</p>
+            <p>Configured modules: Patients, Billing, Pharmacy, Diagnostics, HRMS, Reports, Admin</p>
+            <p>Security baseline: AES data encryption, audit retention 365 days, default-deny RBAC for normal users</p>
+          </div>
+          <div class="mt-8 rounded-2xl border border-white/20 bg-white/10 p-5">
+            <p class="text-xs uppercase tracking-wide text-slate-300">Recommended flow</p>
+            <ol class="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-100">
+              <li>Create admin account</li>
+              <li>Enable module access for each normal user</li>
+              <li>Run sample patient + billing + lab workflow</li>
+            </ol>
+          </div>
+          <a data-app-link href="#" class="mt-8 inline-flex rounded-xl bg-white px-4 py-3 text-sm font-bold text-deep">Open HospAI App</a>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

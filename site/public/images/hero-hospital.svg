@@ -1,0 +1,37 @@
+<svg width="1200" height="760" viewBox="0 0 1200 760" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="120" y1="60" x2="1080" y2="700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EFF7FF"/>
+      <stop offset="1" stop-color="#D9ECFF"/>
+    </linearGradient>
+    <linearGradient id="tower" x1="600" y1="160" x2="600" y2="670" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E8F3FF"/>
+    </linearGradient>
+  </defs>
+  <rect x="20" y="20" width="1160" height="720" rx="36" fill="url(#bg)"/>
+  <ellipse cx="600" cy="680" rx="360" ry="42" fill="#C6DDF8"/>
+  <rect x="320" y="180" width="560" height="500" rx="22" fill="url(#tower)" stroke="#B8D4F4" stroke-width="3"/>
+  <rect x="540" y="120" width="120" height="120" rx="16" fill="#0D6FC2"/>
+  <rect x="588" y="140" width="24" height="80" fill="white"/>
+  <rect x="560" y="168" width="80" height="24" fill="white"/>
+  <rect x="460" y="500" width="280" height="180" rx="16" fill="#F7FBFF" stroke="#C9DFF8" stroke-width="2"/>
+  <rect x="570" y="560" width="60" height="120" rx="10" fill="#0D6FC2"/>
+  <g fill="#DCEBFB">
+    <rect x="370" y="250" width="60" height="72" rx="8"/>
+    <rect x="450" y="250" width="60" height="72" rx="8"/>
+    <rect x="530" y="250" width="60" height="72" rx="8"/>
+    <rect x="610" y="250" width="60" height="72" rx="8"/>
+    <rect x="690" y="250" width="60" height="72" rx="8"/>
+    <rect x="770" y="250" width="60" height="72" rx="8"/>
+    <rect x="370" y="340" width="60" height="72" rx="8"/>
+    <rect x="450" y="340" width="60" height="72" rx="8"/>
+    <rect x="530" y="340" width="60" height="72" rx="8"/>
+    <rect x="610" y="340" width="60" height="72" rx="8"/>
+    <rect x="690" y="340" width="60" height="72" rx="8"/>
+    <rect x="770" y="340" width="60" height="72" rx="8"/>
+  </g>
+  <circle cx="200" cy="190" r="56" fill="#C7E2FF"/>
+  <circle cx="990" cy="170" r="42" fill="#B3D7FF"/>
+  <circle cx="1025" cy="230" r="24" fill="#D7EBFF"/>
+</svg>

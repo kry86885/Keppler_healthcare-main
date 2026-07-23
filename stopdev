@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUN_DIR="${ROOT_DIR}/.devrun"
+BACKEND_PID_FILE="${RUN_DIR}/backend.pid"
+FRONTEND_PID_FILE="${RUN_DIR}/frontend.pid"
+SYMPTOM_PID_FILE="${RUN_DIR}/symptom-backend.pid"
+PORTS=("5001" "5002" "5173")
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  echo "Usage: ./stopdev"
+  echo "Stops HospAI local dev backend/symptom-backend/frontend started by ./startdev."
+  exit 0
+fi
+
+stopped_any=false
+
+stop_pid_file() {
+  local pid_file="$1"
+  local label="$2"
+  if [[ ! -f "${pid_file}" ]]; then
+    return
+  fi
+
+  local pid
+  pid="$(cat "${pid_file}" 2>/dev/null || true)"
+  if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
+    echo "Stopping ${label} (PID ${pid})..."
+    kill "${pid}" 2>/dev/null || true
+    stopped_any=true
+  fi
+  rm -f "${pid_file}"
+}
+
+stop_pid_file "${FRONTEND_PID_FILE}" "frontend"
+stop_pid_file "${BACKEND_PID_FILE}" "backend"
+stop_pid_file "${SYMPTOM_PID_FILE}" "symptom backend"
+
+# Fallback for stale/missing PID files.
+for port in "${PORTS[@]}"; do
+  pids="$(lsof -tiTCP:${port} -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -n "${pids}" ]]; then
+    echo "Stopping process(es) listening on port ${port}: ${pids}"
+    kill ${pids} 2>/dev/null || true
+    stopped_any=true
+  fi
+done
+
+if [[ "${stopped_any}" == "true" ]]; then
+  echo "Dev services stopped."
+else
+  echo "No running dev services found on ports 5001/5002/5173."
+fi

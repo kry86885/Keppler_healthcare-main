@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HospAI Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script type="module" src="/src/auth.js"></script>
+  </head>
+  <body>
+    <main class="relative min-h-screen overflow-hidden bg-gradient-to-br from-deep via-slate-900 to-slate-700 text-white">
+      <div class="absolute -top-28 right-10 h-80 w-80 rounded-full bg-aqua/20 blur-3xl"></div>
+      <div class="absolute bottom-0 left-0 h-72 w-72 rounded-full bg-coral/20 blur-3xl"></div>
+      <div class="relative mx-auto grid min-h-screen max-w-6xl items-center gap-8 px-4 py-10 md:grid-cols-2 md:px-8">
+        <section>
+          <a href="/index.html" class="inline-flex items-center gap-2 text-sm font-semibold text-slate-200">← Back to homepage</a>
+          <h1 class="mt-5 font-heading text-4xl font-bold leading-tight">Welcome back to HospAI</h1>
+          <p class="mt-3 max-w-md text-slate-300">Secure access for admins and normal users with module-level permissions and audit visibility.</p>
+          <div class="mt-8 space-y-3 rounded-2xl border border-white/20 bg-white/5 p-5">
+            <p class="text-sm font-semibold text-slate-100">Demo accounts (sample)</p>
+            <p class="text-sm text-slate-300">Admin: admin@hospai.local / Admin@123</p>
+            <p class="text-sm text-slate-300">Normal: nurse@hospai.local / Nurse@123</p>
+          </div>
+        </section>
+
+        <section class="rounded-3xl bg-white p-6 text-slate-800 shadow-glow md:p-8">
+          <h2 class="font-heading text-2xl font-bold text-deep">Sign in</h2>
+          <p class="mt-2 text-sm text-slate-500">Submitting this form redirects to your configured app URL.</p>
+          <form id="login-form" class="mt-6 space-y-4">
+            <label class="block text-sm font-semibold text-slate-700">Email
+              <input type="email" required value="admin@hospai.local" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none ring-coral/35 focus:ring" />
+            </label>
+            <label class="block text-sm font-semibold text-slate-700">Password
+              <input type="password" required value="Admin@123" class="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none ring-coral/35 focus:ring" />
+            </label>
+            <button type="submit" class="w-full rounded-xl bg-deep px-4 py-3 text-sm font-bold text-white">Login to HospAI</button>
+          </form>
+          <div class="mt-4 rounded-xl bg-slate-100 p-3 text-xs text-slate-600">Redirect target from env: <span data-app-url-text class="font-semibold text-deep"></span></div>
+          <p class="mt-4 text-sm text-slate-500">No account yet? <a href="/contact.html" class="font-semibold text-coral">Register</a></p>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>
