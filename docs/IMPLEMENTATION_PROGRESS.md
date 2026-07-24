@@ -8,6 +8,39 @@ This document tracks implemented work completed in the repository during the cur
 
 ## Implemented So Far
 
+### Phase D: AI/OCR Service Layer (2026-07-24)
+
+New `backend/ai/` package: business routes now depend only on this package's interfaces, never
+on `google-genai` or `utils/ocr.py` directly, closing the "don't call Gemini directly inside
+APIs" gap.
+
+- **`ai/providers.py`**: `OCRProvider`/`LLMProvider` protocol interfaces -- a future self-hosted
+  vLLM/PaddleOCR provider is a new class here, not a change to any caller.
+- **`ai/gemini_provider.py`**: `GeminiOCRProvider`/`GeminiLLMProvider`, wrapping the existing
+  `utils/ocr.py` logic (kept there since its mime-detection/PDF-extraction/markdown-cleanup
+  helpers are already exercised by the pre-existing test suite) rather than duplicating it.
+- **`ai/preprocessing.py`**: real, working CPU-only image preprocessing -- deskew (`minAreaRect`
+  skew-angle correction), denoise (`fastNlMeansDenoisingColored`), and contrast normalization
+  (CLAHE) via OpenCV (`opencv-python-headless`, newly added to `requirements.txt`). This is the
+  realistically-implementable slice of the original CRAFT/PaddleOCR/TrOCR preprocessing stage in
+  a GPU-less environment. Verified against a synthetic rotated test image; any decode/processing
+  failure falls back to the original bytes unchanged so a bad image can never break upload.
+- **`ai/service.py`**: the public API. `extract_text_from_image()` (preprocess → OCR provider,
+  same name/signature `app.py` already imported so the existing `monkeypatch.setattr(app_module,
+  "extract_text_from_image", ...)` test pattern kept working unmodified), `classify_and_extract_entities()`
+  (second-pass Gemini call producing structured JSON -- document category, medications, diagnoses,
+  dates, key values -- stored in a new `documents.structured_data` column), and
+  `patient_history_search()` (simple RAG: `search_similar_documents` from Phase C + an LLM call
+  synthesizing an answer from the retrieved excerpts).
+- New endpoint `POST /api/ai/patient-history-search` (`patients.read` permission), returns
+  `{"answer": ..., "sources": [...]}`; `answer` is `None` when no LLM provider is configured or no
+  matches were found, but `sources` is still populated so the raw matches remain usable.
+- Classification wiring lives in the `app.py` OCR route (not inside `utils/database.py`) to avoid
+  a circular import -- `ai/service.py` depends on `utils/database.py` for `search_similar_documents`,
+  so `database.py` cannot depend back on `ai/service.py`.
+
+Full backend suite: 98 passed (12 new), 1 skipped, 0 failed.
+
 ### Phase C: Vector Store for Clinical Documents (2026-07-24)
 
 New `backend/utils/embeddings.py` + `clinical_document_embeddings` table, giving the app real

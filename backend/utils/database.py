@@ -878,6 +878,8 @@ def ensure_document_columns(conn):
         cursor.execute("ALTER TABLE documents ADD COLUMN mime_type TEXT")
     if "file_data" not in existing:
         cursor.execute("ALTER TABLE documents ADD COLUMN file_data BYTEA" if IS_POSTGRES else "ALTER TABLE documents ADD COLUMN file_data BLOB")
+    if "structured_data" not in existing:
+        cursor.execute("ALTER TABLE documents ADD COLUMN structured_data TEXT")
 
 
 def ensure_hospai_module_tables(conn):
@@ -1987,7 +1989,7 @@ def delete_document(document_id, hospital_id=None, actor=None):
         return deleted
 
 
-def update_document_ocr(document_id, ocr_text, ocr_language="en", hospital_id=None):
+def update_document_ocr(document_id, ocr_text, ocr_language="en", hospital_id=None, structured_data=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -1996,9 +1998,10 @@ def update_document_ocr(document_id, ocr_text, ocr_language="en", hospital_id=No
             (document_id, scoped_hospital_id),
         )
         existing = cursor.fetchone()
+        structured_json = json.dumps(structured_data, separators=(",", ":")) if structured_data else None
         cursor.execute(
-            "UPDATE documents SET ocr_text = ?, ocr_language = ? WHERE id = ? AND hospital_id = ?",
-            (ocr_text, ocr_language, document_id, scoped_hospital_id),
+            "UPDATE documents SET ocr_text = ?, ocr_language = ?, structured_data = ? WHERE id = ? AND hospital_id = ?",
+            (ocr_text, ocr_language, structured_json, document_id, scoped_hospital_id),
         )
         conn.commit()
         updated = cursor.rowcount > 0

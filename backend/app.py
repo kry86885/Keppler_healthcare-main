@@ -35,8 +35,9 @@ from utils.auth import (
     verify_admin_route_password,
 )
 from utils.export import generate_pdf, generate_word
-from utils.ocr import LANGUAGE_NAMES, extract_text_from_image
+from utils.ocr import LANGUAGE_NAMES
 from utils.storage import ObjectStorage
+from ai.service import extract_text_from_image, classify_and_extract_entities, patient_history_search
 from werkzeug.exceptions import BadRequest
 from werkzeug.utils import secure_filename
 
@@ -1626,8 +1627,15 @@ def document_process_ocr(document_id):
     if isinstance(ocr_text, str) and ocr_text.startswith("OCR Error:"):
         return jsonify({"error": ocr_text}), 400
 
+    structured_data = None
+    try:
+        structured_data = classify_and_extract_entities(ocr_text, document["doc_type"])
+    except Exception:
+        # Structured extraction is best-effort enrichment; OCR persistence must not fail if it errors.
+        pass
+
     updated = update_document_ocr(
-        document_id, ocr_text, requested_language, hospital_id=hospital_id
+        document_id, ocr_text, requested_language, hospital_id=hospital_id, structured_data=structured_data
     )
     if not updated:
         return jsonify({"error": "Document not found"}), 404
@@ -1637,9 +1645,29 @@ def document_process_ocr(document_id):
             "document_id": document_id,
             "ocr_text": ocr_text,
             "ocr_language": requested_language,
+            "structured_data": structured_data,
             "updated": True,
         }
     )
+
+
+@app.post("/api/ai/patient-history-search")
+@require_permissions("patients.read")
+def ai_patient_history_search():
+    payload = request.get_json(force=True)
+    query = (payload.get("query") or "").strip()
+    if not query:
+        return jsonify({"error": "query is required"}), 400
+    patient_id = payload.get("patient_id")
+    k = payload.get("k", 5)
+    try:
+        k = max(1, min(int(k), 20))
+    except (TypeError, ValueError):
+        k = 5
+    result = patient_history_search(
+        query, hospital_id=current_hospital_id(), patient_id=patient_id, k=k
+    )
+    return jsonify(result)
 
 
 @app.post("/api/ocr")
