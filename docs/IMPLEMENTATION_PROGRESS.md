@@ -8,6 +8,36 @@ This document tracks implemented work completed in the repository during the cur
 
 ## Implemented So Far
 
+### Phase C: Vector Store for Clinical Documents (2026-07-24)
+
+New `backend/utils/embeddings.py` + `clinical_document_embeddings` table, giving the app real
+semantic search over clinical documents/certificates.
+
+- **Embedding provider**: implementation deviates from the original plan text (`sentence-transformers`
+  / local BGE model) in favor of the Gemini embedding API (`client.models.embed_content`, model
+  configurable via `GEMINI_EMBEDDING_MODEL`, default `text-embedding-004`). Rationale: `sentence-transformers`
+  pulls in PyTorch (a multi-GB dependency) into what's otherwise a lightweight Flask+gunicorn deployment,
+  and this stays consistent with the already-established "Gemini-backed AI provider" decision instead of
+  introducing a second, heavier AI stack. `get_genai_model()` (the existing OCR provider client) is reused.
+- **Storage**: vectors are stored as JSON-encoded float arrays in a `TEXT` column, compared via cosine
+  similarity in Python, on both SQLite and Postgres. This also deviates from the original plan (native
+  Postgres `vector` column via the pgvector extension) -- reason: there's no live Postgres instance in
+  this environment to validate a pgvector-specific code path against, and a working, portable
+  brute-force-cosine implementation that's actually been tested beats an unverified extension-dependent
+  one. Upgrading a given deployment to native pgvector indexing later is a storage-layer optimization
+  that doesn't change `store_document_embedding()`/`search_similar_documents()`'s contract.
+- **Soft-failure by design**: both functions return `None`/`[]` (not an exception) when no
+  `GEMINI_API_KEY` is configured, so document upload, OCR processing, and certificate creation keep
+  working exactly as before in any environment without embeddings configured.
+- **Wired into**: `create_certificate()` (embeds the certificate body at creation) and
+  `update_document_ocr()` (embeds the OCR text once it's extracted, not the empty upload placeholder).
+  Both calls are wrapped so an embedding failure can never break the underlying write.
+- **Tenant + patient isolation verified**: `search_similar_documents(query, hospital_id, patient_id=None, k=5)`
+  always scopes by `hospital_id`, with an optional `patient_id` filter; covered by
+  `backend/tests/test_vector_store.py` including a cross-hospital-leak regression test.
+
+Full backend suite: 86 passed (4 new), 1 skipped, 0 failed.
+
 ### Phase B: Database Hardening (2026-07-24)
 
 Additive schema hardening across every operational/domain table (`patients`, `admissions`, `documents`,

@@ -5,6 +5,8 @@ import uuid as uuid_lib
 from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 
+from .embeddings import generate_embedding, cosine_similarity, encode_vector, decode_vector, EMBEDDING_MODEL
+
 from dotenv import load_dotenv
 
 try:
@@ -532,6 +534,7 @@ def init_database():
         ensure_document_columns(conn)
         ensure_hospai_module_tables(conn)
         ensure_operational_audit_columns(conn)
+        ensure_vector_store_tables(conn)
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_hospitals_code ON hospitals(code)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_patient_id ON patients(patient_id)")
@@ -1572,6 +1575,131 @@ def ensure_operational_audit_columns(conn):
     conn.commit()
 
 
+def ensure_vector_store_tables(conn):
+    """RAG/vector store for clinical documents (Phase C).
+
+    Vectors are stored as JSON-encoded float arrays and compared via cosine similarity
+    in Python -- portable across SQLite and Postgres without requiring the Postgres
+    `vector` extension to be pre-installed. See utils/embeddings.py for rationale.
+    """
+    cursor = conn.cursor()
+    id_column = "SERIAL PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS clinical_document_embeddings (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            patient_id TEXT,
+            source_table TEXT NOT NULL,
+            source_id INTEGER NOT NULL,
+            content_text TEXT NOT NULL,
+            embedding TEXT,
+            embedding_model TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_clinical_embeddings_hospital "
+        "ON clinical_document_embeddings(hospital_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_clinical_embeddings_source "
+        "ON clinical_document_embeddings(source_table, source_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_clinical_embeddings_patient "
+        "ON clinical_document_embeddings(patient_id)"
+    )
+    conn.commit()
+
+
+def store_document_embedding(source_table, source_id, content_text, hospital_id=None, patient_id=None):
+    """Embed and store a clinical document/certificate chunk for later semantic search.
+
+    Returns the new row id, or None if embeddings are unavailable (no GEMINI_API_KEY
+    configured) -- callers should treat this as a soft failure, not an error, since
+    OCR/document upload must keep working even when the embedding provider is unset.
+    """
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
+    vector = generate_embedding(content_text)
+    if vector is None:
+        return None
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO clinical_document_embeddings (
+                hospital_id, patient_id, source_table, source_id, content_text, embedding, embedding_model
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                scoped_hospital_id,
+                patient_id,
+                source_table,
+                source_id,
+                content_text,
+                encode_vector(vector),
+                EMBEDDING_MODEL,
+            ),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+
+def search_similar_documents(query_text, hospital_id=None, patient_id=None, k=5):
+    """Return the top-k most semantically similar stored document chunks.
+
+    Brute-force cosine similarity in Python -- fine at the row counts a single hospital's
+    clinical documents realistically reach; a native pgvector index is a storage-layer
+    optimization for later, not a change to this function's contract.
+    """
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
+    query_vector = generate_embedding(query_text)
+    if query_vector is None:
+        return []
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if patient_id:
+            cursor.execute(
+                """
+                SELECT id, patient_id, source_table, source_id, content_text, embedding
+                FROM clinical_document_embeddings
+                WHERE hospital_id = ? AND patient_id = ? AND embedding IS NOT NULL
+                """,
+                (scoped_hospital_id, patient_id),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT id, patient_id, source_table, source_id, content_text, embedding
+                FROM clinical_document_embeddings
+                WHERE hospital_id = ? AND embedding IS NOT NULL
+                """,
+                (scoped_hospital_id,),
+            )
+        rows = cursor.fetchall()
+
+    scored = []
+    for row in rows:
+        candidate_vector = decode_vector(row["embedding"])
+        if not candidate_vector:
+            continue
+        similarity = cosine_similarity(query_vector, candidate_vector)
+        scored.append(
+            {
+                "id": row["id"],
+                "patient_id": row["patient_id"],
+                "source_table": row["source_table"],
+                "source_id": row["source_id"],
+                "content_text": row["content_text"],
+                "similarity": similarity,
+            }
+        )
+    scored.sort(key=lambda item: item["similarity"], reverse=True)
+    return scored[:k]
+
+
 # ==================== Patient operations ====================
 
 def generate_patient_id(hospital_id=None):
@@ -1864,11 +1992,27 @@ def update_document_ocr(document_id, ocr_text, ocr_language="en", hospital_id=No
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
+            "SELECT patient_id FROM documents WHERE id = ? AND hospital_id = ?",
+            (document_id, scoped_hospital_id),
+        )
+        existing = cursor.fetchone()
+        cursor.execute(
             "UPDATE documents SET ocr_text = ?, ocr_language = ? WHERE id = ? AND hospital_id = ?",
             (ocr_text, ocr_language, document_id, scoped_hospital_id),
         )
         conn.commit()
-        return cursor.rowcount > 0
+        updated = cursor.rowcount > 0
+
+    if updated and existing:
+        try:
+            store_document_embedding(
+                "documents", document_id, ocr_text, hospital_id=scoped_hospital_id, patient_id=existing["patient_id"]
+            )
+        except Exception:
+            # Embedding is a best-effort enrichment; OCR persistence must not fail if it errors.
+            pass
+
+    return updated
 
 
 def get_patient_stats(hospital_id=None):
@@ -2740,7 +2884,16 @@ def create_certificate(data):
         )
         certificate_id = cursor.lastrowid
         conn.commit()
-        return certificate_id
+
+    try:
+        store_document_embedding(
+            "certificates", certificate_id, data["body"], patient_id=data["patient_id"]
+        )
+    except Exception:
+        # Embedding is a best-effort enrichment; certificate creation must not fail if it errors.
+        pass
+
+    return certificate_id
 
 
 def list_certificates(patient_id):
