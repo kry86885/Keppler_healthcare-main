@@ -1355,7 +1355,7 @@ def op_doctor_schedules_update(schedule_id):
 @app.delete("/api/op/doctor-schedules/<int:schedule_id>")
 @require_permissions("patients.write")
 def op_doctor_schedules_delete(schedule_id):
-    deleted = delete_doctor_schedule(schedule_id)
+    deleted = delete_doctor_schedule(schedule_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Doctor schedule not found"}), 404
     log_audit_event(
@@ -1459,7 +1459,9 @@ def patients_update(patient_id):
 @app.delete("/api/patients/<patient_id>")
 @require_permissions("patients.delete")
 def patients_delete(patient_id):
-    deleted = delete_patient(patient_id, hospital_id=current_hospital_id())
+    deleted = delete_patient(
+        patient_id, hospital_id=current_hospital_id(), actor=g.current_user.get("username")
+    )
     if not deleted:
         return jsonify({"error": "Patient not found"}), 404
     log_audit_event("delete", "patients", patient_id)
@@ -1583,7 +1585,7 @@ def document_delete(document_id):
     if not document:
         return jsonify({"error": "Document not found"}), 404
 
-    deleted = delete_document(document_id, hospital_id=hospital_id)
+    deleted = delete_document(document_id, hospital_id=hospital_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Document not found"}), 404
 
@@ -2005,7 +2007,7 @@ def patient_certificates_create(patient_id):
 @app.delete("/api/certificates/<int:certificate_id>")
 @require_permissions("patients.write")
 def patient_certificates_delete(certificate_id):
-    deleted = delete_certificate(certificate_id)
+    deleted = delete_certificate(certificate_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Certificate not found"}), 404
     log_audit_event("delete", "certificates", str(certificate_id), {"certificate_id": certificate_id})
@@ -2104,7 +2106,7 @@ def billing_update_invoice(invoice_id):
 @app.delete("/api/billing/invoices/<int:invoice_id>")
 @require_permissions("billing.write")
 def billing_delete_invoice(invoice_id):
-    deleted = delete_invoice(invoice_id)
+    deleted = delete_invoice(invoice_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Invoice not found"}), 404
     log_audit_event(
@@ -2290,7 +2292,7 @@ def billing_update_claim(claim_id):
 @app.delete("/api/billing/claims/<int:claim_id>")
 @require_permissions("billing.write")
 def billing_delete_claim(claim_id):
-    deleted = delete_insurance_claim(claim_id)
+    deleted = delete_insurance_claim(claim_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Claim not found"}), 404
     log_audit_event("delete", "insurance_claims", str(claim_id), {"claim_id": claim_id})
@@ -2326,7 +2328,7 @@ def pharmacy_inventory_upsert():
 @app.delete("/api/pharmacy/inventory/<int:item_id>")
 @require_permissions("pharmacy.write")
 def pharmacy_inventory_delete(item_id):
-    deleted = delete_inventory_item(item_id)
+    deleted = delete_inventory_item(item_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Inventory item not found"}), 404
     log_audit_event("delete", "pharmacy_inventory", str(item_id), {"item_id": item_id})
@@ -2399,7 +2401,7 @@ def pharmacy_suppliers_update(supplier_id):
 @app.delete("/api/pharmacy/suppliers/<int:supplier_id>")
 @require_permissions("pharmacy.write")
 def pharmacy_suppliers_delete(supplier_id):
-    deleted = delete_pharmacy_supplier(supplier_id)
+    deleted = delete_pharmacy_supplier(supplier_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Supplier not found"}), 404
     log_audit_event("delete", "pharmacy_suppliers", str(supplier_id), {"supplier_id": supplier_id})
@@ -2439,7 +2441,7 @@ def pharmacy_purchases_update(purchase_id):
 @app.delete("/api/pharmacy/purchases/<int:purchase_id>")
 @require_permissions("pharmacy.write")
 def pharmacy_purchases_delete(purchase_id):
-    deleted = delete_pharmacy_purchase(purchase_id)
+    deleted = delete_pharmacy_purchase(purchase_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Purchase not found"}), 404
     log_audit_event("delete", "pharmacy_purchases", str(purchase_id), {"purchase_id": purchase_id})
@@ -2492,7 +2494,7 @@ def lab_vendors_update(vendor_id):
 @app.delete("/api/lab/vendors/<int:vendor_id>")
 @require_permissions("lab.write")
 def lab_vendors_delete(vendor_id):
-    deleted = delete_lab_vendor(vendor_id)
+    deleted = delete_lab_vendor(vendor_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Vendor not found"}), 404
     log_audit_event("delete", "lab_vendors", str(vendor_id), {"vendor_id": vendor_id})
@@ -2546,7 +2548,7 @@ def lab_diagnostics_update(diagnostic_id):
 @app.delete("/api/lab/diagnostics/<int:diagnostic_id>")
 @require_permissions("lab.write")
 def lab_diagnostics_delete(diagnostic_id):
-    deleted = delete_diagnostic_record(diagnostic_id)
+    deleted = delete_diagnostic_record(diagnostic_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Diagnostic record not found"}), 404
     log_audit_event(
@@ -2596,7 +2598,7 @@ def ot_theatres_update(theatre_id):
 @app.delete("/api/ot/theatres/<int:theatre_id>")
 @require_permissions("ot.write")
 def ot_theatres_delete(theatre_id):
-    deleted = delete_ot_theatre(theatre_id)
+    deleted = delete_ot_theatre(theatre_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Theatre not found"}), 404
     log_audit_event("delete", "ot_theatres", str(theatre_id), {"theatre_id": theatre_id})
@@ -2637,7 +2639,7 @@ def ot_surgeries_update(surgery_id):
 @app.delete("/api/ot/surgeries/<int:surgery_id>")
 @require_permissions("ot.write")
 def ot_surgeries_delete(surgery_id):
-    deleted = delete_ot_surgery(surgery_id)
+    deleted = delete_ot_surgery(surgery_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Surgery not found"}), 404
     log_audit_event("delete", "ot_surgeries", str(surgery_id), {"surgery_id": surgery_id})
@@ -2692,7 +2694,7 @@ def accounts_ledger_update(entry_id):
 @app.delete("/api/accounts/ledger/<int:entry_id>")
 @require_permissions("accounts.write")
 def accounts_ledger_delete(entry_id):
-    deleted = delete_account_ledger_entry(entry_id)
+    deleted = delete_account_ledger_entry(entry_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Ledger entry not found"}), 404
     log_audit_event("delete", "accounts_ledger", str(entry_id), {"entry_id": entry_id})
@@ -2732,7 +2734,7 @@ def accounts_vendor_payments_update(payment_id):
 @app.delete("/api/accounts/vendors/<int:payment_id>")
 @require_permissions("accounts.write")
 def accounts_vendor_payments_delete(payment_id):
-    deleted = delete_vendor_payment(payment_id)
+    deleted = delete_vendor_payment(payment_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Vendor payment not found"}), 404
     log_audit_event("delete", "vendor_payments", str(payment_id), {"payment_id": payment_id})
@@ -2772,7 +2774,7 @@ def accounts_doctor_payouts_update(payout_id):
 @app.delete("/api/accounts/doctors/<int:payout_id>")
 @require_permissions("accounts.write")
 def accounts_doctor_payouts_delete(payout_id):
-    deleted = delete_doctor_payout(payout_id)
+    deleted = delete_doctor_payout(payout_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Doctor payout not found"}), 404
     log_audit_event("delete", "doctor_payouts", str(payout_id), {"payout_id": payout_id})
@@ -2858,7 +2860,9 @@ def hr_departments_update(department_id):
 @app.delete("/api/hr/departments/<int:department_id>")
 @require_permissions("hr.write")
 def hr_departments_delete(department_id):
-    deleted = delete_department(department_id, hospital_id=current_hospital_id())
+    deleted = delete_department(
+        department_id, hospital_id=current_hospital_id(), actor=g.current_user.get("username")
+    )
     if not deleted:
         return jsonify({"error": "Department not found"}), 404
     log_audit_event(
@@ -2911,7 +2915,7 @@ def hr_attendance_update(attendance_id):
 @app.delete("/api/hr/attendance/<int:attendance_id>")
 @require_permissions("hr.write")
 def hr_attendance_delete(attendance_id):
-    deleted = delete_attendance_record(attendance_id)
+    deleted = delete_attendance_record(attendance_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Attendance record not found"}), 404
     log_audit_event(
@@ -2960,7 +2964,7 @@ def hr_payroll_update(payroll_id):
 @app.delete("/api/hr/payroll/<int:payroll_id>")
 @require_permissions("hr.write")
 def hr_payroll_delete(payroll_id):
-    deleted = delete_payroll_record(payroll_id)
+    deleted = delete_payroll_record(payroll_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Payroll record not found"}), 404
     log_audit_event("delete", "payroll", str(payroll_id), {"payroll_id": payroll_id})
@@ -3016,7 +3020,7 @@ def hr_leave_status_update(leave_id):
 @app.delete("/api/hr/leaves/<int:leave_id>")
 @require_permissions("hr.write")
 def hr_leaves_delete(leave_id):
-    deleted = delete_leave_request(leave_id)
+    deleted = delete_leave_request(leave_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Leave request not found"}), 404
     log_audit_event("delete", "leave_requests", str(leave_id), {"leave_id": leave_id})

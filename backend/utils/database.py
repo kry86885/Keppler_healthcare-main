@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import json
+import uuid as uuid_lib
 from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 
@@ -530,6 +531,7 @@ def init_database():
         ensure_user_columns(conn)
         ensure_document_columns(conn)
         ensure_hospai_module_tables(conn)
+        ensure_operational_audit_columns(conn)
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_hospitals_code ON hospitals(code)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_patient_id ON patients(patient_id)")
@@ -1443,6 +1445,133 @@ def ensure_hospai_module_tables(conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_doctor_payouts_doctor ON doctor_payouts(doctor_name)")
 
 
+# ==================== Schema hardening: uuid + audit/soft-delete columns ====================
+
+# Every operational/domain table (system tables -- hospitals, users, sessions, audit_logs --
+# are intentionally excluded; they have their own identity/audit semantics already).
+OPERATIONAL_TABLES = (
+    "patients", "admissions", "documents", "encounters", "bed_allocations",
+    "medication_schedules", "observation_notes", "patient_movements",
+    "invoices", "invoice_payments", "insurance_claims",
+    "pharmacy_inventory", "pharmacy_sales", "pharmacy_suppliers", "pharmacy_purchases",
+    "lab_vendors", "diagnostics", "department_master", "attendance", "payroll", "leave_requests",
+    "appointments", "doctor_schedules", "patient_consents", "insurance_verifications", "certificates",
+    "ot_theatres", "ot_surgeries", "accounts_ledger", "vendor_payments", "doctor_payouts",
+)
+
+
+def _table_columns(cursor, table_name: str) -> set:
+    if IS_POSTGRES:
+        cursor.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+            (table_name,),
+        )
+        return {row[0] for row in cursor.fetchall()}
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    return {row[1] for row in cursor.fetchall()}
+
+
+def _ensure_column(cursor, table_name: str, column_name: str, sqlite_type: str, postgres_type: str):
+    existing = _table_columns(cursor, table_name)
+    if column_name in existing:
+        return
+    column_type = postgres_type if IS_POSTGRES else sqlite_type
+    cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+
+
+def soft_delete_row(cursor, table_name, id_column, id_value, hospital_id=None, actor=None):
+    """Mark a row deleted_at/deleted_by instead of physically removing it.
+
+    Returns True if a row was updated (i.e. existed and wasn't already deleted).
+    """
+    where = f"{id_column} = ? AND deleted_at IS NULL"
+    params = [id_value]
+    if hospital_id is not None:
+        where += " AND hospital_id = ?"
+        params.append(hospital_id)
+    cursor.execute(
+        f"UPDATE {table_name} SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ? WHERE {where}",
+        (actor, *params),
+    )
+    return cursor.rowcount > 0
+
+
+def ensure_operational_audit_columns(conn):
+    """Add uuid + created_by/updated_by/deleted_by/deleted_at to every operational table.
+
+    Purely additive: existing integer primary keys, foreign keys, and API response shapes
+    are untouched. uuid is populated for new rows via a DB-level default/trigger (Postgres
+    gen_random_uuid(), SQLite AFTER INSERT trigger) so no INSERT call site needs to change.
+    """
+    cursor = conn.cursor()
+
+    for table_name in OPERATIONAL_TABLES:
+        _ensure_column(cursor, table_name, "uuid", "TEXT", "TEXT")
+        _ensure_column(cursor, table_name, "created_by", "TEXT", "TEXT")
+        _ensure_column(cursor, table_name, "updated_by", "TEXT", "TEXT")
+        _ensure_column(cursor, table_name, "deleted_by", "TEXT", "TEXT")
+        _ensure_column(cursor, table_name, "deleted_at", "TIMESTAMP", "TIMESTAMP")
+
+        # Backfill uuid for any existing rows (idempotent: only touches NULLs).
+        cursor.execute(f"SELECT id FROM {table_name} WHERE uuid IS NULL")
+        missing_ids = [row[0] for row in cursor.fetchall()]
+        for row_id in missing_ids:
+            cursor.execute(
+                f"UPDATE {table_name} SET uuid = ? WHERE id = ?",
+                (str(uuid_lib.uuid4()), row_id),
+            )
+
+        cursor.execute(
+            f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{table_name}_uuid ON {table_name}(uuid)"
+        )
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{table_name}_deleted_at ON {table_name}(deleted_at)"
+        )
+
+        if IS_POSTGRES:
+            # Native since Postgres 13, no pgcrypto/uuid-ossp extension required.
+            cursor.execute(
+                f"ALTER TABLE {table_name} ALTER COLUMN uuid SET DEFAULT gen_random_uuid()::text"
+            )
+        else:
+            cursor.execute(
+                f"""
+                CREATE TRIGGER IF NOT EXISTS trg_{table_name}_uuid
+                AFTER INSERT ON {table_name}
+                WHEN NEW.uuid IS NULL
+                BEGIN
+                    UPDATE {table_name} SET uuid = (
+                        lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' ||
+                        substr(lower(hex(randomblob(2))), 2) || '-' ||
+                        substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' ||
+                        lower(hex(randomblob(6)))
+                    )
+                    WHERE rowid = NEW.rowid;
+                END;
+                """
+            )
+
+    # Composite indexes for common tenant-scoped dashboard/report lookups.
+    composite_indexes = [
+        ("idx_patients_hospital_created", "patients", "hospital_id, created_at"),
+        ("idx_invoices_hospital_status", "invoices", "hospital_id, payment_status"),
+        ("idx_invoices_hospital_created", "invoices", "hospital_id, created_at"),
+        ("idx_diagnostics_hospital_created", "diagnostics", "hospital_id, created_at"),
+        ("idx_pharmacy_sales_hospital_sold", "pharmacy_sales", "hospital_id, sold_at"),
+        ("idx_appointments_hospital_date", "appointments", "hospital_id, appointment_date"),
+        ("idx_attendance_hospital_date", "attendance", "hospital_id, attendance_date"),
+        ("idx_admissions_hospital_date", "admissions", "hospital_id, admission_date"),
+    ]
+    for index_name, table_name, columns in composite_indexes:
+        table_columns = _table_columns(cursor, table_name)
+        required_columns = {c.strip() for c in columns.split(",")}
+        if not required_columns.issubset(table_columns):
+            continue
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({columns})")
+
+    conn.commit()
+
+
 # ==================== Patient operations ====================
 
 def generate_patient_id(hospital_id=None):
@@ -1465,7 +1594,7 @@ def check_duplicate_patient(name, last_name, dob, phone, hospital_id=None):
         cursor.execute(
             """
             SELECT patient_id, name, last_name FROM patients
-            WHERE hospital_id = ? AND LOWER(name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
+            WHERE hospital_id = ? AND deleted_at IS NULL AND LOWER(name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
             AND (dob = ? OR phone = ?)
         """,
             (scoped_hospital_id, name, last_name, dob, phone),
@@ -1508,7 +1637,7 @@ def get_patient(patient_id, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM patients WHERE patient_id = ? AND hospital_id = ?",
+            "SELECT * FROM patients WHERE patient_id = ? AND hospital_id = ? AND deleted_at IS NULL",
             (patient_id, scoped_hospital_id),
         )
         return cursor.fetchone()
@@ -1519,7 +1648,7 @@ def get_all_patients(hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM patients WHERE hospital_id = ? ORDER BY created_at DESC",
+            "SELECT * FROM patients WHERE hospital_id = ? AND deleted_at IS NULL ORDER BY created_at DESC",
             (scoped_hospital_id,),
         )
         return cursor.fetchall()
@@ -1535,7 +1664,7 @@ def search_patients(query, hospital_id=None):
         cursor.execute(
             """
             SELECT * FROM patients WHERE
-            hospital_id = ? AND (
+            hospital_id = ? AND deleted_at IS NULL AND (
             LOWER(name) LIKE ? OR LOWER(last_name) LIKE ? OR LOWER(middle_name) LIKE ?
             OR LOWER(phone) LIKE ? OR LOWER(patient_id) LIKE ?
             OR LOWER(TRIM(name || ' ' || COALESCE(middle_name, '') || ' ' || last_name)) LIKE ?
@@ -1700,7 +1829,7 @@ def get_documents(patient_id, hospital_id=None):
                 created_at,
                 CASE WHEN file_data IS NOT NULL THEN 1 ELSE 0 END AS has_file_data
             FROM documents
-            WHERE patient_id = ? AND hospital_id = ?
+            WHERE patient_id = ? AND hospital_id = ? AND deleted_at IS NULL
             ORDER BY created_at DESC
             """,
             (patient_id, scoped_hospital_id),
@@ -1713,22 +1842,21 @@ def get_document(document_id, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM documents WHERE id = ? AND hospital_id = ?",
+            "SELECT * FROM documents WHERE id = ? AND hospital_id = ? AND deleted_at IS NULL",
             (document_id, scoped_hospital_id),
         )
         return cursor.fetchone()
 
 
-def delete_document(document_id, hospital_id=None):
+def delete_document(document_id, hospital_id=None, actor=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "DELETE FROM documents WHERE id = ? AND hospital_id = ?",
-            (document_id, scoped_hospital_id),
+        deleted = soft_delete_row(
+            cursor, "documents", "id", document_id, hospital_id=scoped_hospital_id, actor=actor
         )
         conn.commit()
-        return cursor.rowcount > 0
+        return deleted
 
 
 def update_document_ocr(document_id, ocr_text, ocr_language="en", hospital_id=None):
@@ -1951,25 +2079,26 @@ def get_dashboard_analytics(days=14, include_employee=False, hospital_id=None):
     return analytics
 
 
-def delete_patient(patient_id, hospital_id=None):
-    """Delete patient and all associated admissions/documents"""
+def delete_patient(patient_id, hospital_id=None, actor=None):
+    """Soft-delete a patient and all associated admissions/documents."""
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "DELETE FROM documents WHERE patient_id = ? AND hospital_id = ?",
-            (patient_id, scoped_hospital_id),
+            "UPDATE documents SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ? "
+            "WHERE patient_id = ? AND hospital_id = ? AND deleted_at IS NULL",
+            (actor, patient_id, scoped_hospital_id),
         )
         cursor.execute(
-            "DELETE FROM admissions WHERE patient_id = ? AND hospital_id = ?",
-            (patient_id, scoped_hospital_id),
+            "UPDATE admissions SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ? "
+            "WHERE patient_id = ? AND hospital_id = ? AND deleted_at IS NULL",
+            (actor, patient_id, scoped_hospital_id),
         )
-        cursor.execute(
-            "DELETE FROM patients WHERE patient_id = ? AND hospital_id = ?",
-            (patient_id, scoped_hospital_id),
+        deleted = soft_delete_row(
+            cursor, "patients", "patient_id", patient_id, hospital_id=scoped_hospital_id, actor=actor
         )
         conn.commit()
-        return cursor.rowcount > 0
+        return deleted
 
 
 # ==================== Employee management ====================
@@ -2400,11 +2529,10 @@ def update_doctor_schedule(schedule_id, data):
         return cursor.rowcount > 0
 
 
-def delete_doctor_schedule(schedule_id):
+def delete_doctor_schedule(schedule_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM doctor_schedules WHERE id = ?", (schedule_id,))
-        deleted = cursor.rowcount > 0
+        deleted = soft_delete_row(cursor, "doctor_schedules", "id", schedule_id, actor=actor)
         conn.commit()
         return deleted
 
@@ -2619,17 +2747,16 @@ def list_certificates(patient_id):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM certificates WHERE patient_id = ? ORDER BY created_at DESC",
+            "SELECT * FROM certificates WHERE patient_id = ? AND deleted_at IS NULL ORDER BY created_at DESC",
             (patient_id,),
         )
         return cursor.fetchall()
 
 
-def delete_certificate(certificate_id):
+def delete_certificate(certificate_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM certificates WHERE id = ?", (certificate_id,))
-        deleted = cursor.rowcount > 0
+        deleted = soft_delete_row(cursor, "certificates", "id", certificate_id, actor=actor)
         conn.commit()
         return deleted
 
@@ -2658,7 +2785,7 @@ def create_ot_theatre(data):
 def list_ot_theatres():
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM ot_theatres ORDER BY theatre_code ASC")
+        cursor.execute("SELECT * FROM ot_theatres WHERE deleted_at IS NULL ORDER BY theatre_code ASC")
         return cursor.fetchall()
 
 
@@ -2687,12 +2814,15 @@ def update_ot_theatre(theatre_id, data):
         return cursor.rowcount > 0
 
 
-def delete_ot_theatre(theatre_id):
+def delete_ot_theatre(theatre_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM ot_surgeries WHERE theatre_id = ?", (theatre_id,))
-        cursor.execute("DELETE FROM ot_theatres WHERE id = ?", (theatre_id,))
-        deleted = cursor.rowcount > 0
+        cursor.execute(
+            "UPDATE ot_surgeries SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ? "
+            "WHERE theatre_id = ? AND deleted_at IS NULL",
+            (actor, theatre_id),
+        )
+        deleted = soft_delete_row(cursor, "ot_theatres", "id", theatre_id, actor=actor)
         conn.commit()
         return deleted
 
@@ -2731,7 +2861,7 @@ def create_ot_surgery(data):
 def list_ot_surgeries(theatre_id=None, status=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        clauses = []
+        clauses = ["deleted_at IS NULL"]
         params = []
         if theatre_id:
             clauses.append("theatre_id = ?")
@@ -2785,21 +2915,21 @@ def update_ot_surgery(surgery_id, data):
         return cursor.rowcount > 0
 
 
-def delete_ot_surgery(surgery_id):
+def delete_ot_surgery(surgery_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT theatre_id FROM ot_surgeries WHERE id = ?", (surgery_id,))
+        cursor.execute("SELECT theatre_id FROM ot_surgeries WHERE id = ? AND deleted_at IS NULL", (surgery_id,))
         existing = cursor.fetchone()
         if not existing:
             return False
-        cursor.execute("DELETE FROM ot_surgeries WHERE id = ?", (surgery_id,))
+        soft_delete_row(cursor, "ot_surgeries", "id", surgery_id, actor=actor)
         cursor.execute(
             """
             UPDATE ot_theatres
             SET status = CASE
                 WHEN EXISTS (
                     SELECT 1 FROM ot_surgeries
-                    WHERE theatre_id = ? AND status IN ('scheduled', 'in_progress')
+                    WHERE theatre_id = ? AND status IN ('scheduled', 'in_progress') AND deleted_at IS NULL
                 ) THEN 'occupied'
                 ELSE 'available'
             END
@@ -2891,12 +3021,12 @@ def list_account_ledger_entries(entry_type=None):
         cursor = conn.cursor()
         if entry_type:
             cursor.execute(
-                "SELECT * FROM accounts_ledger WHERE entry_type = ? ORDER BY entry_date DESC, id DESC",
+                "SELECT * FROM accounts_ledger WHERE entry_type = ? AND deleted_at IS NULL ORDER BY entry_date DESC, id DESC",
                 (entry_type,),
             )
         else:
             cursor.execute(
-                "SELECT * FROM accounts_ledger ORDER BY entry_date DESC, id DESC"
+                "SELECT * FROM accounts_ledger WHERE deleted_at IS NULL ORDER BY entry_date DESC, id DESC"
             )
         return cursor.fetchall()
 
@@ -2930,11 +3060,10 @@ def update_account_ledger_entry(entry_id, data):
         return cursor.rowcount > 0
 
 
-def delete_account_ledger_entry(entry_id):
+def delete_account_ledger_entry(entry_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM accounts_ledger WHERE id = ?", (entry_id,))
-        deleted = cursor.rowcount > 0
+        deleted = soft_delete_row(cursor, "accounts_ledger", "id", entry_id, actor=actor)
         conn.commit()
         return deleted
 
@@ -2968,12 +3097,12 @@ def list_vendor_payments(vendor_name=None):
         cursor = conn.cursor()
         if vendor_name:
             cursor.execute(
-                "SELECT * FROM vendor_payments WHERE vendor_name = ? ORDER BY payment_date DESC, id DESC",
+                "SELECT * FROM vendor_payments WHERE vendor_name = ? AND deleted_at IS NULL ORDER BY payment_date DESC, id DESC",
                 (vendor_name,),
             )
         else:
             cursor.execute(
-                "SELECT * FROM vendor_payments ORDER BY payment_date DESC, id DESC"
+                "SELECT * FROM vendor_payments WHERE deleted_at IS NULL ORDER BY payment_date DESC, id DESC"
             )
         return cursor.fetchall()
 
@@ -3007,11 +3136,10 @@ def update_vendor_payment(payment_id, data):
         return cursor.rowcount > 0
 
 
-def delete_vendor_payment(payment_id):
+def delete_vendor_payment(payment_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM vendor_payments WHERE id = ?", (payment_id,))
-        deleted = cursor.rowcount > 0
+        deleted = soft_delete_row(cursor, "vendor_payments", "id", payment_id, actor=actor)
         conn.commit()
         return deleted
 
@@ -3052,12 +3180,12 @@ def list_doctor_payouts(doctor_name=None):
         cursor = conn.cursor()
         if doctor_name:
             cursor.execute(
-                "SELECT * FROM doctor_payouts WHERE doctor_name = ? ORDER BY payout_month DESC, id DESC",
+                "SELECT * FROM doctor_payouts WHERE doctor_name = ? AND deleted_at IS NULL ORDER BY payout_month DESC, id DESC",
                 (doctor_name,),
             )
         else:
             cursor.execute(
-                "SELECT * FROM doctor_payouts ORDER BY payout_month DESC, id DESC"
+                "SELECT * FROM doctor_payouts WHERE deleted_at IS NULL ORDER BY payout_month DESC, id DESC"
             )
         return cursor.fetchall()
 
@@ -3098,11 +3226,10 @@ def update_doctor_payout(payout_id, data):
         return cursor.rowcount > 0
 
 
-def delete_doctor_payout(payout_id):
+def delete_doctor_payout(payout_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM doctor_payouts WHERE id = ?", (payout_id,))
-        deleted = cursor.rowcount > 0
+        deleted = soft_delete_row(cursor, "doctor_payouts", "id", payout_id, actor=actor)
         conn.commit()
         return deleted
 
@@ -3376,7 +3503,7 @@ def create_invoice(data):
 def list_invoices(patient_id=None, module=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        clauses = []
+        clauses = ["deleted_at IS NULL"]
         params = []
         if patient_id:
             clauses.append("patient_id = ?")
@@ -3384,7 +3511,7 @@ def list_invoices(patient_id=None, module=None):
         if module:
             clauses.append("module = ?")
             params.append(module)
-        where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        where_clause = f" WHERE {' AND '.join(clauses)}"
         cursor.execute(f"SELECT * FROM invoices{where_clause} ORDER BY created_at DESC", tuple(params))
         return cursor.fetchall()
 
@@ -3392,7 +3519,7 @@ def list_invoices(patient_id=None, module=None):
 def get_invoice_by_id(invoice_id):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,))
+        cursor.execute("SELECT * FROM invoices WHERE id = ? AND deleted_at IS NULL", (invoice_id,))
         return cursor.fetchone()
 
 
@@ -3462,12 +3589,15 @@ def update_invoice(invoice_id, data):
         return cursor.rowcount > 0
 
 
-def delete_invoice(invoice_id):
+def delete_invoice(invoice_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM invoice_payments WHERE invoice_id = ?", (invoice_id,))
-        cursor.execute("DELETE FROM invoices WHERE id = ?", (invoice_id,))
-        deleted = cursor.rowcount > 0
+        cursor.execute(
+            "UPDATE invoice_payments SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ? "
+            "WHERE invoice_id = ? AND deleted_at IS NULL",
+            (actor, invoice_id),
+        )
+        deleted = soft_delete_row(cursor, "invoices", "id", invoice_id, actor=actor)
         conn.commit()
         return deleted
 
@@ -3553,7 +3683,7 @@ def create_insurance_claim(data):
 def list_insurance_claims(invoice_id=None, status=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        clauses = []
+        clauses = ["deleted_at IS NULL"]
         params = []
         if invoice_id:
             clauses.append("invoice_id = ?")
@@ -3561,7 +3691,7 @@ def list_insurance_claims(invoice_id=None, status=None):
         if status:
             clauses.append("claim_status = ?")
             params.append(status)
-        where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        where_clause = f" WHERE {' AND '.join(clauses)}"
         cursor.execute(
             f"SELECT * FROM insurance_claims{where_clause} ORDER BY submitted_at DESC, id DESC",
             tuple(params),
@@ -3599,11 +3729,10 @@ def update_insurance_claim(claim_id, data):
         return cursor.rowcount > 0
 
 
-def delete_insurance_claim(claim_id):
+def delete_insurance_claim(claim_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM insurance_claims WHERE id = ?", (claim_id,))
-        deleted = cursor.rowcount > 0
+        deleted = soft_delete_row(cursor, "insurance_claims", "id", claim_id, actor=actor)
         conn.commit()
         return deleted
 
@@ -3889,15 +4018,14 @@ def upsert_inventory_item(data):
 def list_inventory_items():
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM pharmacy_inventory ORDER BY medicine_name ASC")
+        cursor.execute("SELECT * FROM pharmacy_inventory WHERE deleted_at IS NULL ORDER BY medicine_name ASC")
         return cursor.fetchall()
 
 
-def delete_inventory_item(item_id):
+def delete_inventory_item(item_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM pharmacy_inventory WHERE id = ?", (item_id,))
-        deleted = cursor.rowcount > 0
+        deleted = soft_delete_row(cursor, "pharmacy_inventory", "id", item_id, actor=actor)
         conn.commit()
         return deleted
 
@@ -3925,7 +4053,7 @@ def create_pharmacy_supplier(data):
 def list_pharmacy_suppliers():
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM pharmacy_suppliers ORDER BY supplier_name ASC")
+        cursor.execute("SELECT * FROM pharmacy_suppliers WHERE deleted_at IS NULL ORDER BY supplier_name ASC")
         return cursor.fetchall()
 
 
@@ -3954,18 +4082,20 @@ def update_pharmacy_supplier(supplier_id, data):
         return cursor.rowcount > 0
 
 
-def delete_pharmacy_supplier(supplier_id):
+def delete_pharmacy_supplier(supplier_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("UPDATE pharmacy_purchases SET supplier_id = NULL WHERE supplier_id = ?", (supplier_id,))
-        cursor.execute("DELETE FROM pharmacy_suppliers WHERE id = ?", (supplier_id,))
-        deleted = cursor.rowcount > 0
+        deleted = soft_delete_row(cursor, "pharmacy_suppliers", "id", supplier_id, actor=actor)
         conn.commit()
         return deleted
 
 
 def _apply_purchase_inventory(cursor, medicine_name, quantity):
-    cursor.execute("SELECT id, quantity FROM pharmacy_inventory WHERE medicine_name = ?", (medicine_name,))
+    cursor.execute(
+        "SELECT id, quantity FROM pharmacy_inventory WHERE medicine_name = ? AND deleted_at IS NULL",
+        (medicine_name,),
+    )
     existing_inventory = cursor.fetchone()
     if existing_inventory:
         cursor.execute(
@@ -4025,11 +4155,11 @@ def list_pharmacy_purchases(status=None):
         cursor = conn.cursor()
         if status:
             cursor.execute(
-                "SELECT * FROM pharmacy_purchases WHERE status = ? ORDER BY created_at DESC, id DESC",
+                "SELECT * FROM pharmacy_purchases WHERE status = ? AND deleted_at IS NULL ORDER BY created_at DESC, id DESC",
                 (status,),
             )
         else:
-            cursor.execute("SELECT * FROM pharmacy_purchases ORDER BY created_at DESC, id DESC")
+            cursor.execute("SELECT * FROM pharmacy_purchases WHERE deleted_at IS NULL ORDER BY created_at DESC, id DESC")
         return cursor.fetchall()
 
 
@@ -4074,11 +4204,10 @@ def update_pharmacy_purchase(purchase_id, data):
         return cursor.rowcount > 0
 
 
-def delete_pharmacy_purchase(purchase_id):
+def delete_pharmacy_purchase(purchase_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM pharmacy_purchases WHERE id = ?", (purchase_id,))
-        deleted = cursor.rowcount > 0
+        deleted = soft_delete_row(cursor, "pharmacy_purchases", "id", purchase_id, actor=actor)
         conn.commit()
         return deleted
 
@@ -4199,7 +4328,7 @@ def create_lab_vendor(data):
 def list_lab_vendors():
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM lab_vendors ORDER BY vendor_name ASC")
+        cursor.execute("SELECT * FROM lab_vendors WHERE deleted_at IS NULL ORDER BY vendor_name ASC")
         return cursor.fetchall()
 
 
@@ -4228,12 +4357,11 @@ def update_lab_vendor(vendor_id, data):
         return cursor.rowcount > 0
 
 
-def delete_lab_vendor(vendor_id):
+def delete_lab_vendor(vendor_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("UPDATE diagnostics SET vendor_id = NULL WHERE vendor_id = ?", (vendor_id,))
-        cursor.execute("DELETE FROM lab_vendors WHERE id = ?", (vendor_id,))
-        deleted = cursor.rowcount > 0
+        deleted = soft_delete_row(cursor, "lab_vendors", "id", vendor_id, actor=actor)
         conn.commit()
         return deleted
 
@@ -4276,7 +4404,7 @@ def create_diagnostic_record(data):
 def list_diagnostics(patient_id=None, doctor_name=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        clauses = []
+        clauses = ["deleted_at IS NULL"]
         params = []
         if patient_id:
             clauses.append("patient_id = ?")
@@ -4284,7 +4412,7 @@ def list_diagnostics(patient_id=None, doctor_name=None):
         if doctor_name:
             clauses.append("doctor_name = ?")
             params.append(doctor_name)
-        where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        where_clause = f" WHERE {' AND '.join(clauses)}"
         cursor.execute(f"SELECT * FROM diagnostics{where_clause} ORDER BY created_at DESC", tuple(params))
         return cursor.fetchall()
 
@@ -4343,11 +4471,10 @@ def update_diagnostic_record(diagnostic_id, data):
         return cursor.rowcount > 0
 
 
-def delete_diagnostic_record(diagnostic_id):
+def delete_diagnostic_record(diagnostic_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM diagnostics WHERE id = ?", (diagnostic_id,))
-        deleted = cursor.rowcount > 0
+        deleted = soft_delete_row(cursor, "diagnostics", "id", diagnostic_id, actor=actor)
         conn.commit()
         return deleted
 
@@ -4385,7 +4512,7 @@ def list_departments(hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM department_master WHERE hospital_id = ? ORDER BY department_name ASC",
+            "SELECT * FROM department_master WHERE hospital_id = ? AND deleted_at IS NULL ORDER BY department_name ASC",
             (scoped_hospital_id,),
         )
         return cursor.fetchall()
@@ -4419,15 +4546,13 @@ def update_department(department_id, data, hospital_id=None):
         return cursor.rowcount > 0
 
 
-def delete_department(department_id, hospital_id=None):
+def delete_department(department_id, hospital_id=None, actor=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "DELETE FROM department_master WHERE id = ? AND hospital_id = ?",
-            (department_id, scoped_hospital_id),
+        deleted = soft_delete_row(
+            cursor, "department_master", "id", department_id, hospital_id=scoped_hospital_id, actor=actor
         )
-        deleted = cursor.rowcount > 0
         conn.commit()
         return deleted
 
@@ -4459,11 +4584,11 @@ def list_attendance(employee_id=None):
         cursor = conn.cursor()
         if employee_id:
             cursor.execute(
-                "SELECT * FROM attendance WHERE employee_id = ? ORDER BY attendance_date DESC",
+                "SELECT * FROM attendance WHERE employee_id = ? AND deleted_at IS NULL ORDER BY attendance_date DESC",
                 (employee_id,),
             )
         else:
-            cursor.execute("SELECT * FROM attendance ORDER BY attendance_date DESC")
+            cursor.execute("SELECT * FROM attendance WHERE deleted_at IS NULL ORDER BY attendance_date DESC")
         return cursor.fetchall()
 
 
@@ -4494,11 +4619,10 @@ def update_attendance_record(attendance_id, data):
         return cursor.rowcount > 0
 
 
-def delete_attendance_record(attendance_id):
+def delete_attendance_record(attendance_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM attendance WHERE id = ?", (attendance_id,))
-        deleted = cursor.rowcount > 0
+        deleted = soft_delete_row(cursor, "attendance", "id", attendance_id, actor=actor)
         conn.commit()
         return deleted
 
@@ -4534,11 +4658,11 @@ def list_payroll(employee_id=None):
         cursor = conn.cursor()
         if employee_id:
             cursor.execute(
-                "SELECT * FROM payroll WHERE employee_id = ? ORDER BY payroll_month DESC",
+                "SELECT * FROM payroll WHERE employee_id = ? AND deleted_at IS NULL ORDER BY payroll_month DESC",
                 (employee_id,),
             )
         else:
-            cursor.execute("SELECT * FROM payroll ORDER BY payroll_month DESC")
+            cursor.execute("SELECT * FROM payroll WHERE deleted_at IS NULL ORDER BY payroll_month DESC")
         return cursor.fetchall()
 
 
@@ -4577,11 +4701,10 @@ def update_payroll_record(payroll_id, data):
         return cursor.rowcount > 0
 
 
-def delete_payroll_record(payroll_id):
+def delete_payroll_record(payroll_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM payroll WHERE id = ?", (payroll_id,))
-        deleted = cursor.rowcount > 0
+        deleted = soft_delete_row(cursor, "payroll", "id", payroll_id, actor=actor)
         conn.commit()
         return deleted
 
@@ -4626,19 +4749,18 @@ def list_leave_requests(employee_id=None):
         cursor = conn.cursor()
         if employee_id:
             cursor.execute(
-                "SELECT * FROM leave_requests WHERE employee_id = ? ORDER BY created_at DESC",
+                "SELECT * FROM leave_requests WHERE employee_id = ? AND deleted_at IS NULL ORDER BY created_at DESC",
                 (employee_id,),
             )
         else:
-            cursor.execute("SELECT * FROM leave_requests ORDER BY created_at DESC")
+            cursor.execute("SELECT * FROM leave_requests WHERE deleted_at IS NULL ORDER BY created_at DESC")
         return cursor.fetchall()
 
 
-def delete_leave_request(leave_id):
+def delete_leave_request(leave_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM leave_requests WHERE id = ?", (leave_id,))
-        deleted = cursor.rowcount > 0
+        deleted = soft_delete_row(cursor, "leave_requests", "id", leave_id, actor=actor)
         conn.commit()
         return deleted
 

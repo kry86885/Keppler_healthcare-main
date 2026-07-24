@@ -1,12 +1,53 @@
 # HospAI Implementation Progress
 
-Last updated: 2026-07-23
+Last updated: 2026-07-24
 
 ## Purpose
 
 This document tracks implemented work completed in the repository during the current execution stream, the major remaining scope gaps, and the next recommended delivery slices.
 
 ## Implemented So Far
+
+### Phase B: Database Hardening (2026-07-24)
+
+Additive schema hardening across every operational/domain table (`patients`, `admissions`, `documents`,
+`encounters`, `bed_allocations`, `medication_schedules`, `observation_notes`, `patient_movements`,
+`invoices`, `invoice_payments`, `insurance_claims`, `pharmacy_inventory`, `pharmacy_sales`,
+`pharmacy_suppliers`, `pharmacy_purchases`, `lab_vendors`, `diagnostics`, `department_master`,
+`attendance`, `payroll`, `leave_requests`, `appointments`, `doctor_schedules`, `patient_consents`,
+`insurance_verifications`, `certificates`, `ot_theatres`, `ot_surgeries`, `accounts_ledger`,
+`vendor_payments`, `doctor_payouts` — 30 tables). System/security tables (`hospitals`, `users`,
+`sessions`, `audit_logs`) were intentionally excluded; they have their own identity/audit semantics.
+
+- **UUID columns**: every operational table now has a `uuid` column, populated automatically for new
+  rows via a database-level mechanism (a `gen_random_uuid()` column default on Postgres 13+, an
+  `AFTER INSERT` trigger on SQLite) rather than editing dozens of scattered `INSERT` call sites.
+  Existing rows were backfilled during migration. Existing integer primary keys are untouched — this
+  is purely additive, so no API response shape, foreign key, or frontend type changed.
+- **Audit columns**: `created_by`, `updated_by`, `deleted_by` (text — an actor identifier, matching the
+  existing free-text `created_by` convention already used on `encounters`/`invoices`) and `deleted_at`
+  were added to all 30 tables via the project's existing incremental `ALTER TABLE ... ADD COLUMN`
+  migration pattern in `init_database()`.
+- **Soft deletes**: every hard `DELETE` in `backend/utils/database.py` across all 30 operational tables
+  was converted to a soft delete (`deleted_at`/`deleted_by` set instead of removing the row), via a new
+  shared `soft_delete_row()` helper. All corresponding `list_*`/`get_*`/search functions now filter
+  `deleted_at IS NULL`, so deleted records disappear from every read path exactly as before — the only
+  behavior change is that the row is retained instead of destroyed. Every affected `app.py` delete route
+  now passes the authenticated user's username as the `actor` for `deleted_by`. `users` (employee hard
+  delete) was intentionally left as-is; it already has a separate deactivate/status workflow and wasn't
+  in scope for this pass.
+- **Composite indexes**: added tenant-scoped composite indexes (`hospital_id` + date/status) on the
+  tables most exercised by dashboard/report queries (patients, invoices, diagnostics, pharmacy_sales,
+  appointments, attendance, admissions), guarded to only create when the underlying columns exist.
+- **Table partitioning** was explicitly not implemented — SQLite doesn't support it and current data
+  volumes don't warrant it on Postgres yet; documented here as a deferred recommendation.
+- `created_by`/`updated_by` on the *create/update* path (as opposed to `deleted_by` on delete, which is
+  fully wired) are present in the schema but not yet populated on every write — threading actor context
+  into every create/update function across the whole app is a much larger effort better done alongside
+  the Phase A route/service restructuring, where each route already needs touching.
+
+Full backend suite: 82 passed, 1 skipped, 0 failed. No frontend changes required (soft delete is
+transparent at the API layer — same response shapes, same status codes).
 
 ### Pre-Refactor Baseline Hardening (2026-07-23)
 
