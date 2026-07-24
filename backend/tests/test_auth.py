@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
-from utils.auth import SESSION_COOKIE_NAME
-from utils.auth import _parse_ts
+from core.auth import SESSION_COOKIE_NAME
+from core.auth import _parse_ts
 
 
 def _create_employee_as_owner(app_client, username: str, password: str):

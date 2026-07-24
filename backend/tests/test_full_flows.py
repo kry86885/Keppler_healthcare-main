@@ -208,7 +208,7 @@ def test_employee_onboarding_lifecycle_flow(app_client):
 def test_clinician_can_run_ocr_and_patient_document_flow(app_client, tmp_path, monkeypatch):
     import app as app_module
 
-    monkeypatch.setattr(app_module, "extract_text_from_image", lambda *_args, **_kwargs: "Simulated OCR")
+    monkeypatch.setattr("modules.ai_exports.routes.extract_text_from_image", lambda *_args, **_kwargs: "Simulated OCR")
 
     _owner_login(app_client)
     suffix = uuid.uuid4().hex[:8]

@@ -26,7 +26,7 @@ ADMIN_ROUTE_AUTH_TTL_SECONDS = int(os.getenv("ADMIN_ROUTE_AUTH_TTL_SECONDS", "36
 ADMIN_ROUTE_AUTH_SECRET = os.getenv("ADMIN_ROUTE_AUTH_SECRET", "") or SESSION_PEPPER or "hospai-admin-route-auth"
 
 USER_TYPES = ("admin", "normal")
-ASSIGNABLE_MODULES = ("dashboard", "patients", "billing", "pharmacy", "lab", "hrms", "ot", "accounts", "reports", "symptom_ai")
+ASSIGNABLE_MODULES = ("dashboard", "patients", "billing", "pharmacy", "lab", "hrms", "ot", "accounts", "reports", "symptom_ai", "emergency", "icu", "ambulance", "nurse", "queue", "beds")
 DEFAULT_NORMAL_MODULES = ("dashboard", "patients", "symptom_ai")
 
 MODULE_PERMISSION_MAP = {
@@ -40,6 +40,12 @@ MODULE_PERMISSION_MAP = {
     "accounts": {"accounts.read", "accounts.write"},
     "reports": {"reports.read"},
     "symptom_ai": {"symptom_ai.use"},
+    "emergency": {"emergency.read", "emergency.write"},
+    "icu": {"icu.read", "icu.write"},
+    "ambulance": {"ambulance.read", "ambulance.write"},
+    "nurse": {"nurse.read", "nurse.write"},
+    "queue": {"queue.read", "queue.write"},
+    "beds": {"beds.read", "beds.write"},
 }
 
 ADMIN_PERMISSIONS = {
@@ -61,6 +67,18 @@ ADMIN_PERMISSIONS = {
     "ot.write",
     "accounts.read",
     "accounts.write",
+    "emergency.read",
+    "emergency.write",
+    "icu.read",
+    "icu.write",
+    "ambulance.read",
+    "ambulance.write",
+    "nurse.read",
+    "nurse.write",
+    "queue.read",
+    "queue.write",
+    "beds.read",
+    "beds.write",
     "reports.read",
     "audit.read",
     "admin.use",
@@ -556,7 +574,7 @@ def reset_hospital_admin_password(hospital_id: int, username: str, new_password:
             return {"success": False, "message": "Target account is not a hospital admin."}
 
         cursor.execute(
-            "UPDATE users SET password_hash = ?, status = 'active' WHERE id = ?",
+            "UPDATE users SET password_hash = ?, status = 'active', password_changed_at = CURRENT_TIMESTAMP WHERE id = ?",
             (hash_password(new_password), user["id"]),
         )
         cursor.execute("DELETE FROM sessions WHERE user_id = ? AND hospital_id = ?", (user["id"], hospital_id))
@@ -618,6 +636,7 @@ def get_session_user(token: Optional[str]):
             """
             SELECT s.id as session_id,
                    s.expires_at as expires_at,
+                   s.created_at as session_created_at,
                    s.hospital_id as hospital_id,
                    u.id as user_id,
                    u.username,
@@ -630,6 +649,7 @@ def get_session_user(token: Optional[str]):
                    u.phone,
                    u.employee_id,
                    u.status,
+                   u.password_changed_at,
                    h.code as hospital_code,
                    h.status as hospital_status
             FROM sessions s
@@ -649,6 +669,14 @@ def get_session_user(token: Optional[str]):
             conn.commit()
             return None
 
+        if row["password_changed_at"]:
+            session_created_at = _parse_ts(row["session_created_at"])
+            password_changed_at = _parse_ts(row["password_changed_at"])
+            if session_created_at < password_changed_at:
+                cursor.execute("DELETE FROM sessions WHERE id = ?", (row["session_id"],))
+                conn.commit()
+                return None
+
         if row["status"] == "inactive":
             cursor.execute("DELETE FROM sessions WHERE id = ?", (row["session_id"],))
             conn.commit()
@@ -659,8 +687,16 @@ def get_session_user(token: Optional[str]):
             conn.commit()
             return None
 
-    return resolve_user_profile(
+        cursor.execute(
+            "UPDATE sessions SET last_seen = CURRENT_TIMESTAMP WHERE id = ?",
+            (row["session_id"],),
+        )
+        conn.commit()
+
+    profile = resolve_user_profile(
         {
+            "id": row["user_id"],
+            "hospital_id": row["hospital_id"],
             "username": row["username"],
             "role": row["role"],
             "access_role": row["access_role"],
@@ -674,6 +710,14 @@ def get_session_user(token: Optional[str]):
             "hospital_code": row["hospital_code"],
         }
     )
+    # resolve_user_profile() intentionally omits internal DB ids from the client-safe
+    # profile shape; re-attach them here (mirroring authenticate()) since callers like
+    # current_hospital_id() and the session-management routes need them server-side.
+    # Routes that jsonify this profile directly must strip "id" before responding,
+    # the same way the login/setup-admin routes already do.
+    profile["id"] = row["user_id"]
+    profile["hospital_id"] = row["hospital_id"]
+    return profile
 
 
 def delete_session(token: Optional[str]):
@@ -683,4 +727,30 @@ def delete_session(token: Optional[str]):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
+        conn.commit()
+
+def get_user_sessions(user_id: int) -> list[dict]:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, created_at, last_seen, ip_address, user_agent FROM sessions WHERE user_id = ?", (user_id,))
+        cols = [d[0] for d in cursor.description]
+        return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+def delete_specific_session(session_id: int, user_id: int):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM sessions WHERE id = ? AND user_id = ?", (session_id, user_id))
+        conn.commit()
+
+def delete_other_sessions(user_id: int, current_token: str):
+    token_hash = _hash_session_token(current_token)
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?", (user_id, token_hash))
+        conn.commit()
+
+def delete_all_user_sessions(user_id: int):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
         conn.commit()

@@ -7,11 +7,16 @@ import pytest
 
 @pytest.fixture(scope="session", autouse=True)
 def test_db_env():
+    os.environ["BUCKET_URL"] = "s3://memory-test/bucket"
+    # Must be set before app.py (and therefore core.celery_app.celery_init_app) is ever
+    # imported/reloaded -- app.config["TESTING"] is only set *after* the app_client fixture
+    # reloads the module, which is too late for celery_init_app's own eager-mode check.
+    os.environ["CELERY_TASK_ALWAYS_EAGER"] = "true"
     if "backend" not in sys.path:
         sys.path.insert(0, os.path.dirname(__file__) + "/..")
 
     from utils.database import init_database
-    from utils.auth import create_default_users
+    from core.auth import create_default_users
 
     init_database()
     create_default_users()
@@ -23,7 +28,10 @@ def app_client(test_db_env):
     app_module = importlib.import_module("app")
     importlib.reload(app_module)
 
-    app_module.app.config.update({"TESTING": True})
+    app_module.app.config.update({"TESTING": True, "RATELIMIT_ENABLED": False})
+    
+    from core.limiter import limiter
+    limiter.enabled = False
 
     with app_module.app.test_client() as client:
         yield client

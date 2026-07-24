@@ -32,6 +32,9 @@ def test_store_and_search_returns_none_without_embedding_provider():
 
 def test_search_ranks_by_similarity_and_respects_hospital_isolation(monkeypatch):
     monkeypatch.setattr(db, "generate_embedding", _fake_embed)
+    with db.get_connection() as conn:
+        conn.execute("DELETE FROM clinical_document_embeddings")
+        conn.commit()
 
     db.store_document_embedding(
         "documents", 101, "Patient has diabetes and needs insulin dosage review", hospital_id=1, patient_id="PAT-1"
@@ -52,6 +55,9 @@ def test_search_ranks_by_similarity_and_respects_hospital_isolation(monkeypatch)
 
 def test_search_respects_patient_filter(monkeypatch):
     monkeypatch.setattr(db, "generate_embedding", _fake_embed)
+    with db.get_connection() as conn:
+        conn.execute("DELETE FROM clinical_document_embeddings")
+        conn.commit()
 
     db.store_document_embedding(
         "documents", 201, "cardiac blood pressure note", hospital_id=1, patient_id="PAT-A"

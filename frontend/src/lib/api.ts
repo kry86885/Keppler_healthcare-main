@@ -23,8 +23,16 @@ export function setHospitalCode(hospitalCode: string): void {
 
 export async function apiFetch<T = any>(path: string, options: RequestInit & { cache?: RequestCache } = {}): Promise<T> {
   const method = (options.method || "GET").toUpperCase();
+  const csrfToken = typeof document !== 'undefined' ? document.cookie.split('; ').find(row => row.startsWith('csrf_token='))?.split('=')[1] : undefined;
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    "X-Hospital-Code": getHospitalCode(),
+    ...(csrfToken && method !== "GET" && method !== "HEAD" ? { "X-CSRF-Token": csrfToken } : {}),
+    ...(options.headers || {})
+  };
+  
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json", "X-Hospital-Code": getHospitalCode(), ...(options.headers || {}) },
+    headers,
     credentials: "include",
     cache: options.cache || (method === "GET" ? "no-store" : "default"),
     ...options,

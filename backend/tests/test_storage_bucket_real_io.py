@@ -24,7 +24,7 @@ def clean_database():
 )
 def test_real_bucket_store_and_read():
     load_dotenv("/Users/subigyalamichhane/kalpra/Keppler_healthcare/backend/.env", override=False)
-    from utils.storage import ObjectStorage
+    from core.storage import ObjectStorage
 
     payload = f"hospai-real-bucket-test-{int(time.time())}-{uuid.uuid4().hex}".encode("utf-8")
     filename = f"real-test-{uuid.uuid4().hex}.txt"

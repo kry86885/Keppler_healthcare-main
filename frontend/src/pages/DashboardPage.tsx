@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
 import PatientCard from "../components/PatientCard";
 import StatCard from "../components/StatCard";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, List, ListItem } from "../components/ui";
+import { Skeleton } from "../components/ui/Skeleton";
 import type { DashboardAnalytics, DistributionItem, HospitalSummary, Patient, Stats } from "../types";
 
 type Props = {
@@ -249,7 +250,16 @@ export default function DashboardPage({
         </Card>
       </div>
 
-      {analyticsLoading ? <p className="muted">Refreshing analytics...</p> : null}
+      {analyticsLoading && !analytics ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+          <Skeleton height="150px" animation="wave" variant="rounded" />
+          <Skeleton height="150px" animation="wave" variant="rounded" />
+          <Skeleton height="150px" animation="wave" variant="rounded" />
+        </div>
+      ) : null}
+      
+      {analyticsLoading && analytics ? <p className="muted">Refreshing analytics...</p> : null}
     </section>
   );
 }
+

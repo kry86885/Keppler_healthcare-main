@@ -1,4 +1,10 @@
 services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
   backend:
     build:
       context: .
@@ -11,10 +17,34 @@ services:
       - DB_PATH=/data/healthcare.db
       - FLASK_ENV=development
       - SESSION_COOKIE_SECURE=false
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
     ports:
       - "5001:5001"
     volumes:
       - ./backend:/app/backend
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.dev
+    command: ["celery", "-A", "app.celery", "worker", "--loglevel=info", "--pool=solo"]
+    env_file:
+      - ./backend/.env
+    environment:
+      - DB_ENGINE=sqlite
+      - DB_PATH=/data/healthcare.db
+      - FLASK_ENV=development
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    volumes:
+      - ./backend:/app/backend
+    depends_on:
+      - redis
+      - backend
     restart: unless-stopped
 
   frontend:
@@ -70,3 +100,4 @@ services:
 volumes:
   frontend_node_modules:
   site_node_modules:
+  redis_data:

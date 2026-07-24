@@ -812,6 +812,7 @@ def ensure_user_columns(conn):
         "address": "TEXT",
         "emergency_contact": "TEXT",
         "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        "password_changed_at": "TIMESTAMP",
     }
     for column, col_type in expected.items():
         if column not in existing:
@@ -1609,6 +1610,121 @@ def ensure_vector_store_tables(conn):
         "CREATE INDEX IF NOT EXISTS idx_clinical_embeddings_source "
         "ON clinical_document_embeddings(source_table, source_id)"
     )
+
+    # Phase H Tables
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS bed_master (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            ward TEXT NOT NULL,
+            room_no TEXT NOT NULL,
+            bed_no TEXT NOT NULL,
+            status TEXT DEFAULT 'Available',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS icu_monitoring (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            patient_id TEXT NOT NULL,
+            admission_id INTEGER,
+            heart_rate INTEGER,
+            blood_pressure TEXT,
+            spo2 INTEGER,
+            ventilator_active BOOLEAN DEFAULT 0,
+            critical_alerts TEXT,
+            recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS opd_queue (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            patient_id TEXT NOT NULL,
+            department TEXT NOT NULL,
+            doctor_id TEXT,
+            token_number INTEGER NOT NULL,
+            status TEXT DEFAULT 'Waiting',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS emergency_triage (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            patient_name TEXT NOT NULL,
+            age INTEGER,
+            gender TEXT,
+            priority TEXT NOT NULL,
+            chief_complaint TEXT NOT NULL,
+            arrival_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            status TEXT DEFAULT 'Pending'
+        )
+        """
+    )
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS ambulances (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            vehicle_number TEXT NOT NULL,
+            driver_name TEXT,
+            driver_phone TEXT,
+            status TEXT DEFAULT 'Available',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS ambulance_dispatch (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            ambulance_id INTEGER NOT NULL,
+            patient_id TEXT,
+            pickup_location TEXT NOT NULL,
+            drop_location TEXT NOT NULL,
+            dispatch_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completion_time TIMESTAMP,
+            status TEXT DEFAULT 'En Route'
+        )
+        """
+    )
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS nurse_shifts (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            nurse_id TEXT NOT NULL,
+            ward TEXT NOT NULL,
+            shift_start TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            shift_end TIMESTAMP,
+            handover_notes TEXT
+        )
+        """
+    )
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS nursing_notes (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            patient_id TEXT NOT NULL,
+            nurse_id TEXT NOT NULL,
+            note TEXT NOT NULL,
+            vitals TEXT,
+            recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_clinical_embeddings_patient "
         "ON clinical_document_embeddings(patient_id)"
@@ -2008,7 +2124,8 @@ def update_document_ocr(document_id, ocr_text, ocr_language="en", hospital_id=No
 
     if updated and existing:
         try:
-            store_document_embedding(
+            from core.tasks import process_document_embedding_task
+            process_document_embedding_task.delay(
                 "documents", document_id, ocr_text, hospital_id=scoped_hospital_id, patient_id=existing["patient_id"]
             )
         except Exception:
@@ -2889,11 +3006,11 @@ def create_certificate(data):
         conn.commit()
 
     try:
-        store_document_embedding(
-            "certificates", certificate_id, data["body"], patient_id=data["patient_id"]
+        from core.tasks import process_document_embedding_task
+        process_document_embedding_task.delay(
+            "certificates", certificate_id, data["body"], hospital_id=None, patient_id=data["patient_id"]
         )
     except Exception:
-        # Embedding is a best-effort enrichment; certificate creation must not fail if it errors.
         pass
 
     return certificate_id
@@ -4105,6 +4222,22 @@ def get_reports_overview():
         alos_row = cursor.fetchone()
         average_los_days = round(float((alos_row or {"avg_los": 0})["avg_los"] or 0), 2)
         admission_count = int((alos_row or {"admission_count": 0})["admission_count"] or 0)
+        
+        # Phase H Metrics
+        cursor.execute("SELECT COUNT(*) AS total_beds FROM bed_master")
+        total_beds = int((cursor.fetchone() or {"total_beds": 0})["total_beds"] or 0)
+        cursor.execute("SELECT COUNT(*) AS occupied_beds FROM bed_master WHERE status = 'Occupied'")
+        occupied_beds = int((cursor.fetchone() or {"occupied_beds": 0})["occupied_beds"] or 0)
+        bed_occupancy_rate = round((occupied_beds / total_beds * 100) if total_beds > 0 else 0, 1)
+
+        cursor.execute("SELECT COUNT(*) AS icu_patients FROM icu_monitoring WHERE ventilator_active = 1")
+        icu_critical = int((cursor.fetchone() or {"icu_patients": 0})["icu_patients"] or 0)
+
+        cursor.execute("SELECT COUNT(*) AS active_emergencies FROM emergency_triage WHERE status = 'Pending'")
+        active_emergencies = int((cursor.fetchone() or {"active_emergencies": 0})["active_emergencies"] or 0)
+
+        cursor.execute("SELECT COUNT(*) AS active_ambulances FROM ambulance_dispatch WHERE status = 'En Route'")
+        active_ambulances = int((cursor.fetchone() or {"active_ambulances": 0})["active_ambulances"] or 0)
 
     return {
         "hospital_summary": hospital_summary,
@@ -4123,6 +4256,14 @@ def get_reports_overview():
             "average_los_days": average_los_days,
             "admission_count": admission_count,
         },
+        "phase_h_summary": {
+            "total_beds": total_beds,
+            "occupied_beds": occupied_beds,
+            "bed_occupancy_rate": bed_occupancy_rate,
+            "icu_critical_patients": icu_critical,
+            "active_emergencies": active_emergencies,
+            "active_ambulances": active_ambulances
+        }
     }
 
 

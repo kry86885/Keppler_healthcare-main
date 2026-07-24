@@ -100,11 +100,8 @@ def test_patient_history_search_route_requires_query(auth_client):
 
 
 def test_patient_history_search_route_returns_result(auth_client, monkeypatch):
-    import app as app_module
-
     monkeypatch.setattr(
-        app_module,
-        "patient_history_search",
+        "modules.ai_exports.routes.patient_history_search",
         lambda query, hospital_id, patient_id=None, k=5: {
             "answer": "Patient has a diabetes diagnosis on record.",
             "sources": [{"source_table": "documents", "source_id": 1, "similarity": 0.9, "excerpt": "..."}],

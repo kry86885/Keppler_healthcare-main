@@ -212,7 +212,7 @@ def test_registration_departments_require_patient_permissions(app_client):
 
 
 def test_registration_departments_are_hospital_scoped_via_api(app_client):
-    from utils.auth import hash_password
+    from core.auth import hash_password
     from utils.database import add_employee, create_hospital
 
     hospital_one_code = "hosp-rbac-dept-1"

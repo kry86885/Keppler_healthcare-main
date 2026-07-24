@@ -15,3 +15,5 @@ export { default as Container } from "./Container";
 export { default as Modal } from "./Modal";
 export { default as ConfirmDialog } from "./ConfirmDialog";
 export { List, ListItem, ListItemContent, ListItemActions } from "./List";
+
+export { Skeleton } from "./Skeleton";

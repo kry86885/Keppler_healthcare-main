@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, FormEvent, ReactNode, SetStateAction } from "react";
 import { FiSettings } from "react-icons/fi";
 import AuthView from "./components/AuthView";
@@ -33,6 +33,12 @@ import ReportsPage from "./pages/ReportsPage";
 import SettingsPage from "./pages/SettingsPage";
 import SymptomAiPage from "./pages/SymptomAiPage";
 import PlatformAdminPage from "./pages/PlatformAdminPage";
+import BedManagementPage from "./pages/BedManagementPage";
+import IcuPage from "./pages/IcuPage";
+import QueuePage from "./pages/QueuePage";
+import EmergencyPage from "./pages/EmergencyPage";
+import AmbulancePage from "./pages/AmbulancePage";
+import NurseStationPage from "./pages/NurseStationPage";
 import RegistrationDeskPage from "./pages/RegistrationDeskPage";
 import { API_BASE, EMPTY_STATS, NAV_ITEMS } from "./lib/constants";
 import { apiFetch, getHospitalCode, reportError, setHospitalCode } from "./lib/api";
@@ -235,6 +241,13 @@ function App() {
   const profileActionsRef = useRef<HTMLDivElement | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [hospitalCode, setHospitalCodeState] = useState(getHospitalCode());
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    return (localStorage.getItem("hospai-theme") as "light" | "dark") || "light";
+  });
+  useEffect(() => {
+    localStorage.setItem("hospai-theme", theme);
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
   const [collapsedSidebarGroups, setCollapsedSidebarGroups] = useState<Record<string, boolean>>({});
   useEffect(() => {
     if (!notice) return;
@@ -854,7 +867,7 @@ function App() {
                     <span className="sidebar-nav-count">{group.items.length}</span>
                   </span>
                   <span className={collapsedSidebarGroups[group.key] ? "sidebar-nav-chevron collapsed" : "sidebar-nav-chevron"} aria-hidden="true">
-                    <span className="sidebar-nav-chevron-chip">▾</span>
+                    <span className="sidebar-nav-chevron-chip">â–¾</span>
                   </span>
                 </button>
                 {!collapsedSidebarGroups[group.key] && (
@@ -919,6 +932,15 @@ function App() {
                   }}
                 >
                   Settings
+                </Button>
+                <Button
+                  className="settings-footer-btn"
+                  variant="ghost"
+                  onClick={() => {
+                    setTheme((prev) => prev === "light" ? "dark" : "light");
+                  }}
+                >
+                  {theme === "light" ? "Dark Mode" : "Light Mode"}
                 </Button>
                 <Button
                   type="button"
@@ -1066,3 +1088,6 @@ function App() {
 }
 
 export default App;
+
+
+

@@ -10,7 +10,7 @@ def test_ocr_missing_file(auth_client):
 def test_ocr_success(auth_client, monkeypatch):
     import app as app_module
 
-    monkeypatch.setattr(app_module, "extract_text_from_image", lambda *_args, **_kwargs: "OCR OK")
+    monkeypatch.setattr("modules.ai_exports.routes.extract_text_from_image", lambda *_args, **_kwargs: "OCR OK")
 
     data = {
         "file": (io.BytesIO(b"image-bytes"), "sample.png"),
@@ -25,7 +25,7 @@ def test_ocr_success(auth_client, monkeypatch):
 def test_process_document_ocr_updates_database(auth_client, create_patient, monkeypatch):
     import app as app_module
 
-    monkeypatch.setattr(app_module, "extract_text_from_image", lambda *_args, **_kwargs: "Persisted OCR")
+    monkeypatch.setattr("modules.documents.routes.extract_text_from_image", lambda *_args, **_kwargs: "Persisted OCR")
 
     patient_id = create_patient({"name": "OCR", "last_name": "Persist"})
     upload = auth_client.post(

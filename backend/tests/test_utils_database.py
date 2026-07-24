@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from utils.auth import hash_password
+from core.auth import hash_password
 from utils.database import (
     add_admission,
     add_document,

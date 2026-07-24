@@ -53,7 +53,7 @@ def _reload_storage_module(monkeypatch):
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "minio-user")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "minio-secret")
     monkeypatch.setenv("AWS_REGION", "us-east-1")
-    module = importlib.import_module("utils.storage")
+    module = importlib.import_module("core.storage")
     return importlib.reload(module)
 
 

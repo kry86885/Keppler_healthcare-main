@@ -48,7 +48,7 @@ def _reload_storage_module(monkeypatch, *, bucket_url=None, bucket_name=None):
     if bucket_name is not None:
         monkeypatch.setenv("BUCKET_NAME", bucket_name)
 
-    module = importlib.import_module("utils.storage")
+    module = importlib.import_module("core.storage")
     return importlib.reload(module)
 
 

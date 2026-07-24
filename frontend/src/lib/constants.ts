@@ -1,4 +1,4 @@
-import type { ModuleOption, ModuleId, NavItem, PatientForm, SignupForm, UserTypeOption } from "../types";
+﻿import type { ModuleOption, ModuleId, NavItem, PatientForm, SignupForm, UserTypeOption } from "../types";
 
 export const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5001";
 export const SYMPTOM_API_BASE = import.meta.env.VITE_SYMPTOM_API_BASE || "http://localhost:5002";
@@ -168,3 +168,4 @@ export const EMPTY_SIGNUP_FORM: SignupForm = {
 };
 
 export const EMPTY_STATS = { total: 0, today: 0, active_admissions: 0, documents: 0, readmitted_patients: 0 };
+

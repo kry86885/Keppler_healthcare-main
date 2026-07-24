@@ -33,6 +33,35 @@
   --button-height: 36px;
 }
 
+[data-theme="dark"] {
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+  --card: 222 47% 11%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222 47% 11%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 186 79% 36%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 217 32% 17%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217 32% 17%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 217 32% 17%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217 32% 17%;
+  --input: 217 32% 17%;
+  --ring: 186 79% 36%;
+  
+  --surface: linear-gradient(148deg, rgba(16, 24, 39, 0.96) 0%, rgba(31, 41, 55, 0.84) 100%);
+  --sidebar: linear-gradient(180deg, #111827 0%, #1f2937 100%);
+  --sidebar-foreground: #f3f4f6;
+  --shadow-sm: 0 8px 18px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 18px 36px rgba(0, 0, 0, 0.34);
+  --shadow-lg: 0 30px 58px rgba(0, 0, 0, 0.48);
+}
+
 * {
   box-sizing: border-box;
 }
