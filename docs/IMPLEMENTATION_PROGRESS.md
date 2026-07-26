@@ -1,12 +1,81 @@
 # HospAI Implementation Progress
 
-Last updated: 2026-07-24
+Last updated: 2026-07-26
 
 ## Purpose
 
 This document tracks implemented work completed in the repository during the current execution stream, the major remaining scope gaps, and the next recommended delivery slices.
 
 ## Implemented So Far
+
+### Symptom AI: "Ask About Your Documents" knowledge-graph chat (2026-07-26)
+
+Integrated the user-provided `HospAI_SLM_Backend` prototype (a standalone Streamlit app: LightRAG
+knowledge-graph chatbot + document OCR, its own SQLite auth) as a new tab on the existing Symptom
+AI page, reusing HospAI's real session auth instead of the prototype's standalone login. The
+existing body-sensation wellness-insight tool (`symptom_backend/`) is untouched -- its safety
+guardrails (non-diagnostic language, banned medical terms, mandatory disclaimer) stay exactly as
+they were, per the confirmed scope decision to add a new tab rather than replace the page.
+
+- **`backend/ai/rag_provider.py`**: LightRAG wired directly to the existing Gemini call paths
+  (`ai/gemini_provider.py`, `utils/embeddings.py`) via `asyncio.to_thread` -- deliberately skips
+  `litellm` (the prototype's dependency), which would only exist to re-route calls to a provider
+  (Gemini) this codebase already calls directly. One LightRAG instance per (hospital, user), each
+  with its own persistent workspace under `backend/rag_workspaces/` (gitignored). Runs on a
+  persistent background event-loop thread, not a fresh `asyncio.run()` per call -- LightRAG's
+  internal worker pools are bound to whichever loop was active at `initialize_storages()`, so a
+  new loop per Flask request breaks on the second call ("bound to a different event loop"),
+  verified by reproducing the crash before fixing it.
+- **`backend/ai/document_extraction.py`**: PDF/DOCX/TXT/MD/image text extraction reusing
+  dependencies already in `requirements.txt` (`pypdf`, `python-docx`, the existing Gemini-vision
+  OCR path) -- no `PyMuPDF`/`fitz` added, since `pypdf` already covers standard PDFs and any
+  scanned/image-only PDF falls back to the same OCR path used elsewhere.
+- **New tables** `symptom_ai_documents` / `symptom_ai_chat_messages` (`ensure_symptom_ai_tables`
+  in `utils/database.py`): scoped by `hospital_id` + `username`, independent of clinical patient
+  records -- this is a personal staff knowledge base, not part of a patient chart. Soft-delete on
+  documents via the existing `soft_delete_row()` helper from Phase B.
+- **New blueprint** `backend/modules/symptom_ai/routes.py`, gated by the existing `symptom_ai.use`
+  permission: `GET/POST /api/symptom-ai/documents`, `DELETE /api/symptom-ai/documents/<id>`,
+  `POST /api/symptom-ai/chat`, `GET/DELETE /api/symptom-ai/chat/history`. A failed knowledge-graph
+  insert doesn't lose the uploaded document -- the extracted text is saved regardless, with
+  `graph_updated`/`graph_error` reported back so the user knows the graph wasn't updated.
+- **Frontend**: new "Ask About Your Documents" tab in `SymptomAiPage.tsx` (upload widget reusing
+  the existing `DocumentUploadDropzone`, document list with delete, chat thread with send/clear).
+
+**Real bugs found and fixed along the way** (all pre-existing, none introduced this session):
+- CSRF middleware (added since the last session) requires `X-CSRF-Token` on every authenticated
+  POST/PUT/DELETE, but `PatientsPage.tsx`, `ReadmitPage.tsx`, and `OcrPage.tsx` upload/export calls
+  used raw `fetch()` without it -- would 403 in real browser use (masked in tests, since
+  `app.config["TESTING"]` disables CSRF entirely). Added `withAuthHeaders()` to `lib/api.ts` and
+  applied it to every affected call site.
+- `core/storage.py`: `S3_ENDPOINT_URL` read via bare `os.getenv()` -- a *present but empty*
+  env var (as `.env.example`/copied `.env` files commonly have) resolves to `""`, which boto3
+  treats as an explicit invalid endpoint override rather than "not set," breaking `ObjectStorage`
+  entirely for any `s3://` bucket URL. Fixed to treat blank the same as absent.
+- `cursor.lastrowid` (used throughout `utils/database.py` after inserts) silently returns `0`
+  under `psycopg2`/Postgres -- confirmed by testing against a real local Postgres instance found
+  configured in a root-level `.env`. This is a systemic, pre-existing gap affecting most `create_*`
+  functions in the file, out of scope to fix broadly here; the new symptom-ai insert functions use
+  `RETURNING id` instead (portable across SQLite 3.35+ and Postgres) as the correct pattern going
+  forward.
+- `backend/test_login.py`, a stray one-off debug script left in `backend/` (not `backend/tests/`),
+  matched pytest's `test_*.py` discovery pattern and got collected -- its module-level code (not
+  wrapped in a test function) ran `init_database()` again at collection time, racing with the real
+  suite's own database setup and causing intermittent `sqlite3.OperationalError: database is
+  locked` failures across unrelated test files. Added `testpaths = tests` to `pytest.ini` to scope
+  discovery correctly (didn't touch/delete the stray file itself).
+- `test_storage_and_db_config.py`'s per-test teardown fixture called `monkeypatch.delenv("DATABASE_URL")`
+  then reloaded `utils.database` to restore sqlite mode -- but deleting (rather than blanking) the
+  var let `load_dotenv(override=False)` refill it from that same root `.env`'s real Postgres URL,
+  permanently switching the rest of the test session to Postgres. Fixed to explicitly set `""`
+  instead of deleting.
+
+Verified: full backend suite 100+ passed / 1 skipped / 0 failed (SQLite, the deployed default);
+symptom-ai routes additionally spot-checked against the local Postgres instance to confirm the
+`RETURNING id` fix works on both engines. Frontend: 47 passed across 18 files, build and
+`tsc --noEmit` both clean. LightRAG's plumbing (insert/query cycle, persistent-loop fix) was
+verified with mocked Gemini calls -- the actual Gemini responses can't be exercised without a real
+`GEMINI_API_KEY`, which isn't available in this environment.
 
 ### Phase D: AI/OCR Service Layer (2026-07-24)
 

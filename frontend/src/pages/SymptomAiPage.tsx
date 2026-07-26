@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import MarkdownReport from "../components/MarkdownReport";
+import DocumentUploadDropzone from "../components/DocumentUploadDropzone";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, Select, Tabs, TabsContent, TabsTrigger, Textarea } from "../components/ui";
-import { SYMPTOM_API_BASE } from "../lib/constants";
-import { reportError } from "../lib/api";
+import { API_BASE, SYMPTOM_API_BASE } from "../lib/constants";
+import { apiFetch, reportError, withAuthHeaders } from "../lib/api";
 import type { Notice } from "../types";
 
 type Props = {
@@ -49,6 +50,20 @@ type SymptomAnalyzeResponse = {
   detected_region?: string | null;
   used_fallback?: boolean;
   model_error?: string | null;
+};
+
+type SymptomDocument = {
+  id: number;
+  filename: string;
+  doc_category: string | null;
+  created_at: string;
+};
+
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  session_id?: string;
+  created_at?: string;
 };
 
 const FALLBACK_DURATIONS = [
@@ -139,8 +154,16 @@ function entryKey(entry: HistoryEntry) {
 }
 
 export default function SymptomAiPage({ setNotice }: Props) {
-  const [activeSection, setActiveSection] = useState<"home" | "about" | "safety">("home");
+  const [activeSection, setActiveSection] = useState<"home" | "documents" | "about" | "safety">("home");
   const [historySidebarOpen, setHistorySidebarOpen] = useState(false);
+  const [symptomDocuments, setSymptomDocuments] = useState<SymptomDocument[]>([]);
+  const [docUploadFile, setDocUploadFile] = useState<File | null>(null);
+  const [docUploadLoading, setDocUploadLoading] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatSessionId, setChatSessionId] = useState<string | undefined>(undefined);
+  const [documentsLoaded, setDocumentsLoaded] = useState(false);
   const [description, setDescription] = useState("");
   const [bodyRegion, setBodyRegion] = useState("General / Full Body");
   const [intensity, setIntensity] = useState(5);
@@ -357,6 +380,114 @@ export default function SymptomAiPage({ setNotice }: Props) {
     setHistorySidebarOpen(false);
   };
 
+  const loadSymptomDocuments = async () => {
+    try {
+      const data = await apiFetch<{ documents?: SymptomDocument[] }>("/api/symptom-ai/documents");
+      setSymptomDocuments(data.documents || []);
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load your documents.");
+    }
+  };
+
+  const loadSymptomChatHistory = async () => {
+    try {
+      const data = await apiFetch<{ messages?: ChatMessage[] }>("/api/symptom-ai/chat/history");
+      setChatMessages(data.messages || []);
+      const lastSession = (data.messages || []).slice(-1)[0]?.session_id;
+      if (lastSession) setChatSessionId(lastSession);
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load chat history.");
+    }
+  };
+
+  const openDocumentsTab = () => {
+    setActiveSection("documents");
+    if (!documentsLoaded) {
+      setDocumentsLoaded(true);
+      void loadSymptomDocuments();
+      void loadSymptomChatHistory();
+    }
+  };
+
+  const handleDocUpload = async () => {
+    if (!docUploadFile) {
+      setNotice({ type: "warning", message: "Choose a file to upload first." });
+      return;
+    }
+    setDocUploadLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", docUploadFile);
+      const response = await fetch(`${API_BASE}/api/symptom-ai/documents`, {
+        method: "POST",
+        headers: withAuthHeaders({}, "POST"),
+        body: formData,
+        credentials: "include",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw Object.assign(new Error(data.error || "Unable to upload document."), { status: response.status });
+      }
+      setDocUploadFile(null);
+      await loadSymptomDocuments();
+      if (data.graph_updated) {
+        setNotice({ type: "success", message: `${data.filename} processed and added to your knowledge base.` });
+      } else {
+        setNotice({
+          type: "warning",
+          message: `${data.filename} was saved, but couldn't be added to your knowledge base yet: ${data.graph_error || "unknown error"}`,
+        });
+      }
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Unable to upload document.");
+    } finally {
+      setDocUploadLoading(false);
+    }
+  };
+
+  const handleDocDelete = async (documentId: number) => {
+    try {
+      await apiFetch(`/api/symptom-ai/documents/${documentId}`, { method: "DELETE" });
+      await loadSymptomDocuments();
+      setNotice({ type: "success", message: "Document removed." });
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Unable to remove document.");
+    }
+  };
+
+  const handleChatSend = async () => {
+    const message = chatInput.trim();
+    if (!message) return;
+    setChatMessages((prev) => [...prev, { role: "user", content: message }]);
+    setChatInput("");
+    setChatLoading(true);
+    try {
+      const data = await apiFetch<{ session_id: string; answer: string }>("/api/symptom-ai/chat", {
+        method: "POST",
+        body: JSON.stringify({ message, session_id: chatSessionId }),
+      });
+      setChatSessionId(data.session_id);
+      setChatMessages((prev) => [...prev, { role: "assistant", content: data.answer }]);
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Unable to reach your knowledge base.");
+      setChatMessages((prev) => prev.slice(0, -1));
+      setChatInput(message);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleClearChat = async () => {
+    try {
+      await apiFetch("/api/symptom-ai/chat/history", { method: "DELETE" });
+      setChatMessages([]);
+      setChatSessionId(undefined);
+      setNotice({ type: "success", message: "Chat history cleared." });
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Unable to clear chat history.");
+    }
+  };
+
   return (
     <div className="symptom-ai-page">
       <Card className="symptom-disclaimer-card">
@@ -370,6 +501,7 @@ export default function SymptomAiPage({ setNotice }: Props) {
 
       <Tabs className="symptom-tabs">
         <TabsTrigger active={activeSection === "home"} onClick={() => setActiveSection("home")}>Home</TabsTrigger>
+        <TabsTrigger active={activeSection === "documents"} onClick={openDocumentsTab}>Ask About Your Documents</TabsTrigger>
         <TabsTrigger active={activeSection === "about"} onClick={() => setActiveSection("about")}>About</TabsTrigger>
         <TabsTrigger active={activeSection === "safety"} onClick={() => setActiveSection("safety")}>Safety</TabsTrigger>
       </Tabs>
@@ -545,6 +677,89 @@ export default function SymptomAiPage({ setNotice }: Props) {
             </Card>
           )}
 
+        </TabsContent>
+      )}
+
+      {activeSection === "documents" && (
+        <TabsContent>
+          <div className="symptom-grid">
+            <Card>
+              <CardHeader>
+                <CardTitle>Your Documents</CardTitle>
+                <CardDescription>
+                  Upload a PDF, Word doc, text file, or photo. It's added to your own private knowledge base so you
+                  can ask questions about it below.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="symptom-form-grid">
+                <DocumentUploadDropzone
+                  accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp"
+                  file={docUploadFile || undefined}
+                  helperText="PDF, DOCX, TXT, MD, or image. 15MB limit."
+                  disabled={docUploadLoading}
+                  onFileSelect={setDocUploadFile}
+                />
+                <Button onClick={handleDocUpload} disabled={docUploadLoading || !docUploadFile}>
+                  {docUploadLoading ? "Processing..." : "Upload & Process"}
+                </Button>
+
+                <div className="symptom-document-list">
+                  {symptomDocuments.length === 0 && <p className="muted">No documents uploaded yet.</p>}
+                  {symptomDocuments.map((doc) => (
+                    <div key={doc.id} className="module-inline-actions" style={{ justifyContent: "space-between" }}>
+                      <p className="muted">
+                        {doc.filename} · {new Date(doc.created_at).toLocaleString()}
+                      </p>
+                      <Button variant="ghost" size="sm" type="button" onClick={() => void handleDocDelete(doc.id)}>
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Chat With Your Documents</CardTitle>
+                <CardDescription>Ask questions grounded in the documents you've uploaded above.</CardDescription>
+              </CardHeader>
+              <CardContent className="symptom-form-grid">
+                <div className="symptom-chat-history">
+                  {chatMessages.length === 0 && (
+                    <p className="muted">Upload a document, then ask a question about it here.</p>
+                  )}
+                  {chatMessages.map((message, index) => (
+                    <div key={index} className={`symptom-chat-message symptom-chat-${message.role}`}>
+                      <strong>{message.role === "user" ? "You" : "Assistant"}:</strong>{" "}
+                      <MarkdownReport text={message.content} />
+                    </div>
+                  ))}
+                  {chatLoading && <p className="muted">Thinking...</p>}
+                </div>
+                <div className="symptom-form-row symptom-two-col">
+                  <Input
+                    value={chatInput}
+                    placeholder="Ask a question about your documents..."
+                    onChange={(event) => setChatInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !chatLoading) {
+                        event.preventDefault();
+                        void handleChatSend();
+                      }
+                    }}
+                    disabled={chatLoading}
+                  />
+                  <Button onClick={handleChatSend} disabled={chatLoading || !chatInput.trim()}>
+                    Send
+                  </Button>
+                </div>
+                <Button variant="ghost" onClick={handleClearChat} disabled={!chatMessages.length}>
+                  Clear Chat History
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       )}
 

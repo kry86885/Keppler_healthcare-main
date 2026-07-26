@@ -535,6 +535,7 @@ def init_database():
         ensure_hospai_module_tables(conn)
         ensure_operational_audit_columns(conn)
         ensure_vector_store_tables(conn)
+        ensure_symptom_ai_tables(conn)
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_hospitals_code ON hospitals(code)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_patient_id ON patients(patient_id)")
@@ -638,10 +639,11 @@ def migrate_users_table_if_needed(conn):
 def ensure_hospital_columns(conn):
     cursor = conn.cursor()
 
+    id_type = "SERIAL PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
     cursor.execute(
-        """
+        f"""
         CREATE TABLE IF NOT EXISTS hospitals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {id_type},
             code TEXT UNIQUE NOT NULL,
             name TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
@@ -651,13 +653,23 @@ def ensure_hospital_columns(conn):
         )
         """
     )
-    cursor.execute(
-        """
-        INSERT OR IGNORE INTO hospitals (code, name, status)
-        VALUES (?, ?, 'active')
-        """,
-        (DEFAULT_HOSPITAL_CODE, "Default Hospital"),
-    )
+    if IS_POSTGRES:
+        cursor.execute(
+            """
+            INSERT INTO hospitals (code, name, status)
+            VALUES (?, ?, 'active')
+            ON CONFLICT (code) DO NOTHING
+            """,
+            (DEFAULT_HOSPITAL_CODE, "Default Hospital"),
+        )
+    else:
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO hospitals (code, name, status)
+            VALUES (?, ?, 'active')
+            """,
+            (DEFAULT_HOSPITAL_CODE, "Default Hospital"),
+        )
     cursor.execute("SELECT id FROM hospitals WHERE code = ?", (DEFAULT_HOSPITAL_CODE,))
     default_row = cursor.fetchone()
     if not default_row:
@@ -1730,6 +1742,162 @@ def ensure_vector_store_tables(conn):
         "ON clinical_document_embeddings(patient_id)"
     )
     conn.commit()
+
+
+def ensure_symptom_ai_tables(conn):
+    """Personal document vault + chat history for the Symptom AI 'Ask About Your
+    Documents' tab -- scoped per hospital + username, independent of clinical
+    patient records (this is a staff-user knowledge base, not part of a patient chart).
+    """
+    cursor = conn.cursor()
+    id_column = "SERIAL PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS symptom_ai_documents (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            doc_category TEXT,
+            raw_text TEXT,
+            created_by TEXT,
+            deleted_by TEXT,
+            deleted_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_symptom_ai_documents_owner "
+        "ON symptom_ai_documents(hospital_id, username)"
+    )
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS symptom_ai_chat_messages (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_symptom_ai_chat_owner "
+        "ON symptom_ai_chat_messages(hospital_id, username, session_id)"
+    )
+    conn.commit()
+
+
+def create_symptom_ai_document(hospital_id, username, filename, doc_category, raw_text):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        # cursor.lastrowid is not reliable under psycopg2 (always reads back 0) -- RETURNING
+        # id works on both engines (SQLite 3.35+ / all supported Postgres versions), so use it
+        # here rather than relying on the lastrowid convention most of this file still uses.
+        cursor.execute(
+            """
+            INSERT INTO symptom_ai_documents (hospital_id, username, filename, doc_category, raw_text, created_by)
+            VALUES (?, ?, ?, ?, ?, ?) RETURNING id
+            """,
+            (hospital_id, username, filename, doc_category, raw_text, username),
+        )
+        document_id = cursor.fetchone()[0]
+        conn.commit()
+        return document_id
+
+
+def list_symptom_ai_documents(hospital_id, username):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, filename, doc_category, created_at FROM symptom_ai_documents
+            WHERE hospital_id = ? AND username = ? AND deleted_at IS NULL
+            ORDER BY created_at DESC
+            """,
+            (hospital_id, username),
+        )
+        return cursor.fetchall()
+
+
+def get_symptom_ai_document(document_id, hospital_id, username):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM symptom_ai_documents
+            WHERE id = ? AND hospital_id = ? AND username = ? AND deleted_at IS NULL
+            """,
+            (document_id, hospital_id, username),
+        )
+        return cursor.fetchone()
+
+
+def delete_symptom_ai_document(document_id, hospital_id, username, actor=None):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id FROM symptom_ai_documents WHERE id = ? AND hospital_id = ? AND username = ? AND deleted_at IS NULL",
+            (document_id, hospital_id, username),
+        )
+        if not cursor.fetchone():
+            return False
+        deleted = soft_delete_row(cursor, "symptom_ai_documents", "id", document_id, hospital_id=hospital_id, actor=actor)
+        conn.commit()
+        return deleted
+
+
+def save_symptom_ai_chat_message(hospital_id, username, session_id, role, content):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO symptom_ai_chat_messages (hospital_id, username, session_id, role, content)
+            VALUES (?, ?, ?, ?, ?) RETURNING id
+            """,
+            (hospital_id, username, session_id, role, content),
+        )
+        message_id = cursor.fetchone()[0]
+        conn.commit()
+        return message_id
+
+
+def list_symptom_ai_chat_history(hospital_id, username, session_id=None):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if session_id:
+            cursor.execute(
+                """
+                SELECT role, content, session_id, created_at FROM symptom_ai_chat_messages
+                WHERE hospital_id = ? AND username = ? AND session_id = ?
+                ORDER BY created_at ASC
+                """,
+                (hospital_id, username, session_id),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT role, content, session_id, created_at FROM symptom_ai_chat_messages
+                WHERE hospital_id = ? AND username = ?
+                ORDER BY created_at ASC
+                """,
+                (hospital_id, username),
+            )
+        return cursor.fetchall()
+
+
+def delete_symptom_ai_chat_history(hospital_id, username):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM symptom_ai_chat_messages WHERE hospital_id = ? AND username = ?",
+            (hospital_id, username),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
 
 
 def store_document_embedding(source_table, source_id, content_text, hospital_id=None, patient_id=None):

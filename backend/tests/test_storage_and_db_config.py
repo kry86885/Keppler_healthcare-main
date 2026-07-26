@@ -19,7 +19,11 @@ def test_db_env():
 @pytest.fixture(autouse=True)
 def restore_database_module_after_each_test(monkeypatch):
     yield
-    monkeypatch.delenv("DATABASE_URL", raising=False)
+    # Explicitly set (not delete) DATABASE_URL to "" before reloading: deleting it would let
+    # load_dotenv(override=False) refill it from a real .env file if one is present on disk
+    # (e.g. a developer's local Postgres config), silently leaving the rest of the test
+    # session running against Postgres instead of the sqlite default these tests assume.
+    monkeypatch.setenv("DATABASE_URL", "")
     db_module = importlib.import_module("utils.database")
     importlib.reload(db_module)
 

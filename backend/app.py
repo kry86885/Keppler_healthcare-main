@@ -690,6 +690,9 @@ app.register_blueprint(queue_bp)
 from modules.beds.routes import bp as beds_bp
 app.register_blueprint(beds_bp)
 
+from modules.symptom_ai.routes import symptom_ai_bp
+app.register_blueprint(symptom_ai_bp)
+
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "5001"))

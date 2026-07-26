@@ -54,6 +54,8 @@ def clean_database():
     with get_connection() as conn:
         cursor = conn.cursor()
         default_hospital_id = resolve_hospital_id()
+        cursor.execute("DELETE FROM symptom_ai_chat_messages")
+        cursor.execute("DELETE FROM symptom_ai_documents")
         cursor.execute("DELETE FROM insurance_claims")
         cursor.execute("DELETE FROM patient_consents")
         cursor.execute("DELETE FROM insurance_verifications")

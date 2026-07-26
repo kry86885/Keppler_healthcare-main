@@ -4,7 +4,7 @@ import DocumentUploadDropzone from "../components/DocumentUploadDropzone";
 import MarkdownReport from "../components/MarkdownReport";
 import { Button, Checkbox, Input, Label, Select, Table, TableCell, TableHead, TableRow, Textarea } from "../components/ui";
 import { API_BASE, DOC_TYPES, SUPPORTED_DOCUMENT_ACCEPT, SUPPORTED_DOCUMENT_EXTENSIONS, isSupportedDocumentFile } from "../lib/constants";
-import { apiFetch, reportError } from "../lib/api";
+import { apiFetch, reportError, withAuthHeaders } from "../lib/api";
 import { formatDateTimeIST, getISTDateTimeKey, getTimestamp, stripUploadTimestampPrefix } from "../lib/format";
 import type { DocumentItem, Notice, Patient } from "../types";
 
@@ -208,7 +208,7 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
     body.append("doc_type", docType);
 
     try {
-      const response = await fetch(`${API_BASE}/api/ocr`, { method: "POST", body, credentials: "include" });
+      const response = await fetch(`${API_BASE}/api/ocr`, { method: "POST", headers: withAuthHeaders({}, "POST"), body, credentials: "include" });
       const data = await response.json();
       setOcrResults((prev) => ({
         ...prev,
@@ -282,6 +282,7 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
         body.append("ocr_language", ocrLanguage);
         const uploadResponse = await fetch(`${API_BASE}/api/patients/${activePatient.patient_id}/documents`, {
           method: "POST",
+          headers: withAuthHeaders({}, "POST"),
           body,
           credentials: "include",
         });

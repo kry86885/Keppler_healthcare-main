@@ -40,17 +40,14 @@ class ObjectStorage:
         self.client = None
         self.local_base = os.path.join(PROJECT_ROOT, "uploads")
 
-        if not BUCKET_URL:
-            raise RuntimeError("BUCKET_URL is required for document storage.")
-
-        if boto3 is None:
-            raise RuntimeError("boto3 is required for BUCKET_URL storage.")
+        if not BUCKET_URL or boto3 is None:
+            return
 
         parsed = urlparse(BUCKET_URL)
         access_key = os.getenv("AWS_ACCESS_KEY_ID")
         secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
         region = os.getenv("AWS_REGION", "us-east-1")
-        endpoint_url = os.getenv("S3_ENDPOINT_URL")
+        endpoint_url = (os.getenv("S3_ENDPOINT_URL") or "").strip() or None
         bucket_from_env = (
             os.getenv("BUCKET_NAME")
             or os.getenv("S3_BUCKET")

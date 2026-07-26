@@ -22,3 +22,5 @@ frontend/.env
 site/.env
 
 frontend/tests/e2e/artifacts/
+
+backend/rag_workspaces/

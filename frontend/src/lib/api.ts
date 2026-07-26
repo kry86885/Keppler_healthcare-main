@@ -21,16 +21,38 @@ export function setHospitalCode(hospitalCode: string): void {
   storage.setItem(HOSPITAL_CODE_KEY, normalized);
 }
 
+export function getCsrfToken(): string | undefined {
+  return typeof document !== "undefined"
+    ? document.cookie.split("; ").find((row) => row.startsWith("csrf_token="))?.split("=")[1]
+    : undefined;
+}
+
+/**
+ * For requests that can't go through apiFetch's JSON body (FormData uploads, blob
+ * downloads): still need the X-Hospital-Code and X-CSRF-Token headers apiFetch attaches
+ * automatically, since the backend's CSRF middleware rejects any POST/PUT/DELETE from an
+ * authenticated session that's missing a matching X-CSRF-Token header.
+ */
+export function withAuthHeaders(headers: HeadersInit = {}, method = "POST"): HeadersInit {
+  const csrfToken = getCsrfToken();
+  const upperMethod = method.toUpperCase();
+  return {
+    "X-Hospital-Code": getHospitalCode(),
+    ...(csrfToken && upperMethod !== "GET" && upperMethod !== "HEAD" ? { "X-CSRF-Token": csrfToken } : {}),
+    ...headers,
+  };
+}
+
 export async function apiFetch<T = any>(path: string, options: RequestInit & { cache?: RequestCache } = {}): Promise<T> {
   const method = (options.method || "GET").toUpperCase();
-  const csrfToken = typeof document !== 'undefined' ? document.cookie.split('; ').find(row => row.startsWith('csrf_token='))?.split('=')[1] : undefined;
+  const csrfToken = getCsrfToken();
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     "X-Hospital-Code": getHospitalCode(),
     ...(csrfToken && method !== "GET" && method !== "HEAD" ? { "X-CSRF-Token": csrfToken } : {}),
     ...(options.headers || {})
   };
-  
+
   const response = await fetch(`${API_BASE}${path}`, {
     headers,
     credentials: "include",

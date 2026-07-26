@@ -4,7 +4,7 @@ import MarkdownReport from "../components/MarkdownReport";
 import DocumentUploadDropzone from "../components/DocumentUploadDropzone";
 import { Alert, Badge, Button, Checkbox, ConfirmDialog, Input, Select, Table, TableCell, TableHead, TableRow, Tabs, TabsContent, TabsTrigger, Textarea } from "../components/ui";
 import { API_BASE, SUPPORTED_DOCUMENT_ACCEPT, SUPPORTED_DOCUMENT_EXTENSIONS } from "../lib/constants";
-import { apiFetch, reportError } from "../lib/api";
+import { apiFetch, reportError, withAuthHeaders } from "../lib/api";
 import { formatDate, formatDateTimeIST, getISTDateTimeKey, getTimestamp, stripUploadTimestampPrefix } from "../lib/format";
 import type { Admission, BedAllocation, Certificate, DocumentItem, Encounter, MedicationSchedule, Notice, ObservationNote, Patient, PatientMovement } from "../types";
 
@@ -664,7 +664,7 @@ function PatientDetail({
     };
     const response = await fetch(`${API_BASE}/api/export/${type}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: withAuthHeaders({ "Content-Type": "application/json" }, "POST"),
       body: JSON.stringify(payload),
       credentials: "include",
     });
@@ -693,6 +693,7 @@ function PatientDetail({
       formData.append("doc_type", uploadDocType);
       const response = await fetch(`${API_BASE}/api/patients/${patient.patient_id}/documents`, {
         method: "POST",
+        headers: withAuthHeaders({}, "POST"),
         body: formData,
         credentials: "include",
       });
