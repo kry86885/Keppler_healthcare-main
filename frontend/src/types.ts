@@ -128,6 +128,29 @@ export interface PatientMovement {
   moved_by?: string | null;
 }
 
+export interface JourneyEvent {
+  stage: "registration" | "queue" | "consultation" | "billing" | "lab";
+  label: string;
+  timestamp?: string | null;
+  detail?: Record<string, unknown> | null;
+}
+
+export interface JourneySummary {
+  consultation_billed: number;
+  consultation_paid: number;
+  lab_billed: number;
+  lab_paid: number;
+  total_billed: number;
+  total_paid: number;
+  total_due: number;
+}
+
+export interface PatientJourney {
+  patient: Patient;
+  events: JourneyEvent[];
+  summary: JourneySummary;
+}
+
 export interface Encounter {
   id: number;
   patient_id: string;

@@ -7,6 +7,7 @@ import Toast from "./components/ui/Toast";
 import ConfirmDialog from "./components/ui/ConfirmDialog";
 import { Button, Container } from "./components/ui";
 import AddPatientPage from "./pages/AddPatientPage";
+import OcrPage from "./pages/OcrPage";
 import AdminPage from "./pages/AdminPage";
 import OpPage from "./pages/OpPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -36,6 +37,7 @@ import PlatformAdminPage from "./pages/PlatformAdminPage";
 import BedManagementPage from "./pages/BedManagementPage";
 import IcuPage from "./pages/IcuPage";
 import QueuePage from "./pages/QueuePage";
+import PatientJourneyPage from "./pages/PatientJourneyPage";
 import EmergencyPage from "./pages/EmergencyPage";
 import AmbulancePage from "./pages/AmbulancePage";
 import NurseStationPage from "./pages/NurseStationPage";
@@ -50,9 +52,12 @@ type SidebarIconName = "dashboard" | "add" | "patients" | "readmit" | "billing" 
 const NAV_ICON_MAP: Record<string, SidebarIconName> = {
   dashboard: "dashboard",
   add: "add",
+  ocr: "add",
   "op-desk": "patients",
   "appointment-in": "appointment",
   "appointment-out": "appointment",
+  queue: "appointment",
+  "patient-journey": "patients",
   "consent-desk": "add",
   "insurance-desk": "billing",
   patients: "patients",
@@ -319,6 +324,8 @@ function App() {
       "add",
       "appointment-in",
       "appointment-out",
+      "queue",
+      "patient-journey",
       "consent-desk",
       "insurance-desk",
       "op-desk",
@@ -843,13 +850,8 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-top">
-          <div className="brand">
-            <img src="/logo-icon.svg" alt="HospAI logo" />
-            <div>
-              <p className="brand-title">
-                Hosp<span className="brand-title-ai">AI</span>
-              </p>
-            </div>
+          <div className="brand brand-logo-full">
+            <img src="/logo.png" alt="HospAI - AI Driven Healthcare Optimization" />
           </div>
         </div>
         <div className="sidebar-scroll-region">
@@ -979,13 +981,10 @@ function App() {
         )}
 
         {page === "add" && (
-          <AddPatientPage
-            ocrLanguage={ocrLanguage}
-            onCreate={handleCreatePatient}
-            selectedPatient={selectedPatient}
-            setNotice={setNotice}
-            onDocumentSaved={refreshPatientData}
-          />
+          <AddPatientPage onCreate={handleCreatePatient} setNotice={setNotice} onNavigate={navigateToPage} />
+        )}
+        {page === "ocr" && hasPermission("patients.write") && (
+          <OcrPage setNotice={setNotice} ocrLanguage={ocrLanguage} onNavigate={navigateToPage} />
         )}
 
         {page === "appointment-in" && hasPermission("patients.read") && (
@@ -995,6 +994,8 @@ function App() {
         {page === "appointment-out" && hasPermission("patients.read") && (
           <RegistrationDeskPage mode="appointment-out" selectedPatient={selectedPatient} setNotice={setNotice} />
         )}
+        {page === "queue" && hasPermission("patients.read") && <QueuePage setNotice={setNotice} />}
+        {page === "patient-journey" && hasPermission("patients.read") && <PatientJourneyPage setNotice={setNotice} />}
 
         {page === "consent-desk" && hasPermission("patients.write") && (
           <RegistrationDeskPage mode="consent" selectedPatient={selectedPatient} setNotice={setNotice} />

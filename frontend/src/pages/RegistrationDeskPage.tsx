@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { Button, Input, Label, Select, Textarea } from "../components/ui";
 import { apiFetch, reportError } from "../lib/api";
+import { updateAppointmentStatus as putAppointmentStatus } from "../lib/appointments";
 import { formatDateTime } from "../lib/format";
 import { openRazorpayCheckout } from "../lib/razorpay";
 import type { Appointment, Notice, Patient } from "../types";
@@ -351,10 +352,7 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice 
 
   const updateAppointmentStatus = async (appointmentId: number, status: string) => {
     try {
-      await apiFetch(`/api/appointments/${appointmentId}`, {
-        method: "PUT",
-        body: JSON.stringify({ status }),
-      });
+      await putAppointmentStatus(appointmentId, status);
       await loadAppointments();
       setNotice({ type: "success", message: `Token status updated to ${status.replace("_", " ")}.` });
     } catch (error) {

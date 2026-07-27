@@ -45,7 +45,8 @@ from utils.database import (
     list_certificates,
     create_certificate,
     list_patient_movements,
-    add_patient_movement
+    add_patient_movement,
+    get_patient_journey
 )
 
 patients_bp = Blueprint('patients', __name__)
@@ -552,6 +553,16 @@ def patient_certificates_create(patient_id):
 @require_permissions("patients.read")
 def patient_movements(patient_id):
     return jsonify({"movements": rows_to_dicts(list_patient_movements(patient_id))})
+
+
+
+@patients_bp.get("/api/patients/<patient_id>/journey")
+@require_permissions("patients.read")
+def patient_journey(patient_id):
+    journey = get_patient_journey(patient_id, hospital_id=current_hospital_id())
+    if journey is None:
+        return jsonify({"error": "Patient not found"}), 404
+    return jsonify(journey)
 
 
 

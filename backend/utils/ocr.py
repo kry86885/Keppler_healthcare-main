@@ -84,7 +84,7 @@ def get_genai_model():
 
 
 def _generate_content(client, prompt, mime_type=None, file_bytes=None):
-    model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     if mime_type and file_bytes is not None:
         contents = [
             types.UserContent(

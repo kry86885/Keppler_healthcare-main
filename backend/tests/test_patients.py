@@ -42,6 +42,80 @@ def test_search_patients_by_name_phone_id(auth_client, create_patient):
     assert any(p["patient_id"] == patient_id for p in by_id.get_json()["patients"])
 
 
+def test_patient_journey_returns_ordered_events(auth_client, create_patient):
+    patient_id = create_patient({"name": "Journey", "last_name": "Test"})
+
+    appointment = auth_client.post(
+        "/api/appointments",
+        json={
+            "patient_id": patient_id,
+            "patient_name": "Journey Test",
+            "visit_type": "OP",
+            "doctor_name": "Dr. Journey",
+            "appointment_date": "2026-03-03T09:30:00",
+        },
+    )
+    assert appointment.status_code == 200
+
+    vendor = auth_client.post("/api/lab/vendors", json={"vendor_name": "Journey Diagnostics"})
+    assert vendor.status_code == 200
+    diagnostic = auth_client.post(
+        "/api/lab/diagnostics",
+        json={
+            "patient_id": patient_id,
+            "vendor_id": vendor.get_json()["vendor_id"],
+            "test_name": "CBC",
+            "amount": 500,
+        },
+    )
+    assert diagnostic.status_code == 200
+
+    invoice = auth_client.post(
+        "/api/billing/invoices",
+        json={"patient_id": patient_id, "module": "OP", "total_amount": 500},
+    )
+    assert invoice.status_code == 200
+    invoice_id = invoice.get_json()["invoice_id"]
+
+    payment = auth_client.post(
+        f"/api/billing/invoices/{invoice_id}/payments",
+        json={"amount": 500, "payment_mode": "upi"},
+    )
+    assert payment.status_code == 200
+
+    response = auth_client.get(f"/api/patients/{patient_id}/journey")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["patient"]["patient_id"] == patient_id
+
+    stages = [event["stage"] for event in data["events"]]
+    assert "registration" in stages
+    assert "queue" in stages
+    assert "lab" in stages
+    assert stages.count("billing") == 2  # invoice raised + payment received
+
+    labels = [event["label"] for event in data["events"]]
+    assert any("Payment received" in label and "upi" in label for label in labels)
+    assert any("Invoice" in label and "raised" in label for label in labels)
+
+    timestamps = [event["timestamp"] for event in data["events"] if event["timestamp"]]
+    assert timestamps == sorted(timestamps)
+
+    summary = data["summary"]
+    assert summary["consultation_billed"] == 500
+    assert summary["consultation_paid"] == 500
+    assert summary["lab_billed"] == 500
+    assert summary["lab_paid"] == 0
+    assert summary["total_billed"] == 1000
+    assert summary["total_paid"] == 500
+    assert summary["total_due"] == 500
+
+
+def test_patient_journey_unknown_patient_returns_404(auth_client):
+    response = auth_client.get("/api/patients/PAT-NOPE-0000/journey")
+    assert response.status_code == 404
+
+
 def test_update_patient(auth_client, create_patient, patient_payload):
     patient_id = create_patient()
     updated = dict(patient_payload)

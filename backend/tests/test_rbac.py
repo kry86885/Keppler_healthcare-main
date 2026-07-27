@@ -113,6 +113,30 @@ def test_module_access_controls_patients_and_billing(app_client):
     assert app_client.get("/api/patients").status_code == 403
 
 
+def test_patient_journey_requires_patients_read(app_client):
+    patients_user = _create_user_as_admin(
+        app_client,
+        user_type="normal",
+        module_access=["dashboard", "patients", "symptom_ai"],
+        job_role="Reception",
+    )
+    billing_user = _create_user_as_admin(
+        app_client,
+        user_type="normal",
+        module_access=["billing"],
+        job_role="Billing",
+    )
+
+    _login(app_client, patients_user[0], patients_user[1])
+    created = app_client.post("/api/patients", json=_patient_payload(uuid.uuid4().int % 1000000))
+    assert created.status_code == 200
+    patient_id = created.get_json()["patient_id"]
+    assert app_client.get(f"/api/patients/{patient_id}/journey").status_code == 200
+
+    _login(app_client, billing_user[0], billing_user[1])
+    assert app_client.get(f"/api/patients/{patient_id}/journey").status_code == 403
+
+
 def test_normal_user_invalid_or_missing_module_access_is_denied(app_client):
     missing_modules_user = _create_user_as_admin(
         app_client,

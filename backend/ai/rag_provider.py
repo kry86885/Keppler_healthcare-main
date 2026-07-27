@@ -7,6 +7,8 @@ already calls directly. One LightRAG instance per (hospital, user), each with it
 persistent on-disk workspace, so knowledge graphs never cross tenant or user boundaries.
 """
 
+from __future__ import annotations
+
 import asyncio
 import os
 import re

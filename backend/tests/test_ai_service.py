@@ -44,7 +44,8 @@ def test_parse_json_response_handles_plain_and_fenced_json():
     assert ai_service._parse_json_response("not json at all") is None
 
 
-def test_classify_and_extract_entities_returns_none_without_llm_provider():
+def test_classify_and_extract_entities_returns_none_without_llm_provider(monkeypatch):
+    monkeypatch.setattr(ai_service.llm_provider, "is_configured", lambda: False)
     assert ai_service.classify_and_extract_entities("some ocr text", "prescription") is None
     assert ai_service.classify_and_extract_entities("", "prescription") is None
 

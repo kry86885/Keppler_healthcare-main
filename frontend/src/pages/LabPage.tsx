@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
+import PatientAutocomplete from "../components/PatientAutocomplete";
 import StatCard from "../components/StatCard";
 import { Button, Input, Select, Table, TableCell, TableHead, TableRow } from "../components/ui";
 import { apiFetch, reportError } from "../lib/api";
 import { formatDateTime } from "../lib/format";
-import type { Notice } from "../types";
+import type { Appointment, Notice, Patient } from "../types";
 
 type Props = {
   setNotice: Dispatch<SetStateAction<Notice | null>>;
@@ -117,6 +118,7 @@ export default function LabPage({ setNotice }: Props) {
   const [filters, setFilters] = useState<LabFilters>(DEFAULT_LAB_FILTERS);
   const [savingVendor, setSavingVendor] = useState(false);
   const [savingDiagnostic, setSavingDiagnostic] = useState(false);
+  const [selectedLabPatient, setSelectedLabPatient] = useState<Patient | null>(null);
 
   const buildDiagnosticPath = (nextFilters: LabFilters) => {
     const params = new URLSearchParams();
@@ -197,6 +199,22 @@ export default function LabPage({ setNotice }: Props) {
   const clearFilters = async () => {
     setFilters({ ...DEFAULT_LAB_FILTERS });
     await loadLab({ ...DEFAULT_LAB_FILTERS });
+  };
+
+  const handlePatientAutocompleteSelect = async (patient: Patient) => {
+    setDiagnosticForm((current) => ({ ...current, patient_id: patient.patient_id }));
+    setSelectedLabPatient(patient);
+    try {
+      const data = await apiFetch<{ appointments?: Appointment[] }>(
+        `/api/appointments?patient_id=${encodeURIComponent(patient.patient_id)}`
+      );
+      const mostRecent = (data.appointments || []).slice(-1)[0];
+      if (mostRecent?.doctor_name) {
+        setDiagnosticForm((current) => ({ ...current, doctor_name: mostRecent.doctor_name || current.doctor_name }));
+      }
+    } catch {
+      // doctor field stays editable if the lookup fails
+    }
   };
 
   const handleVendorSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -390,12 +408,26 @@ export default function LabPage({ setNotice }: Props) {
           <h3>Create Diagnostic Entry</h3>
         </div>
         <form className="module-form-grid module-sales-grid" onSubmit={handleDiagnosticSubmit}>
-          <Input
-            value={diagnosticForm.patient_id}
-            onChange={(event) => setDiagnosticForm((current) => ({ ...current, patient_id: event.target.value }))}
-            placeholder="Patient ID"
-            aria-label="Lab diagnostic patient id"
-          />
+          <div>
+            <PatientAutocomplete
+              value={diagnosticForm.patient_id}
+              onChange={(patientId) => {
+                setDiagnosticForm((current) => ({ ...current, patient_id: patientId }));
+                if (selectedLabPatient && patientId !== selectedLabPatient.patient_id) {
+                  setSelectedLabPatient(null);
+                }
+              }}
+              onSelect={(patient) => void handlePatientAutocompleteSelect(patient)}
+              placeholder="Patient ID or name"
+              ariaLabel="Lab diagnostic patient id"
+            />
+            {selectedLabPatient ? (
+              <p className="muted">
+                Confirmed: {selectedLabPatient.name} {selectedLabPatient.last_name || ""} · Age {selectedLabPatient.age ?? "-"} ·{" "}
+                {selectedLabPatient.gender || "-"}
+              </p>
+            ) : null}
+          </div>
           <Input
             value={diagnosticForm.doctor_name}
             onChange={(event) => setDiagnosticForm((current) => ({ ...current, doctor_name: event.target.value }))}

@@ -209,6 +209,21 @@ def test_extended_patient_management_flow(app_client):
     op_summary_after_no_show = app_client.get("/api/op/summary?date=2026-03-03").get_json()
     assert op_summary_after_no_show["no_shows"] >= 1
 
+    other_patient = app_client.post("/api/patients", json=_patient_payload(700003))
+    other_patient_id = other_patient.get_json()["patient_id"]
+    app_client.post(
+        "/api/appointments",
+        json={
+            "patient_id": other_patient_id,
+            "patient_name": "HMS700003 Patient",
+            "visit_type": "OP",
+            "appointment_date": "2026-03-03T10:00:00",
+        },
+    )
+    filtered_appointments = app_client.get(f"/api/appointments?patient_id={patient_id}").get_json()["appointments"]
+    assert filtered_appointments
+    assert all(item["patient_id"] == patient_id for item in filtered_appointments)
+
 
 def test_billing_pharmacy_lab_summary_and_dashboard(app_client):
     _owner_login(app_client)

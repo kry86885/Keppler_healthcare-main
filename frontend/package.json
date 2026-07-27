@@ -8,9 +8,11 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
+    "dev:alt": "vite --port 6173",
     "build": "vite build",
     "preview": "vite preview",
     "electron:dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
+    "electron:dev:alt": "concurrently -k \"vite --port 6173\" \"wait-on tcp:6173 && electron . --port=6173\"",
     "electron:pack": "vite build && electron-builder --dir",
     "electron:build": "vite build && electron-builder --win nsis --mac dmg --linux AppImage deb",
     "electron:build:win": "vite build && electron-builder --win nsis",

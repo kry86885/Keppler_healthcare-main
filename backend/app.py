@@ -1,4 +1,20 @@
-﻿import csv
+from __future__ import annotations
+import os
+import sys
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+if __name__ == "__main__":
+    # Blueprint modules do `from app import (...)`. When this file is executed directly
+    # (`python app.py`), Python registers it as `__main__`, not `app`, so that internal
+    # import re-executes this whole module under a second identity and crashes with a
+    # circular-import error. Aliasing `app` to the in-progress `__main__` module here
+    # (before the blueprint imports further down trigger) makes both names resolve to
+    # the same module object, matching how it already works when imported as `import app`.
+    sys.modules.setdefault("app", sys.modules[__name__])
+
+import csv
 import io
 import json
 import os
@@ -234,6 +250,7 @@ CORS(
         "Authorization",
         "X-Requested-With",
         "X-Hospital-Code",
+        "X-CSRF-Token",
         "X-Platform-Admin-Username",
         "X-Platform-Admin-Password",
     ],
@@ -241,14 +258,20 @@ CORS(
 )
 
 
+CSRF_EXEMPT_PATHS = {"/api/auth/login", "/api/auth/setup-admin"}
+
+
 @app.before_request
 def csrf_protect():
     if app.config.get("TESTING"):
         return
+    if request.path in CSRF_EXEMPT_PATHS:
+        # These establish a session rather than act within one, so a stale/leftover session
+        # cookie from an earlier login (cookies aren't port-scoped, so this happens easily
+        # across local dev restarts on different ports) must never block a fresh login.
+        return
     if request.method not in ["GET", "HEAD", "OPTIONS", "TRACE"]:
-        # Allow requests that don't have a session cookie at all (e.g. public endpoints, Razorpay webhooks)
-        # Wait, if an endpoint is public, it might still need CSRF if we rely on cookies.
-        # But if it's a webhook, it doesn't use cookies. So we only enforce CSRF if a session cookie is present.
+        # Only enforce CSRF if a session cookie is present (public endpoints/webhooks don't use cookies).
         if SESSION_COOKIE_NAME in request.cookies or ADMIN_ROUTE_AUTH_COOKIE_NAME in request.cookies:
             token = request.cookies.get("csrf_token")
             header_token = request.headers.get("X-CSRF-Token")
@@ -281,7 +304,7 @@ def add_cors_headers(response):
         response.headers.setdefault("Access-Control-Allow-Credentials", "true")
         response.headers.setdefault(
             "Access-Control-Allow-Headers",
-            "Content-Type, Authorization, X-Requested-With, X-Hospital-Code, X-Platform-Admin-Username, X-Platform-Admin-Password",
+            "Content-Type, Authorization, X-Requested-With, X-Hospital-Code, X-CSRF-Token, X-Platform-Admin-Username, X-Platform-Admin-Password",
         )
         response.headers.setdefault(
             "Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS"

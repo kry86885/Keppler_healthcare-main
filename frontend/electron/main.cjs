@@ -21,7 +21,10 @@ function createWindow() {
     return;
   }
 
-  mainWindow.loadURL("http://localhost:5173");
+  const argPort = process.argv.find((arg) => arg.startsWith("--port="))?.split("=")[1];
+  const argUrl = process.argv.find((arg) => arg.startsWith("--url="))?.split("=")[1];
+  const devServerUrl = argUrl || (argPort ? `http://localhost:${argPort}` : null) || process.env.VITE_DEV_SERVER_URL || "http://localhost:5173";
+  mainWindow.loadURL(devServerUrl);
   mainWindow.webContents.openDevTools({ mode: "detach" });
 }
 

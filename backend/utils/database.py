@@ -747,11 +747,12 @@ def ensure_department_master_scope(conn):
         old_hospital_expr = "hospital_id" if "hospital_id" in columns else "NULL"
         old_head_expr = "mapped_head_employee_id" if "mapped_head_employee_id" in columns else "NULL"
         old_created_expr = "created_at" if "created_at" in columns else "CURRENT_TIMESTAMP"
+        id_type = "SERIAL PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
         cursor.execute("ALTER TABLE department_master RENAME TO department_master_old")
         cursor.execute(
-            """
+            f"""
             CREATE TABLE department_master (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {id_type},
                 hospital_id INTEGER NOT NULL,
                 department_name TEXT NOT NULL,
                 mapped_head_employee_id TEXT,
@@ -760,9 +761,11 @@ def ensure_department_master_scope(conn):
             )
             """
         )
+        insert_conflict = "ON CONFLICT DO NOTHING" if IS_POSTGRES else ""
+        insert_prefix = "INSERT INTO" if IS_POSTGRES else "INSERT OR IGNORE INTO"
         cursor.execute(
             f"""
-            INSERT OR IGNORE INTO department_master (
+            {insert_prefix} department_master (
                 id, hospital_id, department_name, mapped_head_employee_id, created_at
             )
             SELECT
@@ -772,6 +775,7 @@ def ensure_department_master_scope(conn):
                 {old_head_expr},
                 {old_created_expr}
             FROM department_master_old
+            {insert_conflict}
             """,
             (default_hospital_id,),
         )
@@ -2817,7 +2821,7 @@ def create_appointment(data):
         return appointment_id, token_no
 
 
-def list_appointments(appointment_date=None, status=None, visit_type=None, doctor_name=None):
+def list_appointments(appointment_date=None, status=None, visit_type=None, doctor_name=None, patient_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         clauses = []
@@ -2834,6 +2838,9 @@ def list_appointments(appointment_date=None, status=None, visit_type=None, docto
         if doctor_name:
             clauses.append("doctor_name = ?")
             params.append(doctor_name)
+        if patient_id:
+            clauses.append("patient_id = ?")
+            params.append(patient_id)
         where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         cursor.execute(
             f"SELECT * FROM appointments{where_clause} ORDER BY appointment_date ASC, token_no ASC",
@@ -3900,6 +3907,104 @@ def list_patient_movements(patient_id):
         return cursor.fetchall()
 
 
+def get_patient_journey(patient_id, hospital_id=None):
+    patient = get_patient(patient_id, hospital_id=hospital_id)
+    if not patient:
+        return None
+    patient = dict(patient)
+
+    events = []
+    if patient.get("created_at"):
+        events.append({"stage": "registration", "label": "Patient Registered", "timestamp": patient["created_at"]})
+
+    for row in list_appointments(patient_id=patient_id):
+        appt = dict(row)
+        events.append(
+            {
+                "stage": "queue",
+                "label": f"Appointment scheduled ({appt.get('visit_type')}, token #{appt.get('token_no')})",
+                "timestamp": appt.get("created_at") or appt.get("appointment_date"),
+                "detail": {"doctor_name": appt.get("doctor_name"), "department": appt.get("department")},
+            }
+        )
+        if appt.get("status") in ("checked_in", "in_consultation", "completed", "cancelled"):
+            events.append(
+                {
+                    "stage": "consultation",
+                    "label": f"Status: {(appt.get('status') or '').replace('_', ' ')}",
+                    "timestamp": appt.get("appointment_date"),
+                }
+            )
+
+    for row in list_patient_movements(patient_id):
+        movement = dict(row)
+        events.append(
+            {
+                "stage": "queue",
+                "label": f"Moved {movement.get('from_department') or '-'} -> {movement.get('to_department')}",
+                "timestamp": movement.get("moved_at"),
+            }
+        )
+
+    consultation_billed = 0.0
+    consultation_paid = 0.0
+    for row in list_invoices(patient_id=patient_id):
+        invoice = dict(row)
+        total_amount = float(invoice.get("total_amount") or 0)
+        paid_amount = float(invoice.get("paid_amount") or 0)
+        consultation_billed += total_amount
+        consultation_paid += paid_amount
+        events.append(
+            {
+                "stage": "billing",
+                "label": f"Invoice {invoice.get('invoice_no')} raised — total {total_amount} ({invoice.get('payment_status')})",
+                "timestamp": invoice.get("created_at"),
+            }
+        )
+
+    for row in list_invoice_payments_for_patient(patient_id):
+        payment = dict(row)
+        events.append(
+            {
+                "stage": "billing",
+                "label": f"Payment received: {payment.get('amount')} via {payment.get('payment_mode')} (Invoice {payment.get('invoice_no')})",
+                "timestamp": payment.get("created_at"),
+            }
+        )
+
+    lab_billed = 0.0
+    lab_paid = 0.0
+    for row in list_diagnostics(patient_id=patient_id):
+        diagnostic = dict(row)
+        amount = float(diagnostic.get("amount") or 0)
+        paid_amount = float(diagnostic.get("paid_amount") or 0)
+        lab_billed += amount
+        lab_paid += paid_amount
+        events.append(
+            {
+                "stage": "lab",
+                "label": f"Lab order: {diagnostic.get('test_name')} ({diagnostic.get('order_status')}) — {amount}",
+                "timestamp": diagnostic.get("created_at"),
+            }
+        )
+
+    # Postgres returns native datetime objects while SQLite returns strings; mixing
+    # None with either in a raw sort raises TypeError, so normalize everything to str
+    # (Python's default datetime str() is still chronologically sortable).
+    events.sort(key=lambda event: str(event["timestamp"]) if event["timestamp"] else "")
+
+    summary = {
+        "consultation_billed": consultation_billed,
+        "consultation_paid": consultation_paid,
+        "lab_billed": lab_billed,
+        "lab_paid": lab_paid,
+        "total_billed": consultation_billed + lab_billed,
+        "total_paid": consultation_paid + lab_paid,
+        "total_due": max((consultation_billed + lab_billed) - (consultation_paid + lab_paid), 0.0),
+    }
+    return {"patient": patient, "events": events, "summary": summary}
+
+
 def create_invoice(data):
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -3909,14 +4014,18 @@ def create_invoice(data):
         collected_amount = max(paid_amount + advance_amount - refunded_amount, 0.0)
         total_amount = float(data["total_amount"])
         due_amount = max(total_amount - collected_amount, 0.0)
-        cursor.execute(
-            """
+        # cursor.lastrowid is unreliable under psycopg2, so use RETURNING id on Postgres.
+        insert_sql = """
             INSERT INTO invoices (
                 invoice_no, patient_id, module, doctor_name, clinic_name, referral_source,
                 subtotal, tax, discount, total_amount, paid_amount, due_amount, payment_status, created_by,
                 advance_amount, refunded_amount
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        """
+        if IS_POSTGRES:
+            insert_sql += " RETURNING id"
+        cursor.execute(
+            insert_sql,
             (
                 data["invoice_no"],
                 data.get("patient_id"),
@@ -3936,7 +4045,7 @@ def create_invoice(data):
                 refunded_amount,
             ),
         )
-        invoice_id = cursor.lastrowid
+        invoice_id = cursor.fetchone()[0] if IS_POSTGRES else cursor.lastrowid
         conn.commit()
         return invoice_id
 
@@ -4043,6 +4152,22 @@ def delete_invoice(invoice_id, actor=None):
         return deleted
 
 
+def list_invoice_payments_for_patient(patient_id):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT invoice_payments.*, invoices.invoice_no AS invoice_no
+            FROM invoice_payments
+            JOIN invoices ON invoices.id = invoice_payments.invoice_id
+            WHERE invoices.patient_id = ? AND invoice_payments.deleted_at IS NULL
+            ORDER BY invoice_payments.created_at ASC
+            """,
+            (patient_id,),
+        )
+        return cursor.fetchall()
+
+
 def record_invoice_payment(invoice_id, data):
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -4067,12 +4192,15 @@ def record_invoice_payment(invoice_id, data):
         else:
             status = "due"
 
-        cursor.execute(
-            """
+        payment_insert_sql = """
             INSERT INTO invoice_payments (
                 invoice_id, amount, payment_mode, gateway_ref, converted_from_mode, converted_to_mode
             ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
+        """
+        if IS_POSTGRES:
+            payment_insert_sql += " RETURNING id"
+        cursor.execute(
+            payment_insert_sql,
             (
                 invoice_id,
                 amount,
@@ -4082,7 +4210,7 @@ def record_invoice_payment(invoice_id, data):
                 data.get("converted_to_mode"),
             ),
         )
-        payment_id = cursor.lastrowid
+        payment_id = cursor.fetchone()[0] if IS_POSTGRES else cursor.lastrowid
         cursor.execute(
             """
             UPDATE invoices
@@ -5279,21 +5407,35 @@ def get_audit_logs(module_name=None, limit=100):
 
 
 def get_hospital_dashboard_summary():
+    # strftime()/DATE('now') are SQLite-only; Postgres has no such functions. Compute the
+    # "today" and "this month" boundaries in Python instead so the comparisons are portable
+    # range/equality checks against plain ISO date strings on both engines.
+    today = current_ist_datetime().date()
+    month_start = today.replace(day=1)
+    if month_start.month == 12:
+        next_month_start = month_start.replace(year=month_start.year + 1, month=1)
+    else:
+        next_month_start = month_start.replace(month=month_start.month + 1)
+    today_str = today.isoformat()
+    month_start_str = month_start.isoformat()
+    next_month_start_str = next_month_start.isoformat()
+
     with get_connection() as conn:
         cursor = conn.cursor()
 
         cursor.execute(
             """
             SELECT
-                SUM(CASE WHEN encounter_type='IP' AND DATE(arrival_at)=DATE('now') THEN 1 ELSE 0 END) AS daily_ip,
-                SUM(CASE WHEN encounter_type='OP' AND DATE(arrival_at)=DATE('now') THEN 1 ELSE 0 END) AS daily_op,
+                SUM(CASE WHEN encounter_type='IP' AND DATE(arrival_at)=? THEN 1 ELSE 0 END) AS daily_ip,
+                SUM(CASE WHEN encounter_type='OP' AND DATE(arrival_at)=? THEN 1 ELSE 0 END) AS daily_op,
                 SUM(CASE WHEN encounter_type='IP' THEN 1 ELSE 0 END) AS monthly_ip,
                 SUM(CASE WHEN encounter_type='OP' THEN 1 ELSE 0 END) AS monthly_op,
-                SUM(CASE WHEN is_accident=1 AND DATE(arrival_at)=DATE('now') THEN 1 ELSE 0 END) AS daily_accident,
+                SUM(CASE WHEN is_accident=1 AND DATE(arrival_at)=? THEN 1 ELSE 0 END) AS daily_accident,
                 SUM(CASE WHEN is_accident=1 THEN 1 ELSE 0 END) AS monthly_accident
             FROM encounters
-            WHERE strftime('%Y-%m', arrival_at)=strftime('%Y-%m', 'now')
-            """
+            WHERE arrival_at >= ? AND arrival_at < ?
+            """,
+            (today_str, today_str, today_str, month_start_str, next_month_start_str),
         )
         encounter_summary = dict(cursor.fetchone() or {})
 
@@ -5303,8 +5445,9 @@ def get_hospital_dashboard_summary():
                 COALESCE(SUM(total_amount), 0) AS total_revenue,
                 COALESCE(SUM(due_amount), 0) AS due_collection
             FROM invoices
-            WHERE strftime('%Y-%m', created_at)=strftime('%Y-%m', 'now')
-            """
+            WHERE created_at >= ? AND created_at < ?
+            """,
+            (month_start_str, next_month_start_str),
         )
         revenue_summary = dict(cursor.fetchone() or {})
 
@@ -5312,10 +5455,11 @@ def get_hospital_dashboard_summary():
             """
             SELECT payment_mode AS label, COALESCE(SUM(amount), 0) AS count
             FROM invoice_payments
-            WHERE strftime('%Y-%m', created_at)=strftime('%Y-%m', 'now')
+            WHERE created_at >= ? AND created_at < ?
             GROUP BY payment_mode
             ORDER BY count DESC
-            """
+            """,
+            (month_start_str, next_month_start_str),
         )
         payment_mode_breakdown = [dict(row) for row in cursor.fetchall()]
 
@@ -5323,8 +5467,9 @@ def get_hospital_dashboard_summary():
             """
             SELECT COALESCE(SUM(amount), 0) AS diagnostics_income
             FROM diagnostics
-            WHERE strftime('%Y-%m', created_at)=strftime('%Y-%m', 'now')
-            """
+            WHERE created_at >= ? AND created_at < ?
+            """,
+            (month_start_str, next_month_start_str),
         )
         diagnostics_income_row = cursor.fetchone()
         diagnostics_income = diagnostics_income_row["diagnostics_income"] if diagnostics_income_row else 0
@@ -5333,8 +5478,9 @@ def get_hospital_dashboard_summary():
             """
             SELECT COALESCE(SUM(amount), 0) AS pharmacy_sales
             FROM pharmacy_sales
-            WHERE strftime('%Y-%m', sold_at)=strftime('%Y-%m', 'now')
-            """
+            WHERE sold_at >= ? AND sold_at < ?
+            """,
+            (month_start_str, next_month_start_str),
         )
         pharmacy_sales_row = cursor.fetchone()
         pharmacy_sales = pharmacy_sales_row["pharmacy_sales"] if pharmacy_sales_row else 0
@@ -5343,10 +5489,11 @@ def get_hospital_dashboard_summary():
             """
             SELECT COALESCE(referral_source, 'unknown') AS label, COUNT(*) AS count
             FROM encounters
-            WHERE strftime('%Y-%m', arrival_at)=strftime('%Y-%m', 'now')
+            WHERE arrival_at >= ? AND arrival_at < ?
             GROUP BY referral_source
             ORDER BY count DESC
-            """
+            """,
+            (month_start_str, next_month_start_str),
         )
         referral_summary = [dict(row) for row in cursor.fetchall()]
 

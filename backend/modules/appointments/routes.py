@@ -34,6 +34,7 @@ def appointments_list():
     status = request.args.get("status")
     visit_type = request.args.get("visit_type")
     doctor_name = request.args.get("doctor_name")
+    patient_id = request.args.get("patient_id")
     return jsonify(
         {
             "appointments": rows_to_dicts(
@@ -42,6 +43,7 @@ def appointments_list():
                     status=status,
                     visit_type=visit_type,
                     doctor_name=doctor_name,
+                    patient_id=patient_id,
                 )
             )
         }

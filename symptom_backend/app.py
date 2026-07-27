@@ -1,4 +1,9 @@
+from __future__ import annotations
 import os
+import sys
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 import re
 import time
 from pathlib import Path
@@ -383,10 +388,13 @@ def _require_api_key():
 
 
 def detect_region_from_text(text: str):
+    # Word-boundary matching, not substring containment — plain "in" checks match keywords
+    # inside unrelated words (e.g. "near"/"heard"/"search" all contain "ear", falsely
+    # matching the Ears region), which silently produced wrong detections.
     normalized = (text or "").lower()
     for region, data in BODY_REGIONS.items():
         for keyword in data["keywords"]:
-            if keyword in normalized:
+            if re.search(r"\b" + re.escape(keyword) + r"\b", normalized):
                 return region
     return None
 
@@ -672,7 +680,7 @@ def _generate_with_gemini(system_prompt: str, user_prompt: str):
         return None, "Missing GEMINI_API_KEY/GOOGLE_API_KEY in environment"
 
     _rate_limit()
-    model_name = os.getenv("SYMPTOM_AI_MODEL", "gemini-2.0-flash")
+    model_name = os.getenv("SYMPTOM_AI_MODEL", "gemini-2.5-flash")
     try:
         client = genai.Client(api_key=key)
         response = client.models.generate_content(
@@ -691,6 +699,48 @@ def _generate_with_gemini(system_prompt: str, user_prompt: str):
         return text, None
     except Exception as exc:
         return None, str(exc)
+
+
+def _classify_region_with_gemini(description: str):
+    # The static keyword list in BODY_REGIONS only catches descriptions that happen to
+    # contain one of its exact substrings, so it misses most real phrasing. This is the
+    # fallback for when that quick match comes up empty: ask the model to pick the closest
+    # region from the same fixed list, constrained to an exact-match response so it can't
+    # hallucinate a region name the frontend won't recognize.
+    if genai is None or types is None:
+        return None
+    key = _extract_api_key()
+    if not key:
+        return None
+
+    region_names = list(BODY_REGIONS.keys())
+    prompt = (
+        "A person described a physical body sensation. Reply with ONLY the single closest "
+        "matching region name, copied exactly from this list, and nothing else:\n"
+        + "\n".join(region_names)
+        + f'\n\nSensation description: "{description}"\n\nRegion:'
+    )
+    try:
+        _rate_limit()
+        model_name = os.getenv("SYMPTOM_AI_MODEL", "gemini-2.5-flash")
+        client = genai.Client(api_key=key)
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0,
+                max_output_tokens=50,
+                # Gemini 2.5's internal "thinking" tokens count against max_output_tokens;
+                # left at the default, a small budget like this gets consumed entirely by
+                # invisible reasoning and response.text comes back empty. This is a trivial
+                # classification task, so thinking is disabled outright.
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
+        )
+        candidate = (response.text or "").strip()
+        return candidate if candidate in BODY_REGIONS else None
+    except Exception:
+        return None
 
 
 @app.after_request
@@ -751,7 +801,8 @@ def symptom_meta():
 @app.post("/api/symptom-ai/detect-region")
 def detect_region():
     payload = request.get_json(force=True) or {}
-    region = detect_region_from_text(payload.get("description") or "")
+    description = payload.get("description") or ""
+    region = detect_region_from_text(description) or _classify_region_with_gemini(description)
     return jsonify({"region": region})
 
 
@@ -769,7 +820,7 @@ def analyze():
     if len(description) > 2000:
         return jsonify({"error": "Please keep the description under 2000 characters."}), 400
 
-    detected = detect_region_from_text(description)
+    detected = detect_region_from_text(description) or _classify_region_with_gemini(description)
     model_response, model_error = _generate_with_gemini(SYSTEM_PROMPT, _build_user_prompt(payload))
 
     if not model_response:

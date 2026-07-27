@@ -1,18 +1,9 @@
 import { useEffect, useState } from "react";
-import type { Dispatch, FormEvent, SetStateAction } from "react";
-import DocumentUploadDropzone from "../components/DocumentUploadDropzone";
-import MarkdownReport from "../components/MarkdownReport";
+import type { Dispatch, FormEvent, KeyboardEvent, SetStateAction } from "react";
 import { Alert, Button, Checkbox, Input, Label, Select, Textarea } from "../components/ui";
-import {
-  API_BASE,
-  DOC_TYPES,
-  EMPTY_PATIENT_FORM,
-  SUPPORTED_DOCUMENT_ACCEPT,
-  SUPPORTED_DOCUMENT_EXTENSIONS,
-  isSupportedDocumentFile,
-} from "../lib/constants";
+import { EMPTY_PATIENT_FORM } from "../lib/constants";
 import { apiFetch, reportError } from "../lib/api";
-import type { Notice, Patient, PatientForm } from "../types";
+import type { Notice, PatientForm } from "../types";
 
 type Props = {
   onCreate: (
@@ -21,15 +12,29 @@ type Props = {
     setDuplicateInfo: Dispatch<SetStateAction<any>>,
     refreshPatientId: () => Promise<void>
   ) => Promise<{ patient_id: string; admission_id?: string } | null>;
-  selectedPatient: Patient | null;
-  ocrLanguage: string;
   setNotice: Dispatch<SetStateAction<Notice | null>>;
-  onDocumentSaved?: (patientId?: string) => Promise<void>;
+  onNavigate: (page: string) => void;
 };
 
-type OcrResultMap = Record<string, { text?: string; file?: File }>;
+type Department = {
+  id: number;
+  department_name?: string;
+};
 
-const IMAGE_NAME_PATTERN = /\.(png|jpe?g|webp|bmp|gif|tiff?|heic|heif)$/i;
+const DEFAULT_APPOINTMENT_FORM = {
+  create_appointment: true,
+  visit_type: "OP",
+  department: "",
+  doctor_name: "",
+  appointment_date: "",
+  consultation_fee: "",
+};
+
+function nowLocalDatetimeString(): string {
+  const now = new Date();
+  const offsetMs = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 16);
+}
 
 function calculateAgeFromDob(dob: string): string {
   if (!dob) return "";
@@ -47,120 +52,14 @@ function calculateAgeFromDob(dob: string): string {
   return String(age);
 }
 
-function normalizeDateToIso(raw: string): string | null {
-  const cleaned = raw.replace(/[.]/g, "/").replace(/-/g, "/").trim();
-  const parts = cleaned.split("/").map((part) => part.trim());
-  if (parts.length !== 3) return null;
-
-  let day = 0;
-  let month = 0;
-  let year = 0;
-
-  if (parts[0].length === 4) {
-    year = Number(parts[0]);
-    month = Number(parts[1]);
-    day = Number(parts[2]);
-  } else if (parts[2].length === 4) {
-    day = Number(parts[0]);
-    month = Number(parts[1]);
-    year = Number(parts[2]);
-  } else {
-    return null;
-  }
-
-  if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year)) return null;
-  if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return null;
-
-  const candidate = new Date(Date.UTC(year, month - 1, day));
-  const valid =
-    candidate.getUTCFullYear() === year && candidate.getUTCMonth() === month - 1 && candidate.getUTCDate() === day;
-  if (!valid) return null;
-
-  const today = new Date();
-  const utcToday = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-  if (candidate.getTime() > utcToday.getTime()) return null;
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-function extractDobFromText(text: string): string | null {
-  const labeledPatterns = [
-    /(?:date\s*of\s*birth|dob|d\.o\.b)\s*[:\-]?\s*((?:\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})|(?:\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}))/i,
-    /(?:birth\s*date)\s*[:\-]?\s*((?:\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})|(?:\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}))/i,
-  ];
-
-  for (const pattern of labeledPatterns) {
-    const match = text.match(pattern);
-    if (!match?.[1]) continue;
-    const iso = normalizeDateToIso(match[1]);
-    if (iso) return iso;
-  }
-
-  const genericDatePattern = /\b((?:\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})|(?:\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}))\b/g;
-  const matches = text.match(genericDatePattern) || [];
-  for (const raw of matches) {
-    const iso = normalizeDateToIso(raw);
-    if (iso) return iso;
-  }
-  return null;
-}
-
-function extractAgeFromText(text: string): string {
-  const match = text.match(/(?:age|aged)\s*[:\-]?\s*(\d{1,3})\b/i);
-  if (!match?.[1]) return "";
-  const value = Number(match[1]);
-  if (!Number.isInteger(value) || value < 0 || value > 150) return "";
-  return String(value);
-}
-
-function OriginalDocumentPreview({ file }: { file?: File }) {
-  const [url, setUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!file) {
-      setUrl(null);
-      return;
-    }
-    const objectUrl = URL.createObjectURL(file);
-    setUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [file]);
-
-  if (!file || !url) {
-    return <p className="muted">No source document available.</p>;
-  }
-
-  const mime = (file.type || "").toLowerCase();
-  const isPdf = mime === "application/pdf" || /\.pdf$/i.test(file.name);
-  const isImage = mime.startsWith("image/") || IMAGE_NAME_PATTERN.test(file.name);
-
-  if (isImage) {
-    return <img className="ocr-source-image" src={url} alt={file.name} />;
-  }
-
-  if (isPdf) {
-    return <iframe className="ocr-source-pdf" src={url} title={`Preview ${file.name}`} />;
-  }
-
-  return (
-    <a className="link" href={url} target="_blank" rel="noreferrer">
-      Open original document
-    </a>
-  );
-}
-
-export default function AddPatientPage({ onCreate, selectedPatient, ocrLanguage, setNotice, onDocumentSaved }: Props) {
+export default function AddPatientPage({ onCreate, setNotice, onNavigate }: Props) {
   const registrationFormId = "patient-registration-form";
   const [form, setForm] = useState<PatientForm>(EMPTY_PATIENT_FORM);
   const [patientId, setPatientId] = useState("");
   const [duplicateInfo, setDuplicateInfo] = useState<any>(null);
-  const [docFiles, setDocFiles] = useState<Record<string, File>>({});
-  const [ocrResults, setOcrResults] = useState<OcrResultMap>({});
-  const [ocrStatus, setOcrStatus] = useState<Record<string, string>>({});
-  const [downloadReady, setDownloadReady] = useState<Record<string, Record<string, boolean>>>({});
-  const [admissionId, setAdmissionId] = useState(selectedPatient?.admission_id || "");
-  const [currentPatientName, setCurrentPatientName] = useState("");
-  const [demographicsOcrStatus, setDemographicsOcrStatus] = useState("");
-  const [isDemographicsOcrRunning, setIsDemographicsOcrRunning] = useState(false);
+  const [appointmentForm, setAppointmentForm] = useState({ ...DEFAULT_APPOINTMENT_FORM, appointment_date: nowLocalDatetimeString() });
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [doctorSuggestions, setDoctorSuggestions] = useState<string[]>([]);
 
   const refreshPatientId = async () => {
     try {
@@ -176,34 +75,42 @@ export default function AddPatientPage({ onCreate, selectedPatient, ocrLanguage,
   }, []);
 
   useEffect(() => {
-    if (selectedPatient?.admission_id) {
-      setAdmissionId(selectedPatient.admission_id);
+    const raw = sessionStorage.getItem("ocr_demographics");
+    if (!raw) return;
+    sessionStorage.removeItem("ocr_demographics");
+    try {
+      const extracted = JSON.parse(raw) as { dob?: string; age?: string; notes?: string };
+      setForm((prev) => ({
+        ...prev,
+        dob: extracted.dob || prev.dob,
+        age: extracted.age || prev.age,
+        symptoms: extracted.notes ? [extracted.notes, prev.symptoms].filter(Boolean).join("\n\n") : prev.symptoms,
+      }));
+    } catch {
+      // malformed sessionStorage payload — ignore and leave the form blank
     }
-    if (selectedPatient?.name) {
-      setCurrentPatientName(`${selectedPatient.name} ${selectedPatient.middle_name || ""} ${selectedPatient.last_name || ""}`.trim());
-    }
-  }, [selectedPatient]);
+  }, []);
 
-  const uploadDocument = async (
-    targetPatientId: string,
-    docType: string,
-    file: File,
-    targetAdmissionId?: string,
-    ocrText = ""
-  ) => {
-    const body = new FormData();
-    body.append("file", file);
-    body.append("doc_type", docType);
-    body.append("admission_id", targetAdmissionId || "");
-    body.append("ocr_text", ocrText);
-    body.append("ocr_language", ocrLanguage);
-    const response = await fetch(`${API_BASE}/api/patients/${targetPatientId}/documents`, {
-      method: "POST",
-      body,
-      credentials: "include",
-    });
-    if (!response.ok) {
-      throw new Error("Document upload failed.");
+  useEffect(() => {
+    apiFetch<{ departments?: Department[] }>("/api/registration/departments")
+      .then((data) => setDepartments(data.departments || []))
+      .catch(() => setDepartments([]));
+    apiFetch<{ schedules?: { doctor_name?: string | null }[] }>("/api/op/doctor-schedules")
+      .then((data) => {
+        const names = new Set<string>();
+        (data.schedules || []).forEach((row) => {
+          const value = (row.doctor_name || "").trim();
+          if (value) names.add(value);
+        });
+        setDoctorSuggestions(Array.from(names).sort((a, b) => a.localeCompare(b)));
+      })
+      .catch(() => setDoctorSuggestions([]));
+  }, []);
+
+  const handleFormKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
+    const tagName = (event.target as HTMLElement).tagName;
+    if (event.key === "Enter" && tagName !== "TEXTAREA" && tagName !== "BUTTON") {
+      event.preventDefault();
     }
   };
 
@@ -217,40 +124,59 @@ export default function AddPatientPage({ onCreate, selectedPatient, ocrLanguage,
     delete payload.allergy1;
     delete payload.allergy2;
     delete payload.allergy3;
-    setCurrentPatientName(`${form.name} ${form.middle_name || ""} ${form.last_name}`.trim());
+    const patientName = `${form.name} ${form.middle_name || ""} ${form.last_name}`.trim();
     const createdPatient = await onCreate(payload, setForm, setDuplicateInfo, refreshPatientId);
     if (!createdPatient?.patient_id) return;
 
-    const docsToUpload = DOC_TYPES.filter((doc) => docFiles[doc.value]).map((doc) => doc.value);
-    if (docsToUpload.length > 0) {
-      let uploadedCount = 0;
-      for (const docType of docsToUpload) {
-        const file = docFiles[docType];
-        if (!file) continue;
-        try {
-          await uploadDocument(
-            createdPatient.patient_id,
-            docType,
-            file,
-            createdPatient.admission_id,
-            ocrResults[docType]?.text || ""
-          );
-          uploadedCount += 1;
-        } catch {
-          setOcrStatus((prev) => ({ ...prev, [docType]: "Upload failed during registration." }));
+    if (appointmentForm.create_appointment && appointmentForm.appointment_date) {
+      const consultationFee = Number(appointmentForm.consultation_fee);
+      try {
+        const appointmentData = await apiFetch<{ token_no: number }>("/api/appointments", {
+          method: "POST",
+          body: JSON.stringify({
+            patient_id: createdPatient.patient_id,
+            patient_name: patientName,
+            visit_type: appointmentForm.visit_type,
+            department: appointmentForm.department.trim() || undefined,
+            doctor_name: appointmentForm.doctor_name.trim() || undefined,
+            appointment_date: appointmentForm.appointment_date,
+          }),
+        });
+        if (!Number.isNaN(consultationFee) && consultationFee > 0) {
+          try {
+            await apiFetch("/api/billing/invoices", {
+              method: "POST",
+              body: JSON.stringify({
+                patient_id: createdPatient.patient_id,
+                module: "OP",
+                doctor_name: appointmentForm.doctor_name.trim() || undefined,
+                total_amount: consultationFee,
+                payment_status: "due",
+              }),
+            });
+          } catch (invoiceError) {
+            reportError(
+              setNotice,
+              invoiceError as { message?: string; status?: number },
+              "Appointment scheduled, but billing the consultation fee failed. Raise it manually from Billing."
+            );
+          }
         }
-      }
-
-      if (uploadedCount > 0) {
-        await onDocumentSaved?.(createdPatient.patient_id);
         setNotice({
           type: "success",
-          message: `Patient ${createdPatient.patient_id} registered with ${uploadedCount} document${uploadedCount > 1 ? "s" : ""}.`,
+          message: `Patient ${createdPatient.patient_id} registered. Token #${appointmentData.token_no} scheduled, consultation fee billed.`,
         });
+      } catch (error) {
+        reportError(
+          setNotice,
+          error as { message?: string; status?: number },
+          "Patient registered, but scheduling the appointment failed. Use Appointment In Desk to retry."
+        );
       }
     }
 
-    clearSelectedDocuments();
+    setAppointmentForm({ ...DEFAULT_APPOINTMENT_FORM, appointment_date: nowLocalDatetimeString() });
+    onNavigate("queue");
   };
 
   const handleChange = (field: keyof PatientForm) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -267,250 +193,11 @@ export default function AddPatientPage({ onCreate, selectedPatient, ocrLanguage,
     });
   };
 
-  const handleFileSelect = (docType: string) => (file: File | null) => {
-    if (!file) {
-      setDocFiles((prev) => {
-        const next = { ...prev };
-        delete next[docType];
-        return next;
-      });
-      setOcrResults((prev) => {
-        if (!prev[docType]) return prev;
-        const next = { ...prev };
-        delete next[docType];
-        return next;
-      });
-      setOcrStatus((prev) => ({ ...prev, [docType]: "" }));
-      return;
-    }
-
-    if (!isSupportedDocumentFile(file)) {
-      setOcrStatus((prev) => ({ ...prev, [docType]: "Unsupported file type. Use PDF, JPG, PNG, WEBP, TIFF, BMP, GIF, HEIC, or HEIF." }));
-      setDocFiles((prev) => {
-        const next = { ...prev };
-        delete next[docType];
-        return next;
-      });
-      return;
-    }
-    setOcrStatus((prev) => ({ ...prev, [docType]: "" }));
-    setDocFiles((prev) => ({ ...prev, [docType]: file }));
-  };
-
-  const handleOCR = async (docType: string) => {
-    const file = docFiles[docType];
-    if (!file) return;
-    setOcrStatus((prev) => ({ ...prev, [docType]: "Processing OCR..." }));
-    const body = new FormData();
-    body.append("file", file);
-    body.append("language", ocrLanguage);
-    body.append("doc_type", docType);
-
-    try {
-      const response = await fetch(`${API_BASE}/api/ocr`, { method: "POST", body, credentials: "include" });
-      const data = await response.json();
-      setOcrResults((prev) => ({
-        ...prev,
-        [docType]: { text: data.text || "", file },
-      }));
-      setOcrStatus((prev) => ({ ...prev, [docType]: "OCR complete. You can edit and save." }));
-    } catch {
-      setOcrStatus((prev) => ({ ...prev, [docType]: "OCR failed." }));
-    }
-  };
-
-  const saveExtractedDemographicsForPatient = async (targetPatientId: string, dob: string, age: string) => {
-    const detail = await apiFetch<{ patient?: Patient }>(`/api/patients/${targetPatientId}`);
-    const patient = detail.patient;
-    if (!patient) {
-      throw new Error("Patient not found while saving OCR demographics.");
-    }
-
-    const payload = {
-      name: patient.name || selectedPatient?.name || "",
-      middle_name: patient.middle_name || selectedPatient?.middle_name || "",
-      last_name: patient.last_name || selectedPatient?.last_name || "",
-      dob: dob || patient.dob || "",
-      age: age || String(patient.age || ""),
-      weight: patient.weight == null ? "" : String(patient.weight),
-      height: patient.height == null ? "" : String(patient.height),
-      gender: patient.gender || "Female",
-      pregnant: Boolean(patient.pregnant),
-      allergies: patient.allergies || "",
-      symptoms: patient.symptoms || "",
-      phone: patient.phone || "",
-    };
-
-    await apiFetch(`/api/patients/${targetPatientId}`, {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    });
-    await onDocumentSaved?.(targetPatientId);
-  };
-
-  const handleDemographicsOCR = async () => {
-    const docEntries = DOC_TYPES.map((doc) => ({ docType: doc.value, file: docFiles[doc.value], text: ocrResults[doc.value]?.text || "" })).filter(
-      (item) => item.file || item.text
-    );
-    if (docEntries.length === 0) {
-      setDemographicsOcrStatus("Upload at least one document first.");
-      return;
-    }
-
-    setIsDemographicsOcrRunning(true);
-    setDemographicsOcrStatus("Processing OCR for DOB/Age...");
-
-    try {
-      let extractedDob = "";
-      let extractedAge = "";
-
-      for (const entry of docEntries) {
-        let text = entry.text;
-        if (!text && entry.file) {
-          const body = new FormData();
-          body.append("file", entry.file);
-          body.append("language", ocrLanguage);
-          body.append("doc_type", entry.docType);
-          const response = await fetch(`${API_BASE}/api/ocr`, { method: "POST", body, credentials: "include" });
-          if (!response.ok) {
-            continue;
-          }
-          const data = await response.json();
-          text = data.text || "";
-          setOcrResults((prev) => ({
-            ...prev,
-            [entry.docType]: { text, file: entry.file },
-          }));
-        }
-
-        if (!text) continue;
-        if (!extractedDob) extractedDob = extractDobFromText(text) || "";
-        if (!extractedAge) extractedAge = extractAgeFromText(text);
-        if (extractedDob && !extractedAge) {
-          extractedAge = calculateAgeFromDob(extractedDob);
-        }
-        if (extractedDob || extractedAge) break;
-      }
-
-      if (!extractedDob && !extractedAge) {
-        setDemographicsOcrStatus("OCR completed, but DOB/Age was not detected.");
-        return;
-      }
-
-      setForm((prev) => ({
-        ...prev,
-        dob: extractedDob || prev.dob,
-        age: extractedAge || prev.age,
-      }));
-
-      if (selectedPatient?.patient_id) {
-        await saveExtractedDemographicsForPatient(selectedPatient.patient_id, extractedDob, extractedAge);
-        setDemographicsOcrStatus("DOB/Age extracted and saved to database.");
-      } else {
-        setDemographicsOcrStatus("DOB/Age extracted. They will be saved when you register the patient.");
-      }
-    } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Failed to process demographic OCR.");
-      setDemographicsOcrStatus("Failed to process DOB/Age OCR.");
-    } finally {
-      setIsDemographicsOcrRunning(false);
-    }
-  };
-
-  const handleOcrTextChange = (docType: string) => (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = event.target.value;
-    setOcrResults((prev) => ({
-      ...prev,
-      [docType]: { ...prev[docType], text: value },
-    }));
-  };
-
-  const handleSaveDoc = async (docType: string) => {
-    const ocrEntry = ocrResults[docType];
-    if (!selectedPatient?.patient_id || !ocrEntry?.text || !ocrEntry?.file) return;
-    const body = new FormData();
-    body.append("file", ocrEntry.file);
-    body.append("doc_type", docType);
-    body.append("admission_id", admissionId || "");
-    body.append("ocr_text", ocrEntry.text);
-    body.append("ocr_language", ocrLanguage);
-    try {
-      const response = await fetch(`${API_BASE}/api/patients/${selectedPatient.patient_id}/documents`, {
-        method: "POST",
-        body,
-        credentials: "include",
-      });
-      if (!response.ok) {
-        throw new Error("Document upload failed.");
-      }
-      setDownloadReady((prev) => ({ ...prev, [docType]: { pdf: false, word: false } }));
-      await onDocumentSaved?.(selectedPatient.patient_id);
-      setNotice({ type: "success", message: "Document saved." });
-    } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Failed to save document.");
-    }
-  };
-
-  const handlePrepareDownload = (docType: string, kind: "pdf" | "word") => {
-    setDownloadReady((prev) => ({
-      ...prev,
-      [docType]: { ...(prev[docType] || {}), [kind]: true },
-    }));
-  };
-
-  const handleDownload = async (docType: string, kind: "pdf" | "word") => {
-    const ocrEntry = ocrResults[docType];
-    if (!ocrEntry?.text) return;
-    const payload = {
-      patient_name: currentPatientName || "Patient",
-      doc_type: docType,
-      ocr_text: ocrEntry.text,
-    };
-    const response = await fetch(`${API_BASE}/api/export/${kind}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      credentials: "include",
-    });
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${selectedPatient?.patient_id || "document"}_${docType}.${kind === "pdf" ? "pdf" : "docx"}`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-    setDownloadReady((prev) => ({
-      ...prev,
-      [docType]: { ...(prev[docType] || {}), [kind]: false },
-    }));
-  };
-
-  const clearOcrEntry = (docType: string) => {
-    setOcrResults((prev) => {
-      const next = { ...prev };
-      delete next[docType];
-      return next;
-    });
-    setDownloadReady((prev) => {
-      const next = { ...prev };
-      delete next[docType];
-      return next;
-    });
-  };
-
-  const clearSelectedDocuments = () => {
-    setOcrResults({});
-    setDocFiles({});
-    setDownloadReady({});
-    setOcrStatus({});
-    setDemographicsOcrStatus("");
-  };
-
   const handleClearForm = () => {
     setForm(EMPTY_PATIENT_FORM);
     setDuplicateInfo(null);
     void refreshPatientId();
-    clearSelectedDocuments();
+    setAppointmentForm({ ...DEFAULT_APPOINTMENT_FORM, appointment_date: nowLocalDatetimeString() });
   };
 
   return (
@@ -523,7 +210,7 @@ export default function AddPatientPage({ onCreate, selectedPatient, ocrLanguage,
             Possible duplicate found: {duplicateInfo.name} {duplicateInfo.last_name} (ID: {duplicateInfo.patient_id})
           </Alert>
         )}
-        <form id={registrationFormId} className="grid-form patient-grid-form" onSubmit={handleSubmit}>
+        <form id={registrationFormId} className="grid-form patient-grid-form" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}>
           <Label>
             First Name
             <Input value={form.name} onChange={handleChange("name")} required />
@@ -544,12 +231,6 @@ export default function AddPatientPage({ onCreate, selectedPatient, ocrLanguage,
             Age
             <Input type="number" value={form.age} onChange={handleChange("age")} />
           </Label>
-          <div className="form-actions span-2">
-            <Button variant="secondary" type="button" onClick={() => void handleDemographicsOCR()} disabled={isDemographicsOcrRunning}>
-              {isDemographicsOcrRunning ? "Processing DOB/Age OCR..." : "Process OCR for DOB/Age"}
-            </Button>
-            {demographicsOcrStatus && <p className="muted">{demographicsOcrStatus}</p>}
-          </div>
           <Label>
             Phone
             <Input value={form.phone} onChange={handleChange("phone")} />
@@ -590,88 +271,81 @@ export default function AddPatientPage({ onCreate, selectedPatient, ocrLanguage,
             Symptoms
             <Textarea value={form.symptoms} onChange={handleChange("symptoms")} rows={3} />
           </Label>
+
+          <Label className="checkbox span-2">
+            <Checkbox
+              checked={appointmentForm.create_appointment}
+              onChange={(event) => setAppointmentForm((prev) => ({ ...prev, create_appointment: event.target.checked }))}
+            />
+            Also schedule an appointment and send to queue
+          </Label>
+          {appointmentForm.create_appointment ? (
+            <>
+              <Label>
+                Visit Type
+                <Select
+                  value={appointmentForm.visit_type}
+                  onChange={(event) => setAppointmentForm((prev) => ({ ...prev, visit_type: event.target.value }))}
+                >
+                  <option value="OP">OP</option>
+                  <option value="IP">IP</option>
+                </Select>
+              </Label>
+              <Label>
+                Department
+                <Select
+                  value={appointmentForm.department}
+                  onChange={(event) => setAppointmentForm((prev) => ({ ...prev, department: event.target.value }))}
+                >
+                  <option value="">Select department</option>
+                  {departments.map((department) => {
+                    const name = (department.department_name || "").trim();
+                    if (!name) return null;
+                    return (
+                      <option key={department.id} value={name}>
+                        {name}
+                      </option>
+                    );
+                  })}
+                </Select>
+              </Label>
+              <Label>
+                Doctor
+                <Input
+                  value={appointmentForm.doctor_name}
+                  onChange={(event) => setAppointmentForm((prev) => ({ ...prev, doctor_name: event.target.value }))}
+                  list="add-patient-doctors"
+                  placeholder="Type doctor name (guest allowed)"
+                />
+                <datalist id="add-patient-doctors">
+                  {doctorSuggestions.map((doctor) => (
+                    <option key={doctor} value={doctor} />
+                  ))}
+                </datalist>
+              </Label>
+              <Label>
+                Appointment Time
+                <Input
+                  type="datetime-local"
+                  value={appointmentForm.appointment_date}
+                  onChange={(event) => setAppointmentForm((prev) => ({ ...prev, appointment_date: event.target.value }))}
+                />
+              </Label>
+              <Label>
+                Consultation Fee
+                <Input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  required
+                  value={appointmentForm.consultation_fee}
+                  onChange={(event) => setAppointmentForm((prev) => ({ ...prev, consultation_fee: event.target.value }))}
+                  placeholder="Consultation amount"
+                />
+              </Label>
+            </>
+          ) : null}
         </form>
-
-        <h3 className="upload-section-title">Upload Documents</h3>
-        <p className="muted">
-          Upload and process OCR before registering. Selected documents are saved automatically when you submit registration.
-        </p>
-        <div className="doc-grid">
-          {DOC_TYPES.map((doc) => (
-            <div key={doc.value} className="doc-card">
-              <h4>{doc.label}</h4>
-              <DocumentUploadDropzone
-                accept={SUPPORTED_DOCUMENT_ACCEPT}
-                file={docFiles[doc.value]}
-                helperText={`Supported: ${SUPPORTED_DOCUMENT_EXTENSIONS.map((ext) => ext.toUpperCase()).join(", ")}`}
-                onFileSelect={handleFileSelect(doc.value)}
-              />
-              <Button variant="secondary" type="button" onClick={() => void handleOCR(doc.value)}>
-                Process OCR
-              </Button>
-              {ocrStatus[doc.value] && <p className="muted">{ocrStatus[doc.value]}</p>}
-            </div>
-          ))}
-        </div>
-
-        {Object.keys(ocrResults).length > 0 && (
-          <div className="ocr-results">
-            <h4>OCR Results (Edit & Save)</h4>
-            {Object.entries(ocrResults).map(([docType, data]) => {
-              const label = DOC_TYPES.find((item) => item.value === docType)?.label || docType;
-              return (
-                <details key={docType} className="doc-item" open>
-                  <summary>{label}</summary>
-                  <div className="ocr-side-by-side">
-                    <div className="ocr-preview">
-                      <p className="muted">Original Document</p>
-                      <OriginalDocumentPreview file={data.file} />
-                    </div>
-                    <div className="ocr-preview">
-                      <p className="muted">Markdown Preview</p>
-                      <MarkdownReport text={data.text || ""} />
-                    </div>
-                  </div>
-                  <Textarea className="ocr-text" value={data.text || ""} onChange={handleOcrTextChange(docType)} />
-                  <div className="form-actions">
-                    <Button
-                      variant="primary"
-                      type="button"
-                      onClick={() => void handleSaveDoc(docType)}
-                      disabled={!selectedPatient?.patient_id}
-                    >
-                      Save {label}
-                    </Button>
-                    <Button variant="secondary" type="button" onClick={() => handlePrepareDownload(docType, "pdf")}>
-                      Prepare PDF
-                    </Button>
-                    <Button variant="secondary" type="button" onClick={() => handlePrepareDownload(docType, "word")}>
-                      Prepare Word
-                    </Button>
-                    <Button variant="secondary" type="button" onClick={() => clearOcrEntry(docType)}>
-                      Clear
-                    </Button>
-                  </div>
-                  {!selectedPatient?.patient_id && (
-                    <p className="muted">This document will be saved automatically when you register the patient.</p>
-                  )}
-                  <div className="form-actions">
-                    {downloadReady[docType]?.pdf && (
-                      <Button variant="secondary" type="button" onClick={() => void handleDownload(docType, "pdf")}>
-                        Download PDF
-                      </Button>
-                    )}
-                    {downloadReady[docType]?.word && (
-                      <Button variant="secondary" type="button" onClick={() => void handleDownload(docType, "word")}>
-                        Download Word
-                      </Button>
-                    )}
-                  </div>
-                </details>
-              );
-            })}
-          </div>
-        )}
 
         <div className="form-actions patient-form-actions patient-actions-bottom">
           <Button variant="primary" type="submit" form={registrationFormId}>
