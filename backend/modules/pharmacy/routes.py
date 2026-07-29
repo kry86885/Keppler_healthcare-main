@@ -181,3 +181,75 @@ def pharmacy_summary():
     return jsonify(get_pharmacy_summary(hospital_id=current_hospital_id()))
 
 
+
+
+# ---- Prescriptions via OCR ----
+
+@pharmacy_bp.post("/api/pharmacy/prescriptions")
+@require_permissions("pharmacy.write")
+def create_prescription():
+    payload = request.get_json(force=True)
+    patient_id = payload.get("patient_id")
+    medicines_json = payload.get("medicines_json")
+    doc_id = payload.get("doc_id")
+    
+    if not patient_id or not medicines_json:
+        return jsonify({"error": "patient_id and medicines_json are required"}), 400
+        
+    username = g.current_user.get("username")
+    pid = __import__('utils.database').database.create_pharmacy_prescription(
+        hospital_id=current_hospital_id(),
+        patient_id=patient_id,
+        doctor_username=username,
+        medicines_json=medicines_json,
+        doc_id=doc_id
+    )
+    return jsonify({"prescription_id": pid})
+
+
+@pharmacy_bp.get("/api/pharmacy/prescriptions")
+@require_permissions("pharmacy.read")
+def list_prescriptions():
+    from utils.database import list_pending_pharmacy_prescriptions
+    rows = list_pending_pharmacy_prescriptions(hospital_id=current_hospital_id())
+    return jsonify({"prescriptions": rows_to_dicts(rows)})
+
+
+@pharmacy_bp.post("/api/pharmacy/prescriptions/<int:prescription_id>/fulfill")
+@require_permissions("pharmacy.write")
+def fulfill_prescription(prescription_id):
+    from utils.database import get_pharmacy_prescription, fulfill_pharmacy_prescription, create_pharmacy_sale
+    import json
+    
+    hospital_id = current_hospital_id()
+    presc = get_pharmacy_prescription(hospital_id, prescription_id)
+    if not presc:
+        return jsonify({"error": "Prescription not found"}), 404
+    
+    if presc["status"] == "fulfilled":
+        return jsonify({"error": "Already fulfilled"}), 400
+        
+    # Process sales
+    medicines = []
+    try:
+        medicines = json.loads(presc["medicines_json"])
+    except:
+        pass
+        
+    # the frontend passes modified medicines array with correct prices
+    payload = request.get_json(force=True)
+    final_medicines = payload.get("medicines", medicines)
+    
+    for med in final_medicines:
+        qty = int(med.get("quantity", 1))
+        price = float(med.get("unit_price", 0))
+        create_pharmacy_sale({
+            "patient_id": presc["patient_id"],
+            "medicine_name": med.get("name", "Unknown"),
+            "quantity": qty,
+            "unit_price": price,
+            "prescription_ref": f"OCR-{prescription_id}"
+        }, hospital_id=hospital_id)
+        
+    fulfill_pharmacy_prescription(hospital_id, prescription_id)
+    return jsonify({"status": "ok"})

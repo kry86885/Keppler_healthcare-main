@@ -6,6 +6,7 @@ import { apiFetch, reportError } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { openRazorpayCheckout } from "../lib/razorpay";
 import type { Appointment, DoctorSchedule, Notice, OpSummary } from "../types";
+import PrescriptionUploadModal from "../components/PrescriptionUploadModal";
 
 type Props = {
   setNotice: Dispatch<SetStateAction<Notice | null>>;
@@ -104,6 +105,7 @@ export default function OpPage({ setNotice, canEdit }: Props) {
   const [isRazorpayReady, setIsRazorpayReady] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
   const [selectedDoctor, setSelectedDoctor] = useState("");
+  const [uploadPrescriptionPatient, setUploadPrescriptionPatient] = useState<{ id: string; name: string } | null>(null);
 
   const loadOpDesk = async (date = selectedDate, doctorName = selectedDoctor) => {
     setLoading(true);
@@ -639,6 +641,14 @@ export default function OpPage({ setNotice, canEdit }: Props) {
                       <Button
                         type="button"
                         onClick={() =>
+                          setUploadPrescriptionPatient({ id: String(appointment.patient_id), name: appointment.patient_name })
+                        }
+                      >
+                        Upload Rx
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() =>
                           setAppointmentForm({
                             id: String(appointment.id),
                             patient_id: appointment.patient_id || "",
@@ -683,8 +693,17 @@ export default function OpPage({ setNotice, canEdit }: Props) {
               ))
             )}
           </Table>
-        </div>
+        </section>
       </div>
-    </section>
+      
+      {uploadPrescriptionPatient && (
+        <PrescriptionUploadModal
+          patientId={uploadPrescriptionPatient.id}
+          patientName={uploadPrescriptionPatient.name}
+          setNotice={setNotice}
+          onClose={() => setUploadPrescriptionPatient(null)}
+        />
+      )}
+    </div>
   );
 }

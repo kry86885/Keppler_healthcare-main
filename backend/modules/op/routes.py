@@ -22,7 +22,11 @@ from utils.database import (
     delete_doctor_schedule,
     get_op_summary,
     list_doctor_schedules,
-    update_doctor_schedule
+    update_doctor_schedule,
+    create_doctor,
+    list_doctors,
+    update_doctor,
+    delete_doctor
 )
 
 
@@ -101,4 +105,40 @@ def op_doctor_schedules_delete(schedule_id):
     )
     return jsonify({"status": "ok"})
 
+@op_bp.get("/api/op/doctors")
+@require_permissions("patients.read")
+def op_doctors_list():
+    department = request.args.get("department")
+    return jsonify({"doctors": list_doctors(department=department)})
 
+@op_bp.post("/api/op/doctors")
+@require_permissions("patients.write")
+def op_doctors_create():
+    payload = request.get_json(force=True)
+    validation_error = validate_required_fields(
+        payload, ["doctor_name", "department"]
+    )
+    if validation_error:
+        return validation_error
+    doctor_id = create_doctor(payload)
+    log_audit_event("create", "doctors", str(doctor_id), {"doctor_name": payload.get("doctor_name")})
+    return jsonify({"doctor_id": doctor_id})
+
+@op_bp.put("/api/op/doctors/<int:doctor_id>")
+@require_permissions("patients.write")
+def op_doctors_update(doctor_id):
+    payload = request.get_json(force=True)
+    updated = update_doctor(doctor_id, payload)
+    if not updated:
+        return jsonify({"error": "Doctor not found"}), 404
+    log_audit_event("update", "doctors", str(doctor_id), {"doctor_id": doctor_id})
+    return jsonify({"status": "ok"})
+
+@op_bp.delete("/api/op/doctors/<int:doctor_id>")
+@require_permissions("patients.write")
+def op_doctors_delete(doctor_id):
+    deleted = delete_doctor(doctor_id)
+    if not deleted:
+        return jsonify({"error": "Doctor not found"}), 404
+    log_audit_event("delete", "doctors", str(doctor_id), {"doctor_id": doctor_id})
+    return jsonify({"status": "ok"})

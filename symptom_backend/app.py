@@ -36,6 +36,8 @@ DEFAULT_ALLOWED_ORIGINS = {
     "https://staging-app.hospai.ai",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:6173",
+    "http://127.0.0.1:6173",
 }
 ENV_ALLOWED_ORIGINS = {
     origin.strip()
@@ -839,6 +841,54 @@ def analyze():
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
     )
+
+@app.post("/api/symptom-ai/triage")
+def triage():
+    key_error = _require_api_key()
+    if key_error:
+        return key_error
+
+    payload = request.get_json(force=True) or {}
+    symptoms = (payload.get("symptoms") or "").strip()
+    available_departments = payload.get("available_departments") or []
+
+    if len(symptoms) < 5:
+        return jsonify({"error": "Please provide a valid symptom description."}), 400
+
+    departments_str = ", ".join(available_departments) if available_departments else "General Medicine, Cardiology, Neurology, Orthopedics, Pediatrics, Gynecology, Dermatology, Psychiatry, Oncology"
+
+    prompt = (
+        "You are a medical triage assistant. A patient at the registration desk has the following symptoms:\n"
+        f'"{symptoms}"\n\n'
+        "Based on these symptoms, determine the most appropriate hospital department for them to visit, "
+        "the urgency of their case, and a brief reasoning for the receptionist.\n\n"
+        f"Available departments to choose from: [{departments_str}]\n\n"
+        "Respond ONLY with a valid JSON object in this exact format:\n"
+        "{\n"
+        '  "department": "Name of the chosen department",\n'
+        '  "urgency": "Routine | Urgent | Emergency",\n'
+        '  "reasoning": "Brief explanation (1-2 sentences)"\n'
+        "}"
+    )
+
+    try:
+        _rate_limit()
+        model_name = os.getenv("SYMPTOM_AI_MODEL", "gemini-2.5-flash")
+        client = genai.Client(api_key=_extract_api_key())
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0,
+                response_mime_type="application/json",
+            ),
+        )
+        candidate = (response.text or "").strip()
+        import json
+        triage_result = json.loads(candidate)
+        return jsonify(triage_result)
+    except Exception as exc:
+        return jsonify({"error": f"Triage AI failed: {str(exc)}"}), 502
 
 
 @app.post("/api/symptom-ai/export/pdf")

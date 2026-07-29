@@ -174,3 +174,43 @@ def ocr_portal_assistant_history_clear():
     hospital_id, username = _identity()
     ocr.clear_chat_history(hospital_id, username, session_id)
     return jsonify({"message": "Chat history cleared."})
+
+
+# ---- AI Parser for Prescriptions ----
+
+@ocr_portal_bp.post("/api/ocr-portal/parse-prescription")
+@require_permissions("patients.write")
+def parse_prescription():
+    payload = request.get_json(silent=True) or {}
+    text = payload.get("text", "")
+    if not text:
+        return jsonify({"error": "No text provided"}), 400
+        
+    try:
+        from ai.gemini_provider import GeminiLLMProvider
+        import json
+        llm = GeminiLLMProvider()
+        prompt = f"""
+You are a medical AI assistant. Extract the prescribed medicines from the following OCR text of a doctor's prescription.
+Return ONLY a JSON array of objects, with each object containing:
+- "name": Medicine name
+- "quantity": Number to dispense (default to 1 if not specified but implies a course)
+- "dosage": E.g., "1-0-1" or "500mg twice daily"
+- "unit_price": 0
+
+OCR Text:
+{text}
+
+Output ONLY valid JSON.
+"""
+        response_text = llm.generate(prompt)
+        # Clean up any potential markdown code blocks
+        if response_text.startswith("```json"):
+            response_text = response_text.replace("```json", "", 1)
+        if response_text.endswith("```"):
+            response_text = response_text[::-1].replace("```", "", 1)[::-1]
+        
+        medicines = json.loads(response_text.strip())
+        return jsonify({"medicines": medicines})
+    except Exception as exc:
+        return jsonify({"error": str(exc), "medicines": []}), 500

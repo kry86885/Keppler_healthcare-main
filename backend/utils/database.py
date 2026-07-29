@@ -530,14 +530,15 @@ def init_database():
             )
 
         ensure_hospital_columns(conn)
-        ensure_financial_hospital_columns(conn)
         ensure_user_columns(conn)
         ensure_document_columns(conn)
         ensure_hospai_module_tables(conn)
+        ensure_financial_hospital_columns(conn)
         ensure_operational_audit_columns(conn)
         ensure_vector_store_tables(conn)
         ensure_symptom_ai_tables(conn)
         ensure_ocr_portal_tables(conn)
+        ensure_pharmacy_prescriptions_tables(conn)
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_hospitals_code ON hospitals(code)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_patient_id ON patients(patient_id)")
@@ -1395,6 +1396,20 @@ def ensure_hospai_module_tables(conn):
             slot_capacity INTEGER DEFAULT 12,
             status TEXT NOT NULL DEFAULT 'available' CHECK(status IN ('available', 'full', 'leave')),
             notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS doctors (
+            id {id_column},
+            doctor_name TEXT NOT NULL,
+            department TEXT,
+            consultation_fee REAL DEFAULT 0,
+            review_fee REAL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'available' CHECK(status IN ('available', 'leave')),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -3049,6 +3064,66 @@ def update_appointment(appointment_id, data):
                 appointment_id,
             ),
         )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+# --- Doctors (Static) ---
+
+def create_doctor(data):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            _to_sql_params("""
+            INSERT INTO doctors (
+                doctor_name, department, consultation_fee, review_fee, status
+            ) VALUES (?, ?, ?, ?, ?)
+            """),
+            (
+                data.get("doctor_name"),
+                data.get("department"),
+                float(data.get("consultation_fee", 0)),
+                float(data.get("review_fee", 0)),
+                data.get("status", "available"),
+            ),
+        )
+        doctor_id = cursor.lastrowid
+        conn.commit()
+        return doctor_id
+
+def list_doctors(department=None):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if department:
+            cursor.execute(_to_sql_params("SELECT * FROM doctors WHERE department = ? ORDER BY doctor_name"), (department,))
+        else:
+            cursor.execute("SELECT * FROM doctors ORDER BY doctor_name")
+        return [dict(row) for row in cursor.fetchall()]
+
+def update_doctor(doctor_id, data):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        updates = []
+        params = []
+        for key in ["doctor_name", "department", "consultation_fee", "review_fee", "status"]:
+            if key in data:
+                updates.append(f"{key} = ?")
+                val = data[key]
+                if key in ["consultation_fee", "review_fee"]:
+                    val = float(val)
+                params.append(val)
+        if not updates:
+            return False
+        params.append(doctor_id)
+        sql = _to_sql_params(f"UPDATE doctors SET {', '.join(updates)} WHERE id = ?")
+        cursor.execute(sql, tuple(params))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def delete_doctor(doctor_id):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_to_sql_params("DELETE FROM doctors WHERE id = ?"), (doctor_id,))
         conn.commit()
         return cursor.rowcount > 0
 
@@ -5760,3 +5835,119 @@ def get_hospital_dashboard_summary(hospital_id=None):
         "diagnostics_summary": {"monthly_income": diagnostics_income},
         "referrals": referral_summary,
     }
+
+
+# ---- Pharmacy Prescriptions (OCR Integration) ----
+
+def ensure_pharmacy_prescriptions_tables(conn):
+    cursor = conn.cursor()
+    from utils.database import IS_POSTGRES
+    
+    if IS_POSTGRES:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pharmacy_prescriptions (
+                id SERIAL PRIMARY KEY,
+                hospital_id INTEGER NOT NULL,
+                patient_id TEXT NOT NULL,
+                doctor_username TEXT NOT NULL,
+                doc_id INTEGER,
+                medicines_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                fulfilled_at TIMESTAMP,
+                FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+            )
+            """
+        )
+    else:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pharmacy_prescriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hospital_id INTEGER NOT NULL,
+                patient_id TEXT NOT NULL,
+                doctor_username TEXT NOT NULL,
+                doc_id INTEGER,
+                medicines_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                fulfilled_at TIMESTAMP,
+                FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+            )
+            """
+        )
+    conn.commit()
+
+
+def create_pharmacy_prescription(hospital_id, patient_id, doctor_username, medicines_json, doc_id=None):
+    from utils.database import get_connection, IS_POSTGRES
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if IS_POSTGRES:
+            cursor.execute(
+                """
+                INSERT INTO pharmacy_prescriptions (hospital_id, patient_id, doctor_username, doc_id, medicines_json)
+                VALUES (?, ?, ?, ?, ?)
+                RETURNING id
+                """,
+                (hospital_id, patient_id, doctor_username, doc_id, medicines_json)
+            )
+            pid = cursor.fetchone()[0]
+        else:
+            cursor.execute(
+                """
+                INSERT INTO pharmacy_prescriptions (hospital_id, patient_id, doctor_username, doc_id, medicines_json)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (hospital_id, patient_id, doctor_username, doc_id, medicines_json)
+            )
+            pid = cursor.lastrowid
+        conn.commit()
+        return pid
+
+
+def list_pending_pharmacy_prescriptions(hospital_id):
+    from utils.database import get_connection
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT p.*, pat.name as patient_name, pat.last_name as patient_last_name 
+            FROM pharmacy_prescriptions p
+            JOIN patients pat ON pat.patient_id = p.patient_id
+            WHERE p.hospital_id = ? AND p.status = 'pending'
+            ORDER BY p.created_at DESC
+            """,
+            (hospital_id,)
+        )
+        return cursor.fetchall()
+
+
+def get_pharmacy_prescription(hospital_id, prescription_id):
+    from utils.database import get_connection
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM pharmacy_prescriptions
+            WHERE id = ? AND hospital_id = ?
+            """,
+            (prescription_id, hospital_id)
+        )
+        return cursor.fetchone()
+
+
+def fulfill_pharmacy_prescription(hospital_id, prescription_id):
+    from utils.database import get_connection
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE pharmacy_prescriptions
+            SET status = 'fulfilled', fulfilled_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND hospital_id = ?
+            """,
+            (prescription_id, hospital_id)
+        )
+        conn.commit()

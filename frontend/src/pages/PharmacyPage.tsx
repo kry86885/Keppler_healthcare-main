@@ -77,6 +77,18 @@ type SupplierForm = {
   status: "active" | "inactive";
 };
 
+type PendingPrescription = {
+  id: number;
+  hospital_id: number;
+  patient_id: string;
+  patient_name: string;
+  patient_last_name: string;
+  doctor_username: string;
+  medicines_json: string;
+  status: string;
+  created_at: string;
+};
+
 type PurchaseForm = {
   id: string;
   supplier_id: string;
@@ -156,6 +168,7 @@ export default function PharmacyPage({ setNotice }: Props) {
   const [sales, setSales] = useState<PharmacySale[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [pendingPrescriptions, setPendingPrescriptions] = useState<PendingPrescription[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [inventoryForm, setInventoryForm] = useState<InventoryForm>(DEFAULT_INVENTORY_FORM);
@@ -202,22 +215,25 @@ export default function PharmacyPage({ setNotice }: Props) {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const [summaryData, inventoryData, salesData, supplierData, purchaseData] = await Promise.all([
+      const [summaryData, inventoryData, salesData, supplierData, purchaseData, prescData] = await Promise.all([
         apiFetch<PharmacySummary>("/api/pharmacy/summary"),
         apiFetch<{ items?: InventoryItem[] }>("/api/pharmacy/inventory"),
         apiFetch<{ sales?: PharmacySale[] }>("/api/pharmacy/sales"),
         apiFetch<{ suppliers?: Supplier[] }>("/api/pharmacy/suppliers"),
         apiFetch<{ purchases?: Purchase[] }>("/api/pharmacy/purchases"),
+        apiFetch<{ prescriptions?: PendingPrescription[] }>("/api/pharmacy/prescriptions").catch(() => ({ prescriptions: [] })),
       ]);
       const fetchedItems = inventoryData.items || [];
       const fetchedSales = salesData.sales || [];
       const fetchedSuppliers = supplierData.suppliers || [];
       const fetchedPurchases = purchaseData.purchases || [];
+      const fetchedPresc = prescData.prescriptions || [];
       setSummary({ ...EMPTY_SUMMARY, ...summaryData });
       setItems(fetchedItems);
       setSales(fetchedSales);
       setSuppliers(fetchedSuppliers);
       setPurchases(fetchedPurchases);
+      setPendingPrescriptions(fetchedPresc);
       setSaleForm((current) => {
         if (current.medicine_name) return current;
         return {
@@ -335,6 +351,31 @@ export default function PharmacyPage({ setNotice }: Props) {
 
   const handleSalePatientSelect = (patient: Patient) => {
     setSaleForm((current) => ({ ...current, patient_id: patient.patient_id }));
+  };
+
+  const handleFulfillPrescription = async (presc: PendingPrescription) => {
+    try {
+      let meds = [];
+      try { meds = JSON.parse(presc.medicines_json); } catch(e) {}
+      
+      // Auto-fill unit prices from inventory
+      const enrichedMeds = meds.map((m: any) => {
+        const inv = items.find(i => i.medicine_name.toLowerCase() === m.name.toLowerCase());
+        return {
+          ...m,
+          unit_price: inv ? inv.unit_price : 0
+        };
+      });
+
+      await apiFetch(`/api/pharmacy/prescriptions/${presc.id}/fulfill`, {
+        method: "POST",
+        body: JSON.stringify({ medicines: enrichedMeds }),
+      });
+      setNotice({ type: "success", message: "Prescription fulfilled and sales recorded." });
+      await loadPharmacy();
+    } catch (error) {
+      reportError(setNotice, error as any, "Failed to fulfill prescription");
+    }
   };
 
   const handleSupplierSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -481,12 +522,31 @@ export default function PharmacyPage({ setNotice }: Props) {
   };
 
   return (
-    <section className="module-page">
-      <div className="stat-grid module-stat-grid">
-        <StatCard label="Low Stock" value={summary.low_stock_count} />
-        <StatCard label="Out of Stock" value={summary.out_of_stock_count} />
-        <StatCard label="Damaged Items" value={summary.damaged_stock_count} />
-        <StatCard label="Sales Total" value={formatCurrency(summary.sales_total)} />
+    <section className="pharmacy-premium-container">
+      <div className="pharmacy-dashboard-header">
+        <div className="pharmacy-header-title">
+          <h1>Pharmacy Dashboard</h1>
+          <p>Manage inventory, prescriptions, and sales intelligently</p>
+        </div>
+      </div>
+
+      <div className="pharmacy-stats-grid">
+        <div className="pharmacy-stat-card">
+          <span className="pharmacy-stat-label">Low Stock</span>
+          <span className="pharmacy-stat-value">{summary.low_stock_count}</span>
+        </div>
+        <div className="pharmacy-stat-card">
+          <span className="pharmacy-stat-label">Out of Stock</span>
+          <span className="pharmacy-stat-value">{summary.out_of_stock_count}</span>
+        </div>
+        <div className="pharmacy-stat-card">
+          <span className="pharmacy-stat-label">Damaged Items</span>
+          <span className="pharmacy-stat-value">{summary.damaged_stock_count}</span>
+        </div>
+        <div className="pharmacy-stat-card">
+          <span className="pharmacy-stat-label">Sales Total</span>
+          <span className="pharmacy-stat-value">{formatCurrency(summary.sales_total)}</span>
+        </div>
       </div>
 
       <div className="panel">
@@ -556,6 +616,57 @@ export default function PharmacyPage({ setNotice }: Props) {
             </Button>
           ) : null}
         </form>
+      </div>
+
+      <div className="pharmacy-section-glass">
+        <div className="pharmacy-section-header">
+          <h3>Pending Prescriptions (OCR)</h3>
+        </div>
+        <div className="table-responsive">
+          <Table className="pharmacy-table-modern">
+            <TableHead>
+              <TableCell>Date</TableCell>
+              <TableCell>Patient</TableCell>
+              <TableCell>Doctor</TableCell>
+              <TableCell>Medicines</TableCell>
+              <TableCell>Actions</TableCell>
+            </TableHead>
+            {pendingPrescriptions.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} style={{ textAlign: "center", padding: "2rem" }}>No pending prescriptions</TableCell>
+              </TableRow>
+            ) : (
+              pendingPrescriptions.map(p => {
+                let meds = [];
+                try { meds = JSON.parse(p.medicines_json); } catch(e) {}
+                return (
+                  <TableRow key={p.id}>
+                    <TableCell>{formatDate(p.created_at)}</TableCell>
+                    <TableCell>
+                      <div style={{ fontWeight: 600 }}>{p.patient_name} {p.patient_last_name}</div>
+                      <div className="muted" style={{ fontSize: "0.85rem" }}>ID: {p.patient_id}</div>
+                    </TableCell>
+                    <TableCell>{p.doctor_username}</TableCell>
+                    <TableCell>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                        {meds.map((m: any, i: number) => (
+                          <span key={i} className="pharmacy-medicine-pill">
+                            {m.name} <span style={{ opacity: 0.7 }}>x{m.quantity}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Button onClick={() => handleFulfillPrescription(p)} style={{ background: "var(--accent)" }}>
+                        Fulfill & Bill
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </Table>
+        </div>
       </div>
 
       <div className="panel">
