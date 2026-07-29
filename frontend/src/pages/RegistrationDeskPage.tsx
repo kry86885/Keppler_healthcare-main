@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { Button, Input, Label, Select, Textarea } from "../components/ui";
 import { apiFetch, reportError } from "../lib/api";
+import { SYMPTOM_API_BASE } from "../lib/constants";
 import { updateAppointmentStatus as putAppointmentStatus } from "../lib/appointments";
 import { formatDateTime } from "../lib/format";
 import { openRazorpayCheckout } from "../lib/razorpay";
 import type { Appointment, Notice, Patient } from "../types";
+import PatientAutocomplete from "../components/PatientAutocomplete";
 
 type RegistrationMode = "appointment-in" | "appointment-out" | "consent" | "insurance";
 
@@ -85,6 +87,7 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice 
   const [savingDepartment, setSavingDepartment] = useState(false);
 
   const [doctorSuggestions, setDoctorSuggestions] = useState<string[]>([]);
+  const [doctors, setDoctors] = useState<{ doctor_name?: string | null, department?: string | null, consultation_fee?: string | number, status?: string | null }[]>([]);
 
   const [consents, setConsents] = useState<ConsentRecord[]>([]);
   const [insuranceChecks, setInsuranceChecks] = useState<InsuranceRecord[]>([]);
@@ -96,6 +99,10 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice 
   const [appointmentForm, setAppointmentForm] = useState({ ...DEFAULT_APPOINTMENT_FORM });
   const [consentForm, setConsentForm] = useState({ ...DEFAULT_CONSENT_FORM });
   const [insuranceForm, setInsuranceForm] = useState({ ...DEFAULT_INSURANCE_FORM });
+
+  const [symptomsText, setSymptomsText] = useState("");
+  const [triageLoading, setTriageLoading] = useState(false);
+  const [triageResult, setTriageResult] = useState<{ urgency?: string; reasoning?: string } | null>(null);
 
   const loadAppointments = async () => {
     setAppointmentsLoading(true);
@@ -121,16 +128,62 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice 
 
   const loadDoctorSuggestions = async () => {
     try {
-      const scheduleData = await apiFetch<{ schedules?: { doctor_name?: string | null }[] }>("/api/op/doctor-schedules");
+      const doctorsData = await apiFetch<{ doctors?: { doctor_name?: string | null, department?: string | null, consultation_fee?: string | number, status?: string | null }[] }>("/api/op/doctors");
+      setDoctors(doctorsData.doctors || []);
       const names = new Set<string>();
-      (scheduleData.schedules || []).forEach((row) => {
+      (doctorsData.doctors || []).forEach((row) => {
         const value = (row.doctor_name || "").trim();
         if (value) names.add(value);
       });
       setDoctorSuggestions(Array.from(names).sort((a, b) => a.localeCompare(b)));
     } catch {
       setDoctorSuggestions([]);
+      setDoctors([]);
     }
+  };
+
+  const handleDepartmentChange = (dept: string) => {
+    setAppointmentForm((prev) => {
+      let nextDoctor = prev.doctor_name;
+      let nextFee = prev.consultation_fee;
+
+      if (dept && doctors.length > 0) {
+        // Only overwrite doctor if current doctor doesn't belong to the newly selected department
+        const isCurrentDoctorInDept = doctors.some(d => 
+          (d.department || "").toLowerCase() === dept.toLowerCase() && 
+          (d.doctor_name || "").toLowerCase() === (prev.doctor_name || "").toLowerCase()
+        );
+
+        if (!isCurrentDoctorInDept) {
+          const availableDocs = doctors.filter(d => (d.department || "").toLowerCase() === dept.toLowerCase() && d.status === "available");
+          const targetDoc = availableDocs.length > 0 ? availableDocs[0] : doctors.find(d => (d.department || "").toLowerCase() === dept.toLowerCase());
+          
+          if (targetDoc) {
+            nextDoctor = targetDoc.doctor_name || "";
+            nextFee = targetDoc.consultation_fee != null ? String(targetDoc.consultation_fee) : "0";
+          }
+        }
+      }
+
+      return { ...prev, department: dept, doctor_name: nextDoctor, consultation_fee: nextFee };
+    });
+  };
+
+  const handleDoctorChange = (docName: string) => {
+    setAppointmentForm((prev) => {
+      let nextDept = prev.department;
+      let nextFee = prev.consultation_fee;
+
+      if (docName && doctors.length > 0) {
+        const foundDoc = doctors.find(d => (d.doctor_name || "").toLowerCase() === docName.toLowerCase());
+        if (foundDoc) {
+          nextDept = foundDoc.department || prev.department;
+          nextFee = foundDoc.consultation_fee != null ? String(foundDoc.consultation_fee) : prev.consultation_fee;
+        }
+      }
+
+      return { ...prev, doctor_name: docName, department: nextDept, consultation_fee: nextFee };
+    });
   };
 
   const loadRegistrationOps = async () => {
@@ -160,6 +213,32 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice 
       .then((data) => setIsRazorpayReady(data.configured !== false))
       .catch(() => setIsRazorpayReady(true));
   }, []);
+
+  const handleAITriage = async () => {
+    if (!symptomsText.trim()) {
+      setNotice({ type: "warning", message: "Please enter patient symptoms first." });
+      return;
+    }
+    setTriageLoading(true);
+    try {
+      const availableDepartments = departments.map((d) => d.department_name).filter(Boolean);
+      const res = await fetch(`${SYMPTOM_API_BASE}/api/symptom-ai/triage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symptoms: symptomsText, available_departments: availableDepartments }),
+      });
+      if (!res.ok) throw new Error("Triage API error");
+      const data = await res.json();
+      if (data.department) {
+        handleDepartmentChange(data.department);
+      }
+      setTriageResult({ urgency: data.urgency, reasoning: data.reasoning });
+    } catch (error) {
+      reportError(setNotice, error as { message?: string }, "Unable to get AI triage recommendation.");
+    } finally {
+      setTriageLoading(false);
+    }
+  };
 
   const ensureRazorpayConfigured = async () => {
     try {
@@ -647,20 +726,7 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice 
         <h3>{mode === "appointment-in" ? "Appointment In Desk" : "Appointment Out Desk"}</h3>
       </div>
 
-      <div className="panel registration-desk-panel">
-        <h4>Department Master</h4>
-        <div className="module-inline-actions">
-          <Input
-            value={departmentInput}
-            onChange={(event) => setDepartmentInput(event.target.value)}
-            placeholder="Add new department"
-            aria-label="Department name"
-          />
-          <Button type="button" onClick={() => void handleAddDepartment()} disabled={savingDepartment}>
-            {savingDepartment ? "Adding..." : "Add Department"}
-          </Button>
-        </div>
-      </div>
+
 
       {mode === "appointment-in" ? (
         <div className="panel registration-desk-panel">
@@ -668,17 +734,19 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice 
           <div className="grid-form">
             <Label>
               Patient ID
-              <Input
+              <PatientAutocomplete
                 value={appointmentForm.patient_id}
-                onChange={(event) => setAppointmentForm((prev) => ({ ...prev, patient_id: event.target.value }))}
-                placeholder="Optional"
+                onChange={(val) => setAppointmentForm((prev) => ({ ...prev, patient_id: val }))}
+                onSelect={(patient) => setAppointmentForm((prev) => ({ ...prev, patient_id: patient.patient_id, patient_name: patientFullName(patient) }))}
+                placeholder="Search by ID (last 4 digits)"
               />
             </Label>
             <Label>
               Patient Name
-              <Input
+              <PatientAutocomplete
                 value={appointmentForm.patient_name}
-                onChange={(event) => setAppointmentForm((prev) => ({ ...prev, patient_name: event.target.value }))}
+                onChange={(val) => setAppointmentForm((prev) => ({ ...prev, patient_name: val }))}
+                onSelect={(patient) => setAppointmentForm((prev) => ({ ...prev, patient_id: patient.patient_id, patient_name: patientFullName(patient) }))}
                 placeholder="Walk-in or existing patient"
               />
             </Label>
@@ -692,11 +760,31 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice 
                 <option value="IP">IP</option>
               </Select>
             </Label>
+            <Label className="span-2">
+              Patient Symptoms (AI Triage)
+              <div style={{ display: "flex", gap: "8px", flexDirection: "column" }}>
+                <Textarea
+                  value={symptomsText}
+                  onChange={(e) => setSymptomsText(e.target.value)}
+                  placeholder="Describe patient symptoms here to auto-assign department..."
+                  rows={2}
+                />
+                <Button variant="secondary" type="button" onClick={() => void handleAITriage()} disabled={triageLoading}>
+                  {triageLoading ? "Analyzing..." : "🪄 AI Triage"}
+                </Button>
+                {triageResult && (
+                  <div style={{ padding: "8px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "4px", fontSize: "0.9rem" }}>
+                    <strong style={{color: "#166534"}}>Urgency:</strong> <span style={{color: "#166534"}}>{triageResult.urgency}</span><br/>
+                    <strong style={{color: "#166534"}}>Reasoning:</strong> <span style={{color: "#166534"}}>{triageResult.reasoning}</span>
+                  </div>
+                )}
+              </div>
+            </Label>
             <Label>
               Department
               <Select
                 value={appointmentForm.department}
-                onChange={(event) => setAppointmentForm((prev) => ({ ...prev, department: event.target.value }))}
+                onChange={(event) => handleDepartmentChange(event.target.value)}
               >
                 <option value="">Select department</option>
                 {departments.map((department) => {
@@ -714,7 +802,7 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice 
               Doctor
               <Input
                 value={appointmentForm.doctor_name}
-                onChange={(event) => setAppointmentForm((prev) => ({ ...prev, doctor_name: event.target.value }))}
+                onChange={(event) => handleDoctorChange(event.target.value)}
                 list="registration-doctors"
                 placeholder="Type doctor name (guest allowed)"
               />

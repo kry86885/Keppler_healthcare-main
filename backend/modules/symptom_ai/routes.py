@@ -108,6 +108,48 @@ def symptom_ai_documents_delete(document_id):
     return jsonify({"status": "ok"})
 
 
+@symptom_ai_bp.post("/api/symptom-ai/triage")
+@require_permissions("symptom_ai.use")
+def symptom_ai_triage():
+    data = request.json or {}
+    symptoms = data.get("symptoms")
+    available_departments = data.get("available_departments", [])
+
+    if not symptoms:
+        return jsonify({"error": "Missing symptoms"}), 400
+
+    from ai.gemini_provider import GeminiLLMProvider
+    import json
+
+    llm = GeminiLLMProvider()
+    prompt = f"""
+You are an AI Triage Assistant in a hospital.
+The patient reports the following symptoms:
+{symptoms}
+
+Available departments: {', '.join(available_departments) if available_departments else 'Any'}
+
+Analyze the symptoms and provide a JSON response with:
+1. "department": The most appropriate department from the available list.
+2. "urgency": "Low", "Medium", "High", or "Critical".
+3. "reasoning": A brief explanation of your recommendation (1-2 sentences).
+
+Your response MUST be valid JSON only. Do not include markdown formatting or backticks.
+"""
+    try:
+        response_text = llm.generate(prompt)
+        # Clean up any potential markdown code blocks
+        if response_text.startswith("```json"):
+            response_text = response_text.replace("```json", "", 1)
+        if response_text.endswith("```"):
+            response_text = response_text[::-1].replace("```", "", 1)[::-1]
+        
+        result = json.loads(response_text.strip())
+        return jsonify(result)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @symptom_ai_bp.post("/api/symptom-ai/chat")
 @require_permissions("symptom_ai.use")
 def symptom_ai_chat():

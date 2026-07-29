@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, FormEvent, ReactNode, SetStateAction } from "react";
 import { FiSettings } from "react-icons/fi";
 import AuthView from "./components/AuthView";
@@ -9,7 +9,7 @@ import { Button, Container } from "./components/ui";
 import AddPatientPage from "./pages/AddPatientPage";
 import OcrPage from "./pages/OcrPage";
 import AdminPage from "./pages/AdminPage";
-import OpPage from "./pages/OpPage";
+import DoctorSchedulingPage from "./pages/DoctorSchedulingPage";
 import DashboardPage from "./pages/DashboardPage";
 import EmployeesPage from "./pages/EmployeesPage";
 import BillingAgingPage from "./pages/BillingAgingPage";
@@ -1004,7 +1004,7 @@ function App() {
           <RegistrationDeskPage mode="insurance" selectedPatient={selectedPatient} setNotice={setNotice} />
         )}
 
-        {page === "op-desk" && hasPermission("patients.read") && <OpPage setNotice={setNotice} canEdit={hasPermission("patients.write")} />}
+        {page === "op-desk" && hasPermission("patients.read") && <DoctorSchedulingPage setNotice={setNotice} canEdit={hasPermission("patients.write")} />}
 
         {page === "patients" && (
           <PatientsPage

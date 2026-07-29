@@ -530,10 +530,10 @@ def init_database():
             )
 
         ensure_hospital_columns(conn)
-        ensure_financial_hospital_columns(conn)
         ensure_user_columns(conn)
         ensure_document_columns(conn)
         ensure_hospai_module_tables(conn)
+        ensure_financial_hospital_columns(conn)
         ensure_operational_audit_columns(conn)
         ensure_vector_store_tables(conn)
         ensure_symptom_ai_tables(conn)
@@ -1395,6 +1395,20 @@ def ensure_hospai_module_tables(conn):
             slot_capacity INTEGER DEFAULT 12,
             status TEXT NOT NULL DEFAULT 'available' CHECK(status IN ('available', 'full', 'leave')),
             notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS doctors (
+            id {id_column},
+            doctor_name TEXT NOT NULL,
+            department TEXT,
+            consultation_fee REAL DEFAULT 0,
+            review_fee REAL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'available' CHECK(status IN ('available', 'leave')),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -3049,6 +3063,66 @@ def update_appointment(appointment_id, data):
                 appointment_id,
             ),
         )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+# --- Doctors (Static) ---
+
+def create_doctor(data):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            _to_sql_params("""
+            INSERT INTO doctors (
+                doctor_name, department, consultation_fee, review_fee, status
+            ) VALUES (?, ?, ?, ?, ?)
+            """),
+            (
+                data.get("doctor_name"),
+                data.get("department"),
+                float(data.get("consultation_fee", 0)),
+                float(data.get("review_fee", 0)),
+                data.get("status", "available"),
+            ),
+        )
+        doctor_id = cursor.lastrowid
+        conn.commit()
+        return doctor_id
+
+def list_doctors(department=None):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if department:
+            cursor.execute(_to_sql_params("SELECT * FROM doctors WHERE department = ? ORDER BY doctor_name"), (department,))
+        else:
+            cursor.execute("SELECT * FROM doctors ORDER BY doctor_name")
+        return [dict(row) for row in cursor.fetchall()]
+
+def update_doctor(doctor_id, data):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        updates = []
+        params = []
+        for key in ["doctor_name", "department", "consultation_fee", "review_fee", "status"]:
+            if key in data:
+                updates.append(f"{key} = ?")
+                val = data[key]
+                if key in ["consultation_fee", "review_fee"]:
+                    val = float(val)
+                params.append(val)
+        if not updates:
+            return False
+        params.append(doctor_id)
+        sql = _to_sql_params(f"UPDATE doctors SET {', '.join(updates)} WHERE id = ?")
+        cursor.execute(sql, tuple(params))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def delete_doctor(doctor_id):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_to_sql_params("DELETE FROM doctors WHERE id = ?"), (doctor_id,))
         conn.commit()
         return cursor.rowcount > 0
 
