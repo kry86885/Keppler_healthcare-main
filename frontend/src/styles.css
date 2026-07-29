@@ -3532,3 +3532,201 @@ main {
     right: 0.62rem;
   }
 }
+
+
+/* Premium Pharmacy Styles */
+.pharmacy-premium-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  animation: fadeIn 0.4s ease-out;
+}
+
+.pharmacy-dashboard-header {
+  background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+  color: white;
+  padding: 2.5rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.pharmacy-dashboard-header::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  right: -10%;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 70%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.pharmacy-header-title h1 {
+  font-size: 2.5rem;
+  margin: 0 0 0.5rem 0;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.pharmacy-header-title p {
+  opacity: 0.9;
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.pharmacy-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+  margin-top: -1.5rem;
+  padding: 0 1rem;
+}
+
+.pharmacy-stat-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.pharmacy-stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+
+.pharmacy-stat-label {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: hsl(var(--muted-foreground));
+  font-weight: 600;
+}
+
+.pharmacy-stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: hsl(var(--foreground));
+  line-height: 1;
+}
+
+.pharmacy-section-glass {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.8);
+  border-radius: var(--radius);
+  padding: 2rem;
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="dark"] .pharmacy-section-glass {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+.pharmacy-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid hsl(var(--border));
+  padding-bottom: 1rem;
+}
+
+.pharmacy-section-header h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+  color: hsl(var(--foreground));
+}
+
+.pharmacy-table-modern th {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.85rem;
+  padding: 1rem;
+  border: none;
+}
+
+.pharmacy-table-modern td {
+  padding: 1rem;
+  border-bottom: 1px solid hsl(var(--border));
+  vertical-align: middle;
+}
+
+.pharmacy-table-modern tr {
+  transition: background-color 0.2s ease;
+}
+
+.pharmacy-table-modern tr:hover {
+  background-color: hsl(var(--muted) / 0.5);
+}
+
+.pharmacy-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pharmacy-badge-warning {
+  background: #fff3cd;
+  color: #856404;
+}
+[data-theme="dark"] .pharmacy-badge-warning {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+}
+
+.pharmacy-badge-success {
+  background: #d4edda;
+  color: #155724;
+}
+[data-theme="dark"] .pharmacy-badge-success {
+  background: rgba(40, 167, 69, 0.2);
+  color: #28a745;
+}
+
+.pharmacy-badge-danger {
+  background: #f8d7da;
+  color: #721c24;
+}
+[data-theme="dark"] .pharmacy-badge-danger {
+  background: rgba(220, 53, 69, 0.2);
+  color: #dc3545;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.pharmacy-medicine-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: hsl(var(--muted));
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  margin: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+}

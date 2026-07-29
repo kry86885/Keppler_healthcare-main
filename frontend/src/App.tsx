@@ -37,6 +37,7 @@ import PlatformAdminPage from "./pages/PlatformAdminPage";
 import BedManagementPage from "./pages/BedManagementPage";
 import IcuPage from "./pages/IcuPage";
 import QueuePage from "./pages/QueuePage";
+import DoctorPrescriptionPage from "./pages/DoctorPrescriptionPage";
 import PatientJourneyPage from "./pages/PatientJourneyPage";
 import EmergencyPage from "./pages/EmergencyPage";
 import AmbulancePage from "./pages/AmbulancePage";
@@ -994,6 +995,7 @@ function App() {
           <RegistrationDeskPage mode="appointment-out" selectedPatient={selectedPatient} setNotice={setNotice} />
         )}
         {page === "queue" && hasPermission("patients.read") && <QueuePage setNotice={setNotice} />}
+        {page === "doctor-prescription" && hasPermission("patients.read") && <DoctorPrescriptionPage setNotice={setNotice} />}
         {page === "patient-journey" && hasPermission("patients.read") && <PatientJourneyPage setNotice={setNotice} />}
 
         {page === "consent-desk" && hasPermission("patients.write") && (

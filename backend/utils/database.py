@@ -538,6 +538,7 @@ def init_database():
         ensure_vector_store_tables(conn)
         ensure_symptom_ai_tables(conn)
         ensure_ocr_portal_tables(conn)
+        ensure_pharmacy_prescriptions_tables(conn)
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_hospitals_code ON hospitals(code)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_patient_id ON patients(patient_id)")
@@ -5834,3 +5835,119 @@ def get_hospital_dashboard_summary(hospital_id=None):
         "diagnostics_summary": {"monthly_income": diagnostics_income},
         "referrals": referral_summary,
     }
+
+
+# ---- Pharmacy Prescriptions (OCR Integration) ----
+
+def ensure_pharmacy_prescriptions_tables(conn):
+    cursor = conn.cursor()
+    from utils.database import IS_POSTGRES
+    
+    if IS_POSTGRES:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pharmacy_prescriptions (
+                id SERIAL PRIMARY KEY,
+                hospital_id INTEGER NOT NULL,
+                patient_id TEXT NOT NULL,
+                doctor_username TEXT NOT NULL,
+                doc_id INTEGER,
+                medicines_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                fulfilled_at TIMESTAMP,
+                FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+            )
+            """
+        )
+    else:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pharmacy_prescriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hospital_id INTEGER NOT NULL,
+                patient_id TEXT NOT NULL,
+                doctor_username TEXT NOT NULL,
+                doc_id INTEGER,
+                medicines_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                fulfilled_at TIMESTAMP,
+                FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+            )
+            """
+        )
+    conn.commit()
+
+
+def create_pharmacy_prescription(hospital_id, patient_id, doctor_username, medicines_json, doc_id=None):
+    from utils.database import get_connection, IS_POSTGRES
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if IS_POSTGRES:
+            cursor.execute(
+                """
+                INSERT INTO pharmacy_prescriptions (hospital_id, patient_id, doctor_username, doc_id, medicines_json)
+                VALUES (?, ?, ?, ?, ?)
+                RETURNING id
+                """,
+                (hospital_id, patient_id, doctor_username, doc_id, medicines_json)
+            )
+            pid = cursor.fetchone()[0]
+        else:
+            cursor.execute(
+                """
+                INSERT INTO pharmacy_prescriptions (hospital_id, patient_id, doctor_username, doc_id, medicines_json)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (hospital_id, patient_id, doctor_username, doc_id, medicines_json)
+            )
+            pid = cursor.lastrowid
+        conn.commit()
+        return pid
+
+
+def list_pending_pharmacy_prescriptions(hospital_id):
+    from utils.database import get_connection
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT p.*, pat.name as patient_name, pat.last_name as patient_last_name 
+            FROM pharmacy_prescriptions p
+            JOIN patients pat ON pat.patient_id = p.patient_id
+            WHERE p.hospital_id = ? AND p.status = 'pending'
+            ORDER BY p.created_at DESC
+            """,
+            (hospital_id,)
+        )
+        return cursor.fetchall()
+
+
+def get_pharmacy_prescription(hospital_id, prescription_id):
+    from utils.database import get_connection
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM pharmacy_prescriptions
+            WHERE id = ? AND hospital_id = ?
+            """,
+            (prescription_id, hospital_id)
+        )
+        return cursor.fetchone()
+
+
+def fulfill_pharmacy_prescription(hospital_id, prescription_id):
+    from utils.database import get_connection
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE pharmacy_prescriptions
+            SET status = 'fulfilled', fulfilled_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND hospital_id = ?
+            """,
+            (prescription_id, hospital_id)
+        )
+        conn.commit()

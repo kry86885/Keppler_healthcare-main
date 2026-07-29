@@ -83,6 +83,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "appointment-in", label: "Appointment In", group: "registration", permission: "patients.read", deniedHint: "Requires patient access." },
   { id: "appointment-out", label: "Appointment Out", group: "registration", permission: "patients.read", deniedHint: "Requires patient access." },
   { id: "queue", label: "Queue Management", group: "registration", permission: "patients.read", deniedHint: "Requires patient access." },
+  { id: "doctor-prescription", label: "Doctor Prescription", group: "registration", permission: "patients.read", deniedHint: "Requires patient access." },
   { id: "patient-journey", label: "Patient Journey", group: "overview", permission: "patients.read", deniedHint: "Requires patient access." },
   { id: "consent-desk", label: "Consent Desk", group: "registration", permission: "patients.write", deniedHint: "Requires patient write access." },
   { id: "insurance-desk", label: "Insurance Desk", group: "registration", permission: "patients.write", deniedHint: "Requires patient write access." },
