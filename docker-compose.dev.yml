@@ -12,19 +12,27 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - PORT=5001
+      - PORT=5011
       - DB_ENGINE=sqlite
       - DB_PATH=/data/healthcare.db
       - FLASK_ENV=development
       - SESSION_COOKIE_SECURE=false
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
+      - OCR_BACKEND_URL=http://ocr-api:7620
     ports:
-      - "5001:5001"
+      - "5011:5011"
     volumes:
       - ./backend:/app/backend
+      # Without this, /data/healthcare.db only ever exists in the container's
+      # writable layer -- every `docker compose down`/`--force-recreate` (not
+      # just `restart`) silently wipes all patient/billing data. Bind-mounting
+      # the same file `startdev` already uses at the repo root keeps data
+      # identical and persistent across both dev paths.
+      - ./healthcare.db:/data/healthcare.db
     depends_on:
       - redis
+      - ocr-api
     restart: unless-stopped
 
   celery-worker:
@@ -42,6 +50,7 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
     volumes:
       - ./backend:/app/backend
+      - ./healthcare.db:/data/healthcare.db
     depends_on:
       - redis
       - backend
@@ -52,8 +61,8 @@ services:
       context: .
       dockerfile: frontend/Dockerfile.dev
     environment:
-      - VITE_API_BASE=${VITE_API_BASE:-http://localhost:5001}
-      - VITE_API_URL=${VITE_API_URL:-http://localhost:5001}
+      - VITE_API_BASE=${VITE_API_BASE:-http://localhost:5011}
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:5011}
       - VITE_SYMPTOM_API_BASE=${VITE_SYMPTOM_API_BASE:-http://localhost:5002}
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
@@ -97,7 +106,97 @@ services:
       - ./symptom_backend:/app/symptom_backend
     restart: unless-stopped
 
+  # The OCR/document-intelligence backend: FastAPI + Celery, its own Postgres
+  # and Qdrant, sharing the main `redis` service (db index 1, so its Celery
+  # queue never collides with the main app's). Only `backend` talks to this
+  # (see backend/ai/ocr_portal_client.py) — nothing in the browser calls it
+  # directly. The one thing genuinely kept external is the GPU vLLM model
+  # server (`vllm-qwen-7b`, already running on host port 8700) — that's a
+  # shared, heavy singleton resource, reached via host.docker.internal.
+  ocr-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: keppler
+      POSTGRES_PASSWORD: keppler
+      POSTGRES_DB: keppler
+    volumes:
+      - ocr_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keppler -d keppler"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ocr-qdrant:
+    image: qdrant/qdrant:v1.12.4
+    restart: unless-stopped
+    volumes:
+      - ocr_qdrant_data:/qdrant/storage
+
+  ocr-api:
+    build:
+      context: .
+      dockerfile: ocr_portal/Dockerfile.dev
+    env_file:
+      - ./ocr_portal/.env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://keppler:keppler@ocr-postgres:5432/keppler
+      - REDIS_URL=redis://redis:6379/1
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - QDRANT_URL=http://ocr-qdrant:6333
+      - VLLM_BASE_URL=http://host.docker.internal:8700/v1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "7621:7620"
+    volumes:
+      - ./ocr_portal:/app/ocr_portal
+      - ocr_uploads:/app/ocr_portal/uploads
+    depends_on:
+      ocr-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      ocr-qdrant:
+        condition: service_started
+    restart: unless-stopped
+
+  ocr-worker:
+    build:
+      context: .
+      dockerfile: ocr_portal/Dockerfile.dev
+    command: ["celery", "-A", "workers.celery_app", "worker", "--loglevel=INFO", "--concurrency=1"]
+    env_file:
+      - ./ocr_portal/.env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://keppler:keppler@ocr-postgres:5432/keppler
+      - REDIS_URL=redis://redis:6379/1
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - QDRANT_URL=http://ocr-qdrant:6333
+      - VLLM_BASE_URL=http://host.docker.internal:8700/v1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./ocr_portal:/app/ocr_portal
+      - ocr_uploads:/app/ocr_portal/uploads
+    depends_on:
+      ocr-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      ocr-qdrant:
+        condition: service_started
+      ocr-api:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   frontend_node_modules:
   site_node_modules:
   redis_data:
+  ocr_postgres_data:
+  ocr_qdrant_data:
+  ocr_uploads:

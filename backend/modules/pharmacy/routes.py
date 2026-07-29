@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, g
 from app import (
-    require_permissions, log_audit_event, rows_to_dicts, validate_required_fields
+    require_permissions, log_audit_event, rows_to_dicts, validate_required_fields, current_hospital_id
 )
 from utils.database import (
     list_pharmacy_sales, list_inventory_items, upsert_inventory_item, delete_inventory_item,
@@ -56,7 +56,7 @@ def pharmacy_sale_create():
     )
     if validation_error:
         return validation_error
-    sale_id = create_pharmacy_sale(payload)
+    sale_id = create_pharmacy_sale(payload, hospital_id=current_hospital_id())
     log_audit_event(
         "create",
         "pharmacy_sales",
@@ -76,7 +76,12 @@ def pharmacy_sales_list():
     return jsonify(
         {
             "sales": rows_to_dicts(
-                list_pharmacy_sales(medicine_name=medicine_name, invoice_id=invoice_id, patient_id=patient_id)
+                list_pharmacy_sales(
+                    medicine_name=medicine_name,
+                    invoice_id=invoice_id,
+                    patient_id=patient_id,
+                    hospital_id=current_hospital_id(),
+                )
             )
         }
     )
@@ -173,6 +178,6 @@ def pharmacy_purchases_delete(purchase_id):
 @pharmacy_bp.get("/api/pharmacy/summary")
 @require_permissions("pharmacy.read")
 def pharmacy_summary():
-    return jsonify(get_pharmacy_summary())
+    return jsonify(get_pharmacy_summary(hospital_id=current_hospital_id()))
 
 

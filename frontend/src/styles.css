@@ -131,7 +131,7 @@ textarea {
   width: 100%;
   border: 1px solid hsl(var(--input));
   border-radius: calc(var(--radius) - 6px);
-  background: #fff;
+  background: hsl(var(--card));
   padding: 0.45rem 0.62rem;
   color: hsl(var(--foreground));
   transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
@@ -1456,6 +1456,11 @@ main {
   color: #486b78;
 }
 
+[data-theme="dark"] .table-head {
+  background: linear-gradient(180deg, hsl(var(--muted)) 0%, hsl(var(--card)) 100%);
+  color: hsl(var(--muted-foreground));
+}
+
 .table-row {
   border-top: 1px solid hsl(var(--border));
   font-size: 0.83rem;
@@ -1819,6 +1824,14 @@ main {
   cursor: not-allowed;
 }
 
+[data-theme="dark"] .upload-dropzone {
+  background: linear-gradient(160deg, rgba(10, 149, 160, 0.16) 0%, rgba(10, 149, 160, 0.08) 100%);
+}
+
+[data-theme="dark"] .upload-dropzone.is-dragover {
+  background: rgba(10, 149, 160, 0.24);
+}
+
 .upload-title {
   font-size: 0.82rem;
   font-weight: 700;
@@ -1919,6 +1932,300 @@ main {
 
 .ocr-source-pdf {
   height: 420px;
+}
+
+.ocr-page-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.ocr-page-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: linear-gradient(155deg, hsl(var(--primary) / 0.16) 0%, hsl(var(--accent) / 0.14) 100%);
+  color: hsl(var(--primary));
+  margin-top: 0.1rem;
+}
+
+.ocr-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+}
+
+.ocr-workspace-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+.ocr-upload-form {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.ocr-field-label {
+  display: block;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: hsl(var(--foreground));
+  margin-bottom: 0.4rem;
+}
+
+.ocr-form-actions {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+
+.ocr-form-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+.ocr-status-card {
+  position: sticky;
+  top: 1rem;
+}
+
+.ocr-status-panel {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.ocr-status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ocr-badge-icon {
+  display: inline-flex;
+  margin-right: 0.3rem;
+}
+
+.ocr-progress-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  overflow: hidden;
+}
+
+.ocr-progress-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, hsl(var(--primary)) 0%, hsl(var(--accent)) 100%);
+  transition: width 0.5s ease;
+}
+
+.ocr-error-text {
+  color: hsl(var(--destructive));
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.ocr-export-row {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  padding-top: 0.6rem;
+  border-top: 1px solid hsl(var(--border));
+}
+
+.ocr-result-card {
+  margin-top: 1rem;
+}
+
+.ocr-result-markdown {
+  max-height: 520px;
+  overflow-y: auto;
+  padding: 1.1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 4px);
+  background: hsl(var(--muted) / 0.4);
+}
+
+.ocr-empty-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  text-align: center;
+  padding: 2.2rem 1rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.ocr-empty-panel-compact {
+  padding: 1.2rem 1rem;
+}
+
+.ocr-doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  padding: 0;
+  color: hsl(var(--primary));
+  font-weight: 600;
+  font-size: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ocr-doc-link:hover {
+  text-decoration: underline;
+}
+
+.ocr-vault-table .table-head,
+.ocr-vault-table .table-row {
+  grid-template-columns: 1.7fr 1fr 0.8fr 1fr 1.5fr;
+}
+
+.ocr-row-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.ocr-chat-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  align-items: start;
+}
+
+.ocr-chat-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.ocr-chat-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.ocr-chat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.ocr-kb-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.ocr-kb-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.ocr-kb-item:last-child {
+  border-bottom: none;
+}
+
+.ocr-kb-item-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ocr-chat-history {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-height: 320px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 0.9rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 4px);
+  background: hsl(var(--muted) / 0.35);
+  margin-bottom: 0.7rem;
+}
+
+.ocr-chat-message {
+  max-width: 86%;
+  padding: 0.6rem 0.85rem;
+  border-radius: 14px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.ocr-chat-role {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.2rem;
+  opacity: 0.65;
+}
+
+.ocr-chat-user {
+  align-self: flex-end;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-bottom-right-radius: 4px;
+}
+
+.ocr-chat-user .ocr-chat-role {
+  color: hsl(var(--primary-foreground));
+}
+
+.ocr-chat-assistant {
+  align-self: flex-start;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-bottom-left-radius: 4px;
+}
+
+.ocr-chat-citations {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.ocr-chat-thinking {
+  align-self: flex-start;
+  font-style: italic;
+}
+
+@media (max-width: 900px) {
+  .ocr-workspace-grid,
+  .ocr-chat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ocr-status-card {
+    position: static;
+  }
 }
 
 .ocr-text,

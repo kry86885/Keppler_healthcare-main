@@ -296,6 +296,7 @@ function App() {
   const sidebarGroups = useMemo(() => {
     const groups: Array<{ key: string; label: string; items: typeof sidebarNavItems }> = [
       { key: "overview", label: "Overview", items: [] },
+      { key: "ai", label: "AI", items: [] },
       { key: "registration", label: "Registration Desk", items: [] },
       { key: "operations", label: "Operations", items: [] },
       { key: "finance", label: "Finance", items: [] },
@@ -983,9 +984,7 @@ function App() {
         {page === "add" && (
           <AddPatientPage onCreate={handleCreatePatient} setNotice={setNotice} onNavigate={navigateToPage} />
         )}
-        {page === "ocr" && hasPermission("patients.write") && (
-          <OcrPage setNotice={setNotice} ocrLanguage={ocrLanguage} onNavigate={navigateToPage} />
-        )}
+        {page === "ocr" && hasPermission("patients.write") && <OcrPage setNotice={setNotice} />}
 
         {page === "appointment-in" && hasPermission("patients.read") && (
           <RegistrationDeskPage mode="appointment-in" selectedPatient={selectedPatient} setNotice={setNotice} />

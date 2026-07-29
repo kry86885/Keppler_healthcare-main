@@ -44,6 +44,7 @@ def appointments_list():
                     visit_type=visit_type,
                     doctor_name=doctor_name,
                     patient_id=patient_id,
+                    hospital_id=current_hospital_id(),
                 )
             )
         }
@@ -60,7 +61,7 @@ def appointments_create():
     )
     if validation_error:
         return validation_error
-    appointment_id, token_no = create_appointment(payload)
+    appointment_id, token_no = create_appointment(payload, hospital_id=current_hospital_id())
     log_audit_event(
         "create",
         "appointments",
@@ -185,7 +186,8 @@ def appointments_razorpay_verify():
             "appointment_kind": appointment_payload.get("appointment_kind", "new"),
             "follow_up_for": appointment_payload.get("follow_up_for"),
             "notes": appointment_payload.get("notes"),
-        }
+        },
+        hospital_id=current_hospital_id(),
     )
     invoice_no = f"INV-OP-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     invoice_id = create_invoice(
@@ -200,7 +202,8 @@ def appointments_razorpay_verify():
             "refunded_amount": 0,
             "payment_status": "due",
             "created_by": g.current_user.get("username"),
-        }
+        },
+        hospital_id=current_hospital_id(),
     )
     payment_mode = normalize_payment_mode(payload.get("payment_mode"))
     payment_id = record_invoice_payment(

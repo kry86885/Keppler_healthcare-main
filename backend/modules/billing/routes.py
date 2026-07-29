@@ -23,7 +23,7 @@ def billing_invoices():
     patient_id = request.args.get("patient_id")
     module = request.args.get("module")
     return jsonify(
-        {"invoices": rows_to_dicts(list_invoices(patient_id=patient_id, module=module))}
+        {"invoices": rows_to_dicts(list_invoices(patient_id=patient_id, module=module, hospital_id=current_hospital_id()))}
     )
 
 
@@ -55,7 +55,8 @@ def billing_create_invoice():
             "refunded_amount": payload.get("refunded_amount", 0),
             "payment_status": payload.get("payment_status", "due"),
             "created_by": g.current_user.get("username"),
-        }
+        },
+        hospital_id=current_hospital_id(),
     )
     log_audit_event(
         "create", "billing_invoices", str(invoice_id), {"invoice_no": invoice_no}
@@ -233,7 +234,7 @@ def billing_record_payment(invoice_id):
 @billing_bp.get("/api/billing/revenue-summary")
 @require_permissions("billing.read")
 def billing_revenue_summary():
-    return jsonify(get_revenue_summary())
+    return jsonify(get_revenue_summary(hospital_id=current_hospital_id()))
 
 
 

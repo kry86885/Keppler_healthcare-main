@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, g
 from app import (
-    require_permissions, log_audit_event, rows_to_dicts, validate_required_fields
+    require_permissions, log_audit_event, rows_to_dicts, validate_required_fields, current_hospital_id
 )
 from utils.database import (
     list_lab_vendors, create_lab_vendor, update_lab_vendor, delete_lab_vendor, list_diagnostics,
@@ -65,7 +65,7 @@ def lab_diagnostics_list():
     return jsonify(
         {
             "diagnostics": rows_to_dicts(
-                list_diagnostics(patient_id=patient_id, doctor_name=doctor_name)
+                list_diagnostics(patient_id=patient_id, doctor_name=doctor_name, hospital_id=current_hospital_id())
             )
         }
     )
@@ -79,7 +79,7 @@ def lab_diagnostics_create():
     validation_error = validate_required_fields(payload, ["test_name", "amount"])
     if validation_error:
         return validation_error
-    diagnostic_id = create_diagnostic_record(payload)
+    diagnostic_id = create_diagnostic_record(payload, hospital_id=current_hospital_id())
     log_audit_event(
         "create",
         "diagnostics",
@@ -120,6 +120,6 @@ def lab_diagnostics_delete(diagnostic_id):
 @diagnostics_bp.get("/api/lab/summary")
 @require_permissions("lab.read")
 def lab_summary():
-    return jsonify(get_diagnostic_summary())
+    return jsonify(get_diagnostic_summary(hospital_id=current_hospital_id()))
 
 

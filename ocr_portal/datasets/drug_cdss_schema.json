@@ -1,0 +1,1030 @@
+{
+  "schema_version": "1.0",
+  "description": "Drug CDSS (Clinical Decision Support System) \u2014 Patient + Drug input schema",
+  "patient": {
+    "_comment": "All patient demographic and clinical fields",
+    "age": 45,
+    "gender": "Female",
+    "weight": 65,
+    "age_group": "adult",
+    "pregnancy": "No",
+    "pregnancy_trimester": "NOT_APPLICABLE",
+    "breastfeeding": "No",
+    "hepatic_impairment": "None",
+    "smoking_status": "Non-smoker",
+    "alcohol_use": "None",
+    "dialysis_status": "None",
+    "liver_disease_type": "None",
+    "primary_indication": "",
+    "comorbid": [],
+    "cv_history": [],
+    "gi_risk": [],
+    "high_risk_meds": [],
+    "allergy_history": []
+  },
+  "labs": {
+    "_comment": "Latest lab values \u2014 null if not available",
+    "creatinine": null,
+    "egfr": null,
+    "crcl": null,
+    "potassium": null,
+    "alt": null,
+    "ast": null,
+    "bilirubin": null,
+    "hemoglobin": null
+  },
+  "drugs": [
+    {
+      "name": "Diclofenac",
+      "route": "oral",
+      "freq": "OD",
+      "duration_value": 3,
+      "duration_unit": "days",
+      "dose_value": 200,
+      "dose_unit": "mg",
+      "cdss_rules": {
+        "box_warning": {
+          "cv_thrombotic_events": "NSAIDs including Diclofenac increase risk of serious cardiovascular thrombotic events including MI and Stroke. Risk increases with duration of use.",
+          "gi_bleeding": "NSAIDs cause increased risk of serious GI adverse events including bleeding, ulceration and perforation of stomach or intestines, which can be fatal.",
+          "cabg_contraindicated": "Diclofenac is CONTRAINDICATED in the setting of Coronary Artery Bypass Graft (CABG) surgery."
+        },
+        "contraindications": {
+          "hypersensitivity_to_drug": "Contraindicated in patients with known hypersensitivity to Diclofenac or its excipients.",
+          "nsaid_allergy": "Contraindicated if history of Asthma, Urticaria or allergic-type reactions after Aspirin or other NSAIDs.",
+          "severe_heart_failure": "Contraindicated in severe uncontrolled heart failure.",
+          "cabg_surgery": "Contraindicated in the setting of CABG surgery.",
+          "pregnancy_third_trimester": "Contraindicated from 30 weeks gestation \u2014 risk of premature closure of ductus arteriosus.",
+          "breastfeeding": "Contraindicated in breastfeeding women due to potential serious adverse reactions in lactating infants.",
+          "active_gi_ulcer": "Contraindicated in active Gastric/Duodenal/Peptic ulcer, GI bleeding or perforation.",
+          "severe_hepatic_impairment": "Contraindicated in severe hepatic impairment or active liver disease.",
+          "severe_renal_impairment": "Contraindicated if CrCl < 30 mL/min or deteriorating renal disease.",
+          "hyperkalemia": "Contraindicated in known Hyperkalemia.",
+          "cerebrovascular_bleeding": "Contraindicated in cerebrovascular bleeding or other bleeding disorders."
+        },
+        "warnings_by_condition": {
+          "cv_risk": {
+            "trigger_fields": [
+              "cv_history",
+              "comorbid"
+            ],
+            "trigger_values": [
+              "hypertension",
+              "heart_disease",
+              "MI",
+              "stroke",
+              "heart_failure",
+              "ischemic_heart_disease"
+            ],
+            "severity": "HIGH",
+            "message": "Diclofenac significantly increases cardiovascular thrombotic risk. Use lowest effective dose for shortest duration. Consider alternative analgesic. Monitor BP regularly."
+          },
+          "gi_risk": {
+            "trigger_fields": [
+              "gi_risk",
+              "comorbid",
+              "high_risk_meds"
+            ],
+            "trigger_values": [
+              "peptic_ulcer",
+              "GI_bleed",
+              "gastritis",
+              "IBD",
+              "anticoagulant",
+              "aspirin",
+              "steroid"
+            ],
+            "severity": "HIGH",
+            "message": "Increased risk of GI bleeding and ulceration. Co-prescribe PPI (e.g. Omeprazole 20mg OD). Monitor for GI symptoms."
+          },
+          "renal_risk": {
+            "trigger_fields": [
+              "comorbid",
+              "labs"
+            ],
+            "trigger_values": [
+              "renal_disease",
+              "CKD",
+              "dialysis"
+            ],
+            "lab_thresholds": {
+              "egfr": "<60",
+              "crcl": "<60",
+              "creatinine": ">1.5"
+            },
+            "severity": "HIGH",
+            "message": "Diclofenac can cause renal toxicity and is NOT recommended with moderate-severe renal impairment. Monitor renal function. Use with caution if eGFR 30-60."
+          },
+          "hepatic_risk": {
+            "trigger_fields": [
+              "hepatic_impairment",
+              "liver_disease_type"
+            ],
+            "trigger_values": [
+              "mild",
+              "moderate",
+              "severe",
+              "cirrhosis",
+              "hepatitis"
+            ],
+            "severity": "MODERATE",
+            "message": "Diclofenac is extensively metabolised hepatically. Not recommended in moderate-severe hepatic impairment. Monitor LFTs periodically."
+          },
+          "pregnancy": {
+            "trigger_fields": [
+              "pregnancy",
+              "pregnancy_trimester"
+            ],
+            "trigger_values": [
+              "Yes"
+            ],
+            "trimester_rules": {
+              "first": {
+                "severity": "MODERATE",
+                "category": "FDA Cat-C",
+                "message": "Use only if clearly needed. Risk of miscarriage and cardiac malformations reported."
+              },
+              "second": {
+                "severity": "MODERATE",
+                "category": "FDA Cat-C",
+                "message": "Use only if clearly needed. Risk of fetal renal dysfunction and oligohydramnios."
+              },
+              "third": {
+                "severity": "CONTRAINDICATED",
+                "category": "FDA Cat-D",
+                "message": "CONTRAINDICATED from 30 weeks gestation \u2014 risk of premature closure of ductus arteriosus and prolonged parturition."
+              }
+            }
+          },
+          "breastfeeding": {
+            "trigger_fields": [
+              "breastfeeding"
+            ],
+            "trigger_values": [
+              "Yes"
+            ],
+            "severity": "CONTRAINDICATED",
+            "message": "Diclofenac is CONTRAINDICATED in breastfeeding. Excreted in breast milk. Risk of serious adverse reactions in the infant."
+          },
+          "geriatric": {
+            "trigger_fields": [
+              "age"
+            ],
+            "age_threshold": 65,
+            "severity": "HIGH",
+            "message": "Elderly patients have greater risk of NSAID-associated serious CV, GI and renal adverse events. Start at lowest dose. Monitor closely. Use with extreme caution."
+          },
+          "pediatric": {
+            "trigger_fields": [
+              "age_group"
+            ],
+            "trigger_values": [
+              "pediatric",
+              "child"
+            ],
+            "severity": "MODERATE",
+            "message": "Oral Diclofenac is not recommended in children under 14 years for most indications. Use suppositories for post-operative pain in children under guidance."
+          },
+          "alcohol": {
+            "trigger_fields": [
+              "alcohol_use"
+            ],
+            "trigger_values": [
+              "moderate",
+              "heavy",
+              "occasional"
+            ],
+            "severity": "MODERATE",
+            "message": "Alcohol combined with NSAIDs significantly increases risk of GI bleeding and hepatotoxicity."
+          },
+          "smoking": {
+            "trigger_fields": [
+              "smoking_status"
+            ],
+            "trigger_values": [
+              "Smoker",
+              "Ex-smoker"
+            ],
+            "severity": "LOW",
+            "message": "Smoking is an additional risk factor for GI ulceration with NSAID use."
+          },
+          "dose_check": {
+            "max_daily_oral_mg": 200,
+            "recommended_dose_mg": 50,
+            "recommended_freq": "TDS",
+            "severity": "MODERATE",
+            "message": "Recommended Diclofenac oral dose is 50mg TDS (150mg/day). Doses above 200mg/day are not recommended."
+          },
+          "allergy": {
+            "trigger_fields": [
+              "allergy_history"
+            ],
+            "trigger_values": [
+              "Diclofenac",
+              "NSAIDs",
+              "Aspirin",
+              "Ibuprofen",
+              "Naproxen"
+            ],
+            "severity": "CONTRAINDICATED",
+            "message": "Patient has documented allergy to NSAIDs/Diclofenac. USE IS CONTRAINDICATED."
+          }
+        },
+        "adverse_reactions": {
+          "common": [
+            "GI discomfort",
+            "Nausea",
+            "Dyspepsia",
+            "Headache",
+            "Dizziness",
+            "Elevated LFTs"
+          ],
+          "serious": [
+            "GI Bleeding",
+            "GI Perforation",
+            "MI",
+            "Stroke",
+            "Renal failure",
+            "Hepatotoxicity",
+            "Severe skin reactions (SJS/TEN)",
+            "Anaphylaxis",
+            "Hypertension",
+            "Heart failure"
+          ],
+          "system_wise": {
+            "Cardiovascular": "Congestive heart failure, Hypertension, Tachycardia, Palpitation",
+            "GI": "Dry mouth, Esophagitis, Gastric/peptic ulcer, GI bleeding, Nausea, Vomiting",
+            "Renal": "Acute renal failure, Renal papillary necrosis, Nephrotic syndrome",
+            "Hepatic": "Jaundice, Liver failure, Hepatitis",
+            "Skin": "Stevens-Johnson Syndrome, Toxic epidermal necrolysis, Rash",
+            "CNS": "Headache, Dizziness, Depression, Insomnia",
+            "Hematologic": "Agranulocytosis, Aplastic anaemia, Thrombocytopenia"
+          }
+        },
+        "monitoring": {
+          "before_start": [
+            "BP measurement",
+            "Renal function (Cr, eGFR)",
+            "LFTs if hepatic risk",
+            "CBC if long-term use"
+          ],
+          "during_treatment": [
+            "BP monitoring",
+            "Renal function at 1-2 weeks if risk",
+            "Watch for GI symptoms",
+            "Watch for oedema / fluid retention"
+          ],
+          "stop_if": [
+            "GI bleeding",
+            "Severe abdominal pain",
+            "Jaundice",
+            "Oliguria",
+            "Chest pain",
+            "BP surge > 180/110"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Amoxicillin",
+      "route": "oral",
+      "freq": "TDS",
+      "duration_value": 7,
+      "duration_unit": "days",
+      "dose_value": 500,
+      "dose_unit": "mg",
+      "document_version": "Comprehensive Pin-to-Pin JSON \u2014 All Redline Headings & Conditions",
+      "introduction": {
+        "drug_class": "Broad-spectrum semisynthetic Aminopenicillin antibiotic",
+        "activity": "Bactericidal",
+        "primary_use": "Treatment of various bacterial infections",
+        "mechanism_of_action": {
+          "step_1": "Amoxicillin binds to Penicillin-binding proteins (PBPs) on the inner membrane of the bacterial cell wall.",
+          "step_2": "Inactivation of PBPs interferes with cross-linkage of peptidoglycan chains.",
+          "step_3": "Disrupts bacterial cell wall synthesis.",
+          "result": "Weakening of cell wall and cell lysis."
+        },
+        "WHO_ATC_classification": {
+          "Level_1": "J \u2014 Antiinfectives for systemic use",
+          "Level_2": "J01 \u2014 Antibacterials for systemic use",
+          "Level_3": "J01C \u2014 Beta-lactam antibacterials, Penicillins",
+          "Level_4": "J01CA \u2014 Penicillins with extended spectrum",
+          "Level_5": "J01CA04 \u2014 Amoxicillin"
+        },
+        "NOT_active_against": [
+          "Pseudomonas aeruginosa",
+          "Indole-positive Proteus species",
+          "Serratia marcescens",
+          "Klebsiella species",
+          "Enterobacter species"
+        ]
+      },
+      "indications": {
+        "adults_and_pediatrics": {
+          "upper_respiratory_tract_infections": {
+            "body_parts": "Ear, Nose, Throat",
+            "organisms": [
+              "Streptococcus species (\u03b1- and \u03b2-hemolytic, \u03b2-lactamase\u2013negative only)",
+              "Streptococcus pneumoniae",
+              "Staphylococcus spp.",
+              "Haemophilus influenzae"
+            ]
+          },
+          "lower_respiratory_tract_infections": {
+            "organisms": [
+              "Streptococcus spp. (\u03b1- and \u03b2-hemolytic, \u03b2-lactamase\u2013negative only)",
+              "S. pneumoniae",
+              "Staphylococcus spp.",
+              "H. influenzae"
+            ]
+          },
+          "genitourinary_tract_infections": {
+            "types": "Complicated and uncomplicated, acute and chronic",
+            "organisms": [
+              "Escherichia coli",
+              "Proteus mirabilis",
+              "Enterococcus faecalis"
+            ]
+          },
+          "skin_and_skin_structure_infections": {
+            "organisms": [
+              "Streptococcus spp. (\u03b1- and \u03b2-hemolytic, \u03b2-lactamase\u2013negative only)",
+              "Staphylococcus spp.",
+              "E. coli"
+            ]
+          },
+          "tonsillitis_and_pharyngitis": {
+            "population": "Adults and pediatric patients 12 years and older",
+            "organism": "Streptococcus pyogenes (S. pyogenes)"
+          },
+          "septicaemia": {
+            "organisms": [
+              "H. influenzae",
+              "E. coli",
+              "P. mirabilis",
+              "Streptococcus",
+              "Streptococcus pneumoniae",
+              "Streptococcus faecalis",
+              "Salmonella typhi"
+            ]
+          },
+          "gonorrhoea": {
+            "organism": "Non-penicillinase-producing N. gonorrhoeae"
+          },
+          "prophylaxis": {
+            "pre_dental_surgery": {
+              "target": "Alpha-hemolytic (Viridans group) Streptococci",
+              "use_case": "Before dental, oral or upper respiratory tract surgery/instrumentation"
+            },
+            "bacterial_endocarditis": {
+              "conditions_requiring_prophylaxis": [
+                "Congenital cardiac malformations",
+                "Rheumatic and other acquired valvular lesions",
+                "Prosthetic heart valves",
+                "Previous history of bacterial Endocarditis",
+                "Hypertrophic cardiomyopathy",
+                "Surgically constructed systemic pulmonary shunts",
+                "Mitral valve prolapse with valvular regurgitation",
+                "Mitral valve prolapse without valvular regurgitation but with thickening/redundancy of valve leaflets"
+              ]
+            }
+          }
+        },
+        "adults_only": {
+          "H_pylori_infection_and_duodenal_ulcer": {
+            "type": "Active or 1-year history of duodenal ulcer",
+            "therapy_options": {
+              "triple_therapy": "With Clarithromycin and Lansoprazole",
+              "dual_therapy": "With Lansoprazole (for patients allergic/intolerant to Clarithromycin or known/suspected Clarithromycin resistance)"
+            }
+          }
+        }
+      },
+      "dosage_forms_routes_strengths": {
+        "oral": {
+          "tablet": [
+            "125 mg",
+            "250 mg",
+            "500 mg",
+            "750 mg",
+            "1000 mg"
+          ],
+          "capsule": [
+            "250 mg",
+            "500 mg"
+          ],
+          "oral_suspension": [
+            "100 mg/mL",
+            "125 mg/5 mL",
+            "200 mg/5 mL",
+            "250 mg/5 mL",
+            "400 mg/5 mL"
+          ]
+        },
+        "parenteral": {
+          "powder_for_solution_for_injection": [
+            "250 mg",
+            "500 mg",
+            "1000 mg"
+          ]
+        }
+      },
+      "dosage_and_administration": {
+        "general_note": "Dosage must be individualized.",
+        "ORAL": {
+          "adults_and_pediatrics_over_40kg_3months_plus": {
+            "upper_respiratory_tract_skin_genitourinary": {
+              "mild_to_moderate": "500 mg every 12 hours OR 250 mg every 8 hours",
+              "severe": "500 mg every 8 hours"
+            },
+            "lower_respiratory_tract": {
+              "mild_moderate_severe": "875 mg every 12 hours OR 500 mg every 8 hours"
+            }
+          },
+          "pediatrics_under_40kg_3months_plus": {
+            "upper_respiratory_tract_skin_genitourinary": {
+              "mild_to_moderate": "25 mg/kg/day divided every 12 hours OR 20 mg/kg/day divided every 8 hours",
+              "severe": "45 mg/kg/day divided every 12 hours OR 40 mg/kg/day divided every 8 hours"
+            },
+            "lower_respiratory_tract": {
+              "mild_moderate_severe": "45 mg/kg/day divided every 12 hours OR 40 mg/kg/day divided every 8 hours"
+            }
+          },
+          "tonsillitis_pharyngitis_12years_plus": {
+            "dose": "775 mg once daily within 1 hour after meal",
+            "duration": "10 days"
+          },
+          "H_pylori_adults_only": {
+            "triple_therapy": {
+              "amoxicillin": "1000 mg",
+              "clarithromycin": "500 mg",
+              "lansoprazole": "30 mg",
+              "frequency": "All twice daily (every 12 hours)",
+              "duration": "14 days"
+            },
+            "dual_therapy": {
+              "amoxicillin": "1000 mg",
+              "lansoprazole": "30 mg",
+              "frequency": "Each 3 times daily (every 8 hours)",
+              "duration": "14 days"
+            }
+          },
+          "endocarditis_prevention": {
+            "adults": "3 g orally 1 hour before procedure; then 1.5 g 6 hours after initial dose",
+            "pediatrics": "50 mg/kg (not to exceed adult dose) 1 hour before procedure; then 25 mg/kg 6 hours after initial dose"
+          }
+        },
+        "PARENTERAL": {
+          "adults_over_40kg": {
+            "upper_respiratory_genitourinary_skin": "250 mg every 6\u20138 hours depending on condition",
+            "lower_respiratory": "500 mg every 6\u20138 hours"
+          },
+          "pediatrics_under_40kg_over_3months": {
+            "upper_respiratory_skin_genitourinary": {
+              "children_under_20kg": "20 mg/kg/day in equally divided doses every 6\u20138 hours"
+            },
+            "lower_respiratory": {
+              "children_under_20kg": "40 mg/kg/day equally divided every 6\u20138 hours"
+            }
+          },
+          "bacterial_septicaemia": {
+            "adults": "1000 mg every 6 hours by slow IV injection (3\u20134 min direct or via drip tube) or IV infusion over 30 min to 1 hour",
+            "pediatrics": "20\u201340 mg/kg every 6 hours"
+          }
+        },
+        "RENAL_IMPAIRMENT": {
+          "adults_and_pediatrics_over_40kg_over_3months": {
+            "GFR_over_30_mL_min": "No dose adjustment required",
+            "GFR_10_to_30_mL_min": {
+              "oral": "500 mg or 250 mg every 12 hours (depending on infection severity)",
+              "IV": "1 g initially, then 0.5\u20131 g every 12\u201324 hours"
+            },
+            "GFR_less_than_10_mL_min": {
+              "oral": "500 mg or 250 mg every 24 hours (depending on infection severity)",
+              "IV_general": "1 g initially, then 0.5\u20131 g every 24 hours",
+              "IV_E_coli_S_faecalis": "1 g every 12 hours"
+            }
+          },
+          "hemodialysis": {
+            "oral": "500 mg or 250 mg every 24 hours; additional dose both DURING and AT END of dialysis",
+            "parenteral": "1 g at end of dialysis, then 0.5\u20131 g every 12\u201324 hours IV"
+          },
+          "pediatrics_under_12_weeks": {
+            "oral_only": "Maximum 30 mg/kg/day divided every 12 hours (due to incompletely developed renal function)"
+          }
+        },
+        "drug_administration_instructions": [
+          "Take orally at the start of a meal.",
+          "For IV infusion, dilute to 3% w/v concentration using: Normal Saline (0.9%), Ringer's solution, M/6 Sodium lactate, Hartmann's solution, Glucose 5%, or Sodium chloride 0.18% + Glucose 4%.",
+          "Treat Streptococcus pyogenes infections for at least 10 days to prevent acute rheumatic fever.",
+          "Continue treatment for minimum 48\u201372 hours beyond the time the patient becomes asymptomatic or bacterial eradication is confirmed."
+        ],
+        "oral_suspension_reconstitution": {
+          "125mg_5mL": [
+            {
+              "bottle_size": "75 mL",
+              "water_required": "52 mL"
+            },
+            {
+              "bottle_size": "100 mL",
+              "water_required": "70 mL"
+            },
+            {
+              "bottle_size": "100 mL (alt)",
+              "water_required": "103 mL"
+            }
+          ],
+          "200mg_5mL": [
+            {
+              "bottle_size": "50 mL",
+              "water_required": "39 mL"
+            },
+            {
+              "bottle_size": "75 mL",
+              "water_required": "57 mL"
+            },
+            {
+              "bottle_size": "100 mL",
+              "water_required": "76 mL"
+            }
+          ],
+          "250mg_5mL": [
+            {
+              "bottle_size": "75 mL",
+              "water_required": "51 mL"
+            },
+            {
+              "bottle_size": "100 mL",
+              "water_required": "68 mL"
+            },
+            {
+              "bottle_size": "100 mL (alt)",
+              "water_required": "101 mL"
+            }
+          ],
+          "400mg_5mL": [
+            {
+              "bottle_size": "50 mL",
+              "water_required": "36 mL"
+            },
+            {
+              "bottle_size": "75 mL",
+              "water_required": "54 mL"
+            },
+            {
+              "bottle_size": "100 mL",
+              "water_required": "71 mL"
+            }
+          ]
+        }
+      },
+      "contraindications_raw": [
+        {
+          "condition": "Known serious hypersensitivity to Amoxicillin or other \u03b2-lactam drugs",
+          "examples": "Penicillins, Cephalosporins, Carbapenem, Monobactam",
+          "reactions_include": "Anaphylaxis, Stevens-Johnson Syndrome"
+        },
+        {
+          "condition": "Suspected or confirmed Infectious Mononucleosis",
+          "reason": "High risk of erythematous skin rash"
+        },
+        {
+          "condition": "Trivial or non-bacterial infections",
+          "reason": "Antibiotics have no place in trivial infections"
+        }
+      ],
+      "REDLINE_SPECIAL_WARNINGS_AND_PRECAUTIONS": {
+        "heading": "SPECIAL WARNINGS & PRECAUTIONS \u2014 ALL CONDITIONS",
+        "WARNING_1_ANAPHYLACTIC_REACTIONS": {
+          "severity": "CRITICAL \u2014 POTENTIALLY FATAL",
+          "title": "Anaphylactic / Hypersensitivity Reactions",
+          "conditions": [
+            "Serious and occasionally fatal hypersensitivity (anaphylactic) reactions reported in patients on Penicillin/Amoxicillin therapy.",
+            "Anaphylaxis is more frequent with parenteral therapy but also occurs with oral Penicillins.",
+            "Patients with history of Penicillin hypersensitivity may experience severe reactions with Cephalosporins.",
+            "Allergic diathesis, Bronchial Asthma, and Hay Fever \u2014 special caution required.",
+            "Drug-induced Enterocolitis Syndrome (DIES) reported mainly in children: protracted vomiting 1\u20134 hours after administration, abdominal pain, diarrhoea, hypotension, leukocytosis with neutrophilia; severe cases can progress to shock."
+          ],
+          "action_required": [
+            "Careful inquiry about previous hypersensitivity to Penicillins, Cephalosporins, or other allergens before initiating therapy.",
+            "DISCONTINUE Amoxicillin immediately if allergic reaction occurs.",
+            "Serious anaphylactic reactions require: Epinephrine (immediate), IV steroids, Oxygen, Airway management including intubation."
+          ]
+        },
+        "WARNING_2_SEVERE_CUTANEOUS_ADVERSE_REACTIONS": {
+          "severity": "CRITICAL \u2014 REDLINE",
+          "title": "Severe Cutaneous Adverse Reactions (SCAR)",
+          "conditions_included": [
+            "Stevens-Johnson Syndrome (SJS)",
+            "Toxic Epidermal Necrolysis (TEN)",
+            "Drug Reaction with Eosinophilia and Systemic Symptoms (DRESS)",
+            "Acute Generalized Exanthematous Pustulosis (AGEP)"
+          ],
+          "action_required": [
+            "Monitor patients closely if skin rash develops.",
+            "DISCONTINUE Amoxicillin if lesions progress."
+          ]
+        },
+        "WARNING_3_SKIN_RASH_MONONUCLEOSIS": {
+          "severity": "HIGH",
+          "title": "Skin Rash in Patients with Mononucleosis",
+          "condition": "High percentage of patients with mononucleosis develop erythematous skin rash if given Amoxicillin.",
+          "action_required": "DO NOT administer Amoxicillin to patients with mononucleosis."
+        },
+        "WARNING_4_CDAD": {
+          "severity": "HIGH \u2014 POTENTIALLY FATAL",
+          "title": "Clostridioides Difficile-Associated Diarrhea (CDAD)",
+          "conditions": [
+            "CDAD reported with use of nearly all antibacterial agents including Amoxicillin.",
+            "Severity range: mild diarrhoea \u2192 fatal colitis."
+          ],
+          "action_required": "Consider CDAD diagnosis in patients with diarrhoea during or after antibiotic use."
+        },
+        "WARNING_5_PHENYLKETONURICS": {
+          "severity": "MODERATE",
+          "title": "Phenylketonurics",
+          "conditions": [
+            "Some Amoxicillin formulations contain Aspartame, which contains Phenylalanine \u2014 AVOID in Phenylketonurics.",
+            "Oral suspension formulations do NOT contain Phenylalanine \u2014 SAFE for Phenylketonurics."
+          ]
+        },
+        "WARNING_6_CARDIOVASCULAR_KOUNIS_SYNDROME": {
+          "severity": "HIGH",
+          "title": "Cardiovascular \u2014 Kounis Syndrome",
+          "condition": "Kounis Syndrome (serious allergic reaction that can result in Myocardial Infarction) can occur as chest pain in association with an allergic reaction to Amoxicillin.",
+          "action_required": "Recognize chest pain in the context of an allergic reaction as potentially Kounis Syndrome."
+        },
+        "WARNING_7_HEMATOLOGIC": {
+          "severity": "MODERATE",
+          "title": "Hematologic \u2014 Prolonged Prothrombin Time / Increased INR",
+          "conditions": [
+            "Abnormal prolongation of prothrombin time (increased INR) reported in patients on Amoxicillin AND oral anticoagulants."
+          ],
+          "action_required": [
+            "Monitor INR appropriately.",
+            "Adjust oral anticoagulant dose as necessary to maintain desired anticoagulation level.",
+            "Cross-reference: Drug Interactions \u2014 Warfarin."
+          ]
+        },
+        "WARNING_8_RENAL": {
+          "severity": "MODERATE",
+          "title": "Renal Impairment",
+          "conditions": [
+            "Amoxicillin is primarily excreted by the kidney.",
+            "Patients with renal impairment require dose reduction proportional to the degree of renal function loss."
+          ],
+          "action_required": [
+            "Periodic assessment of renal function during prolonged therapy.",
+            "Cross-reference: Dosage and Administration \u2014 Renal Impairment."
+          ]
+        },
+        "WARNING_9_PROLONGED_THERAPY": {
+          "severity": "MODERATE",
+          "title": "Prolonged Therapy Monitoring",
+          "conditions": [
+            "Elevated liver enzymes and blood count changes reported during prolonged use."
+          ],
+          "action_required": "Periodic assessment of renal, hepatic, and hematopoietic functions during prolonged therapy."
+        },
+        "WARNING_10_SUPERINFECTIONS": {
+          "severity": "MODERATE",
+          "title": "Superinfections",
+          "conditions": [
+            "Superinfections with mycotic or bacterial pathogens can occur (commonly Aerobacter, Pseudomonas, Candida)."
+          ],
+          "action_required": "DISCONTINUE Amoxicillin and institute appropriate therapy if superinfection occurs."
+        },
+        "WARNING_11_LYMPHATIC_LEUKAEMIA": {
+          "severity": "MODERATE",
+          "title": "Lymphatic Leukaemia",
+          "condition": "Patients with Lymphatic Leukaemia are susceptible to Amoxicillin-induced skin rashes.",
+          "action_required": "Give Amoxicillin with caution in these patients."
+        },
+        "WARNING_12_NON_SUSCEPTIBLE_MICROORGANISMS": {
+          "severity": "MODERATE",
+          "title": "Non-Susceptible Microorganisms",
+          "conditions": [
+            "Not suitable for infections unless pathogen is documented susceptible or highly likely to be susceptible.",
+            "Particularly important for: Urinary tract infections, Severe ENT infections.",
+            "Amoxicillin is NOT the treatment of choice for sore throat/pharyngitis due to possible underlying infectious mononucleosis."
+          ]
+        },
+        "WARNING_13_CONVULSIONS": {
+          "severity": "MODERATE",
+          "title": "Convulsions",
+          "conditions": [
+            "Convulsions may occur in patients with impaired renal function.",
+            "Convulsions may occur at high doses.",
+            "Predisposing factors: history of seizures, treated epilepsy, meningeal disorders."
+          ],
+          "action_required": "Cross-reference: Adverse Reactions."
+        },
+        "WARNING_14_JARISCH_HERXHEIMER_REACTION": {
+          "severity": "LOW",
+          "title": "Jarisch-Herxheimer Reaction",
+          "condition": "Seen following Amoxicillin treatment of Lyme disease \u2014 results from bactericidal activity on Borrelia burgdorferi spirochaete.",
+          "action_required": "Reassure patients that this is common and usually self-limiting."
+        },
+        "WARNING_15_CRYSTALLURIA": {
+          "severity": "LOW",
+          "title": "Crystalluria",
+          "conditions": [
+            "Observed very rarely in patients with reduced urine output, predominantly with parenteral therapy.",
+            "High urinary Amoxicillin concentrations can cause precipitation in urinary catheters."
+          ],
+          "action_required": [
+            "Visually inspect catheters at intervals.",
+            "At high doses: maintain adequate fluid intake and urinary output."
+          ]
+        },
+        "WARNING_16_PAEDIATRIC_USE": {
+          "severity": "MODERATE",
+          "title": "Paediatric Use \u2014 Neonates and Premature Children",
+          "conditions": [
+            "Precaution required in premature children and during neonatal period.",
+            "Elimination of Amoxicillin may be delayed due to incompletely developed renal function in neonates/young infants."
+          ],
+          "action_required": [
+            "Monitor renal, hepatic, and haematological functions.",
+            "Modify dosing in pediatric patients 12 weeks or younger."
+          ]
+        },
+        "WARNING_17_EFFECTS_ON_LABORATORY_TESTS": {
+          "severity": "LOW",
+          "title": "Effects on Laboratory Tests",
+          "conditions": [
+            "Amoxicillin may decrease urinary estriol in pregnant women.",
+            "High urine concentrations of Ampicillin may cause false-positive reactions for urinary glucose (colorimetric methods).",
+            "Amoxicillin may interfere with protein testing (colorimetric methods).",
+            "Transient decrease in plasma concentration of: total conjugated estriol, estriol-glucuronide, conjugated estrone, Estradiol \u2014 following administration in pregnant women."
+          ]
+        }
+      },
+      "drug_drug_interactions": [
+        {
+          "drug_or_class": "Probenecid",
+          "interaction": "Decreases renal tubular secretion of Amoxicillin \u2192 increased and prolonged blood levels of Amoxicillin",
+          "clinical_comment": "Caution recommended"
+        },
+        {
+          "drug_or_class": "Oral Anticoagulants (e.g., Warfarin)",
+          "interaction": "Abnormal prolongation of prothrombin time (increased INR)",
+          "clinical_comment": "Dose adjustment of oral anticoagulants may be necessary"
+        },
+        {
+          "drug_or_class": "Allopurinol",
+          "interaction": "Concurrent use increases incidence of rashes",
+          "clinical_comment": "Caution recommended"
+        },
+        {
+          "drug_or_class": "Oral Contraceptives",
+          "interaction": "Amoxicillin may affect intestinal flora \u2192 lower estrogen reabsorption \u2192 reduced efficacy of combined oral estrogen/progesterone contraceptives",
+          "clinical_comment": "Caution recommended"
+        },
+        {
+          "drug_or_class": "Other Antibacterials (Chloramphenicol, Macrolides, Sulfonamides, Tetracyclines)",
+          "interaction": "May interfere with the bactericidal effects of Penicillin",
+          "clinical_comment": "Caution recommended"
+        },
+        {
+          "drug_or_class": "Methotrexate",
+          "interaction": "Penicillins compete with renal tubular secretion of Methotrexate \u2192 decreased clearance \u2192 increased Methotrexate serum concentrations and increased toxicity risk",
+          "clinical_comment": "Closely monitor serum Methotrexate levels"
+        },
+        {
+          "drug_or_class": "Digoxin",
+          "interaction": "Increased absorption of Digoxin possible",
+          "clinical_comment": "Dose adjustment of Digoxin may be necessary"
+        },
+        {
+          "drug_or_class": "Forced Diuresis",
+          "interaction": "Leads to reduction in blood concentrations of Amoxicillin by increased elimination",
+          "clinical_comment": "Caution recommended when given concomitantly"
+        },
+        {
+          "drug_or_class": "Estriol",
+          "interaction": "Amoxicillin may decrease the amount of urinary Estriol in pregnant women",
+          "clinical_comment": "Caution recommended when given concomitantly"
+        }
+      ],
+      "use_in_special_populations": {
+        "pregnancy": {
+          "oral": {
+            "USFDA_category": "B",
+            "note": "No adequate and well-controlled studies in pregnant women. Use only if clearly needed."
+          },
+          "parenteral": {
+            "note": "Amoxicillin diffuses across the placenta into fetal circulation. Use when potential benefits outweigh potential risks."
+          }
+        },
+        "lactation": {
+          "note": "Penicillins are excreted in human milk. May lead to sensitization of infants.",
+          "action": [
+            "Exercise caution when administered to lactating women.",
+            "STOP breastfeeding if gastrointestinal disorders (diarrhoea, candidosis, or skin rash) occur in the newborn."
+          ]
+        },
+        "pediatrics": {
+          "established_uses": [
+            "Upper respiratory tract infections",
+            "Genitourinary tract infections",
+            "Skin and skin structure infections",
+            "Lower respiratory tract infections"
+          ],
+          "NOT_established": [
+            "H. pylori infection",
+            "Tonsillitis/Pharyngitis in children younger than 12 years"
+          ],
+          "neonates_warning": "Elimination may be delayed due to incompletely developed renal function; modify dosing in patients \u226412 weeks of age."
+        },
+        "geriatrics": {
+          "note": "No identified differences in response between elderly (\u226565 years) and younger patients, but greater sensitivity cannot be ruled out.",
+          "renal_risk": "Drug substantially excreted by kidney; risk of toxic reactions greater with impaired renal function.",
+          "action": "Monitor renal function; care in dose selection."
+        },
+        "renal_impairment": {
+          "note": "Primarily eliminated by kidney; dose adjustment required for GFR < 30 mL/min.",
+          "cross_reference": "See Dosage and Administration \u2014 Renal Impairment"
+        }
+      },
+      "pharmaceutical_information": {
+        "amoxicillin_base": {
+          "INN": "amoxicillin",
+          "chemical_name": "(2S,5R,6R)-6-[[(2R)-2-amino-2-(4-hydroxyphenyl)acetyl]amino]-3,3-dimethyl-7-oxo-4-thia-1-azabicyclo[3.2.0]heptane-2-carboxylic acid",
+          "molecular_formula": "C16H19N3O5S",
+          "molecular_weight": "365.4 g/mol",
+          "physical_description": "Off-white solid",
+          "melting_point": "194\u00b0C",
+          "solubility": "Soluble in water"
+        },
+        "amoxicillin_trihydrate": {
+          "chemical_name": "(2S,5R,6R)-6-[[(2R)-2-amino-2-(4-hydroxyphenyl)acetyl]amino]-3,3-dimethyl-7-oxo-4-thia-1-azabicyclo[3.2.0]heptane-2-carboxylic acid; trihydrate",
+          "molecular_formula": "C16H19N3O5S.3H2O",
+          "molecular_weight": "419.5 g/mol",
+          "physical_description": "White or almost white crystalline powder",
+          "solubility": "Insoluble in water; readily soluble in phosphate buffer"
+        },
+        "amoxicillin_sodium": {
+          "chemical_name": "Sodium (2S,5R,6R)-6-[[(2R)-2-amino-2-(4-hydroxyphenyl)acetyl]amino]-3,3-dimethyl-7-oxo-4-thia-1-azabicyclo[3.2.0]heptane-2-carboxylate",
+          "molecular_formula": "C16H18N3NaO5S",
+          "molecular_weight": "387.4 g/mol"
+        }
+      },
+      "cdss_rules": {
+        "box_warning": {
+          "hypersensitivity": "Serious and occasionally fatal hypersensitivity (Anaphylactoid) and Severe Cutaneous Adverse Reactions (SCAR) have been reported in patients receiving beta-lactam therapy, including Amoxicillin."
+        },
+        "contraindications": {
+          "hypersensitivity": "Known serious hypersensitivity to Amoxicillin or other \u03b2-lactam drugs",
+          "mononucleosis": "Suspected or confirmed Infectious Mononucleosis",
+          "trivial_infections": "Trivial or non-bacterial infections"
+        },
+        "warnings_by_condition": {
+          "pregnancy": {
+            "trigger_fields": [
+              "pregnancy"
+            ],
+            "trigger_values": [
+              "Yes"
+            ],
+            "severity": "LOW",
+            "message": "FDA Category B \u2014 Use only if clearly needed. No adequate and well-controlled studies in pregnant women. Use only if clearly needed."
+          },
+          "breastfeeding": {
+            "trigger_fields": [
+              "breastfeeding"
+            ],
+            "trigger_values": [
+              "Yes"
+            ],
+            "severity": "MODERATE",
+            "message": "Penicillins are excreted in human milk. May lead to sensitization of infants. Exercise caution when administered to lactating women. STOP breastfeeding if gastrointestinal disorders (diarrhoea, candidosis, or skin rash) occur in the newborn."
+          },
+          "cdad_risk": {
+            "trigger_fields": [
+              "comorbid",
+              "high_risk_meds"
+            ],
+            "trigger_values": [
+              "immunocompromised",
+              "previous_cdiff",
+              "antibiotic_recent"
+            ],
+            "severity": "HIGH",
+            "message": "WARNING: CDAD reported with use of nearly all antibacterial agents including Amoxicillin. Severity range: mild diarrhoea \u2192 fatal colitis."
+          },
+          "renal_risk": {
+            "trigger_fields": [
+              "labs",
+              "comorbid",
+              "dialysis_status"
+            ],
+            "trigger_values": [
+              "renal_disease",
+              "CKD",
+              "dialysis"
+            ],
+            "severity": "MODERATE",
+            "message": "Amoxicillin is primarily excreted by the kidney. Patients with renal impairment require dose reduction proportional to the degree of renal function loss."
+          },
+          "geriatric": {
+            "trigger_fields": [
+              "age"
+            ],
+            "age_threshold": 65,
+            "severity": "LOW",
+            "message": "No identified differences in response between elderly (\u226565 years) and younger patients, but greater sensitivity cannot be ruled out."
+          },
+          "mononucleosis_rash": {
+            "title": "Mononucleosis",
+            "trigger_values": [
+              "infectious_mononucleosis",
+              "mononucleosis"
+            ],
+            "severity": "HIGH",
+            "message": "High percentage of patients with mononucleosis develop erythematous skin rash if given Amoxicillin. Action: DO NOT administer Amoxicillin to patients with mononucleosis."
+          },
+          "phenylketonuria": {
+            "title": "Phenylketonuria",
+            "trigger_values": [
+              "phenylketonuria",
+              "pku"
+            ],
+            "severity": "MODERATE",
+            "message": "Some Amoxicillin formulations contain Aspartame, which contains Phenylalanine \u2014 AVOID in Phenylketonurics. Oral suspension formulations do NOT contain Phenylalanine \u2014 SAFE for Phenylketonurics."
+          },
+          "leukaemia": {
+            "title": "Lymphatic Leukaemia",
+            "trigger_values": [
+              "lymphatic_leukaemia",
+              "leukaemia"
+            ],
+            "severity": "MODERATE",
+            "message": "Patients with Lymphatic Leukaemia are susceptible to Amoxicillin-induced skin rashes."
+          },
+          "anticoagulant_interaction": {
+            "title": "Anticoagulant Interaction",
+            "trigger_values": [
+              "anticoagulant",
+              "warfarin"
+            ],
+            "severity": "MODERATE",
+            "message": "Abnormal prolongation of prothrombin time (increased INR) reported in patients on Amoxicillin AND oral anticoagulants."
+          },
+          "kounis_syndrome": {
+            "title": "Cardiovascular (Kounis Syndrome)",
+            "trigger_values": [
+              "kounis",
+              "MI",
+              "ischemic_heart_disease",
+              "heart_disease"
+            ],
+            "severity": "MODERATE",
+            "message": "Kounis Syndrome (serious allergic reaction that can result in Myocardial Infarction) can occur as chest pain in association with an allergic reaction to Amoxicillin."
+          }
+        },
+        "adverse_reactions": {
+          "common": [
+            "Diarrhoea",
+            "Rash",
+            "Vomiting",
+            "Nausea",
+            "Abdominal pain",
+            "Headache",
+            "Vulvovaginal mycotic infection",
+            "Candidiasis",
+            "Fungal/Mycotic infection"
+          ],
+          "serious": [
+            "Anaphylactic reactions",
+            "Severe Cutaneous Adverse Reactions (SCAR)",
+            "Clostridioides difficile-associated Diarrhoea (CDAD)"
+          ],
+          "system_wise": {
+            "Infections": "Mucocutaneous candidiasis",
+            "GI": "Black hairy tongue, Haemorrhagic/Pseudomembranous colitis",
+            "Immune": "Hypersensitivity reactions, Anaphylactic/anaphylactoid reactions including shock, Angioedema, Serum sickness-like reactions, Hypersensitivity vasculitis",
+            "Skin": "Rashes, Pruritus, Urticaria, Erythema multiforme, Stevens-Johnson Syndrome (SJS), Toxic Epidermal Necrolysis (TEN), DRESS, AGEP, Exfoliative dermatitis",
+            "Hepatic": "Moderate rise in AST and/or ALT, Hepatic dysfunction, Cholestatic jaundice, Hepatic cholestasis, Acute cytolytic hepatitis",
+            "Renal": "Crystalluria",
+            "CNS": "Reversible hyperactivity, Agitation, Anxiety, Insomnia, Confusion, Convulsions, Behavioural changes, Aseptic meningitis, Dizziness",
+            "Haematologic": "Anaemia including Haemolytic anaemia, Thrombocytopenia, Thrombocytopenic purpura, Eosinophilia, Leukopenia, Agranulocytosis"
+          }
+        },
+        "monitoring": {
+          "before_start": [
+            "Careful inquiry about previous hypersensitivity"
+          ],
+          "during_treatment": [
+            "Periodic assessment of renal, hepatic, and hematopoietic functions",
+            "Monitor INR if on anticoagulants"
+          ],
+          "stop_if": [
+            "Allergic reaction occurs",
+            "Lesions/rash progress",
+            "Severe diarrhoea (CDAD)"
+          ]
+        }
+      }
+    }
+  ]
+}

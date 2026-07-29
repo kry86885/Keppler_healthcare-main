@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
+import PatientAutocomplete from "../components/PatientAutocomplete";
 import StatCard from "../components/StatCard";
 import { Button, ConfirmDialog, Input, Select, Table, TableCell, TableHead, TableRow } from "../components/ui";
 import { apiFetch, reportError } from "../lib/api";
 import { formatDate } from "../lib/format";
-import type { Notice, PharmacySale } from "../types";
+import type { Notice, Patient, PharmacySale } from "../types";
 
 type Props = {
   setNotice: Dispatch<SetStateAction<Notice | null>>;
@@ -332,6 +333,10 @@ export default function PharmacyPage({ setNotice }: Props) {
     }));
   };
 
+  const handleSalePatientSelect = (patient: Patient) => {
+    setSaleForm((current) => ({ ...current, patient_id: patient.patient_id }));
+  };
+
   const handleSupplierSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const supplierName = supplierForm.supplier_name.trim();
@@ -564,11 +569,12 @@ export default function PharmacyPage({ setNotice }: Props) {
             placeholder="Invoice ID (optional)"
             aria-label="Invoice ID"
           />
-          <Input
+          <PatientAutocomplete
             value={saleForm.patient_id}
-            onChange={(event) => setSaleForm((current) => ({ ...current, patient_id: event.target.value }))}
-            placeholder="Patient ID"
-            aria-label="Sale patient id"
+            onChange={(value) => setSaleForm((current) => ({ ...current, patient_id: value }))}
+            onSelect={handleSalePatientSelect}
+            placeholder="Search patient by name, phone, or ID"
+            ariaLabel="Sale patient id"
           />
           <Input
             value={saleForm.prescription_ref}

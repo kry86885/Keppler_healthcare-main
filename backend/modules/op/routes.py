@@ -31,7 +31,7 @@ op_bp = Blueprint('op', __name__)
 @require_permissions("patients.read")
 def op_summary():
     target_date = request.args.get("date")
-    return jsonify(get_op_summary(target_date))
+    return jsonify(get_op_summary(target_date, hospital_id=current_hospital_id()))
 
 
 

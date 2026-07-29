@@ -17,6 +17,7 @@ const STAGE_LABELS: Record<string, string> = {
   consultation: "Consultation",
   billing: "Billing",
   lab: "Lab",
+  pharmacy: "Pharmacy",
 };
 
 function formatCurrency(amount?: number) {
@@ -82,6 +83,7 @@ export default function PatientJourneyPage({ setNotice }: Props) {
         <div className="stat-grid module-stat-grid">
           <StatCard label="Consultation Fees" value={formatCurrency(journey.summary.consultation_billed)} />
           <StatCard label="Lab / Diagnostics Fees" value={formatCurrency(journey.summary.lab_billed)} />
+          <StatCard label="Pharmacy Fees" value={formatCurrency(journey.summary.pharmacy_billed)} />
           <StatCard label="Total Paid" value={formatCurrency(journey.summary.total_paid)} />
           <StatCard label="Total Due" value={formatCurrency(journey.summary.total_due)} />
         </div>

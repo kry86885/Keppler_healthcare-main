@@ -716,6 +716,9 @@ app.register_blueprint(beds_bp)
 from modules.symptom_ai.routes import symptom_ai_bp
 app.register_blueprint(symptom_ai_bp)
 
+from modules.ocr_portal.routes import ocr_portal_bp
+app.register_blueprint(ocr_portal_bp)
+
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "5001"))

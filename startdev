@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PORTS=("5001" "5002" "5173")
+PORTS=("5011" "5002" "5173")
 RUN_DIR="${ROOT_DIR}/.devrun"
 BACKEND_VENV="${ROOT_DIR}/.venv-backend"
 BACKEND_LOG="${RUN_DIR}/backend.log"
@@ -21,6 +21,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   echo "Backend: python backend/app.py (Flask debug reload)"
   echo "Symptom backend: python symptom_backend/app.py (Flask debug reload)"
   echo "Desktop app: npm run electron:dev (Vite + Electron)"
+  echo "OCR backend (FastAPI/Celery/Postgres/Qdrant): via 'docker compose' on http://localhost:7621, proxied by the Flask backend."
   exit 0
 fi
 
@@ -59,6 +60,8 @@ echo "Installing backend dependencies..."
 echo "Installing symptom backend dependencies..."
 "${BACKEND_VENV}/bin/pip" install -r "${ROOT_DIR}/symptom_backend/requirements.txt"
 
+OCR_PORTAL_STARTED=false
+
 cleanup() {
   echo
   echo "Stopping dev services..."
@@ -72,20 +75,42 @@ cleanup() {
     kill "${SYMPTOM_PID}" 2>/dev/null || true
   fi
   rm -f "${BACKEND_PID_FILE}" "${FRONTEND_PID_FILE}" "${SYMPTOM_PID_FILE}"
+  if [[ "${OCR_PORTAL_STARTED}" == "true" ]]; then
+    echo "Stopping OCR backend containers..."
+    (cd "${ROOT_DIR}" && docker compose -f docker-compose.dev.yml stop ocr-api ocr-worker ocr-qdrant ocr-postgres) 2>/dev/null || true
+  fi
   wait 2>/dev/null || true
 }
 
 trap cleanup INT TERM EXIT
 
+# The OCR/document-intelligence backend (FastAPI + Celery + its own Postgres +
+# Qdrant) isn't reasonable to run as bare local processes, so it's always
+# brought up via Docker even in this non-Docker dev path -- only the main
+# Flask backend proxies to it (backend/ai/ocr_portal_client.py), nothing in
+# the browser talks to it directly. Its own published debug port is 7621;
+# OCR_BACKEND_URL below is what the Flask backend actually uses.
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  echo "Starting OCR backend (Postgres/Qdrant/FastAPI/Celery) via Docker..."
+  if (cd "${ROOT_DIR}" && docker compose -f docker-compose.dev.yml up -d ocr-postgres ocr-qdrant ocr-api ocr-worker); then
+    OCR_PORTAL_STARTED=true
+  else
+    echo "Warning: failed to start the OCR backend containers. Continuing without it (OCR Scanner will show errors)."
+  fi
+else
+  echo "Docker not available: skipping the OCR backend. OCR Scanner will show errors until it's reachable."
+fi
+
 echo "Starting backend..."
 (
   cd "${ROOT_DIR}/backend"
-  export PORT=5001
+  export PORT=5011
   export DB_ENGINE=sqlite
   export DB_PATH="${ROOT_DIR}/healthcare.db"
   export FLASK_ENV=development
   export CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}"
   export SESSION_COOKIE_SECURE=false
+  export OCR_BACKEND_URL="${OCR_BACKEND_URL:-http://localhost:7621}"
   "${BACKEND_VENV}/bin/python" app.py \
     > >(tee -a "${BACKEND_LOG}") \
     2> >(tee -a "${BACKEND_LOG}" >&2)
@@ -108,8 +133,8 @@ echo "${SYMPTOM_PID}" > "${SYMPTOM_PID_FILE}"
 echo "Starting frontend..."
 (
   cd "${ROOT_DIR}/frontend"
-  export VITE_API_BASE="${VITE_API_BASE:-http://localhost:5001}"
-  export VITE_API_URL="${VITE_API_URL:-http://localhost:5001}"
+  export VITE_API_BASE="${VITE_API_BASE:-http://localhost:5011}"
+  export VITE_API_URL="${VITE_API_URL:-http://localhost:5011}"
   export VITE_SYMPTOM_API_BASE="${VITE_SYMPTOM_API_BASE:-http://localhost:5002}"
   export CHOKIDAR_USEPOLLING=true
   export WATCHPACK_POLLING=true
@@ -131,8 +156,11 @@ echo "Frontend log: ${FRONTEND_LOG}"
 
 echo
 echo "Frontend: http://localhost:5173"
-echo "Backend:  http://localhost:5001"
+echo "Backend:  http://localhost:5011"
 echo "Symptom:  http://localhost:5002"
+if [[ "${OCR_PORTAL_STARTED}" == "true" ]]; then
+  echo "OCR backend: http://localhost:7621 (proxied through the main backend, no direct browser access)"
+fi
 echo "Electron app: opens automatically"
 
 wait

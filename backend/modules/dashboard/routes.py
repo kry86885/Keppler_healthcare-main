@@ -62,6 +62,6 @@ def dashboard_analytics():
 @dashboard_bp.get("/api/dashboard/hospital-summary")
 @require_permissions("patients.read")
 def dashboard_hospital_summary():
-    return jsonify(get_hospital_dashboard_summary())
+    return jsonify(get_hospital_dashboard_summary(hospital_id=current_hospital_id()))
 
 

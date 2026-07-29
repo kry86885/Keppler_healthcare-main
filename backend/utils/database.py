@@ -530,12 +530,14 @@ def init_database():
             )
 
         ensure_hospital_columns(conn)
+        ensure_financial_hospital_columns(conn)
         ensure_user_columns(conn)
         ensure_document_columns(conn)
         ensure_hospai_module_tables(conn)
         ensure_operational_audit_columns(conn)
         ensure_vector_store_tables(conn)
         ensure_symptom_ai_tables(conn)
+        ensure_ocr_portal_tables(conn)
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_hospitals_code ON hospitals(code)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_patient_id ON patients(patient_id)")
@@ -699,6 +701,91 @@ def ensure_hospital_columns(conn):
             f"UPDATE {table_name} SET hospital_id = ? WHERE hospital_id IS NULL",
             (default_hospital_id,),
         )
+
+
+# Tables that identify a patient only by their (per-hospital, not globally
+# unique) patient_id string -- generate_patient_id() resets its sequence per
+# hospital_id, so two different hospitals can produce the identical
+# "PAT-YYYYMMDD-NNNN" on the same day. Without their own hospital_id, every
+# aggregate/list query on these tables risks silently merging two different
+# patients' billing/lab/pharmacy records if their hospitals collide on an id.
+_FINANCIAL_TABLES_WITH_PATIENT_ID = ("appointments", "invoices", "diagnostics", "pharmacy_sales", "encounters")
+
+
+def ensure_financial_hospital_columns(conn):
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM hospitals WHERE code = ?", (DEFAULT_HOSPITAL_CODE,))
+    default_row = cursor.fetchone()
+    if not default_row:
+        return
+    default_hospital_id = default_row[0]
+
+    for table_name in _FINANCIAL_TABLES_WITH_PATIENT_ID:
+        if IS_POSTGRES:
+            cursor.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = ? AND column_name = 'hospital_id'
+                """,
+                (table_name,),
+            )
+            has_hospital_col = cursor.fetchone() is not None
+        else:
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            has_hospital_col = "hospital_id" in {row[1] for row in cursor.fetchall()}
+
+        if not has_hospital_col:
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN hospital_id INTEGER")
+
+        # Backfill from the owning patient's hospital where possible -- a blind
+        # default would silently mix data if this table already holds rows
+        # from more than one hospital.
+        cursor.execute(
+            f"""
+            UPDATE {table_name}
+            SET hospital_id = (
+                SELECT p.hospital_id FROM patients p WHERE p.patient_id = {table_name}.patient_id
+            )
+            WHERE hospital_id IS NULL
+            """
+        )
+        cursor.execute(
+            f"UPDATE {table_name} SET hospital_id = ? WHERE hospital_id IS NULL",
+            (default_hospital_id,),
+        )
+
+    # invoice_payments has no patient_id of its own -- backfill through the invoice it belongs to.
+    if IS_POSTGRES:
+        cursor.execute(
+            """
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'invoice_payments' AND column_name = 'hospital_id'
+            """
+        )
+        payments_has_hospital_col = cursor.fetchone() is not None
+    else:
+        cursor.execute("PRAGMA table_info(invoice_payments)")
+        payments_has_hospital_col = "hospital_id" in {row[1] for row in cursor.fetchall()}
+
+    if not payments_has_hospital_col:
+        cursor.execute("ALTER TABLE invoice_payments ADD COLUMN hospital_id INTEGER")
+
+    cursor.execute(
+        """
+        UPDATE invoice_payments
+        SET hospital_id = (
+            SELECT i.hospital_id FROM invoices i WHERE i.id = invoice_payments.invoice_id
+        )
+        WHERE hospital_id IS NULL
+        """
+    )
+    cursor.execute(
+        "UPDATE invoice_payments SET hospital_id = ? WHERE hospital_id IS NULL",
+        (default_hospital_id,),
+    )
+
+    conn.commit()
 
 
 def ensure_department_master_scope(conn):
@@ -1904,6 +1991,73 @@ def delete_symptom_ai_chat_history(hospital_id, username):
         return cursor.rowcount > 0
 
 
+def ensure_ocr_portal_tables(conn):
+    """Maps each (hospital, username) to its own auto-provisioned account on the
+    separate OCR/document-intelligence service (see backend/ai/ocr_portal_client.py)
+    -- so every user gets their own isolated documents/jobs/chat history there
+    instead of a shared account, without that service knowing anything about
+    hospitals or Hosp AI sessions itself.
+    """
+    cursor = conn.cursor()
+    id_column = "SERIAL PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS ocr_service_accounts (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            ocr_username TEXT NOT NULL,
+            encrypted_password TEXT NOT NULL,
+            ocr_user_id INTEGER,
+            access_token TEXT,
+            token_expires_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_ocr_service_accounts_owner "
+        "ON ocr_service_accounts(hospital_id, username)"
+    )
+    conn.commit()
+
+
+def get_ocr_service_account(hospital_id, username):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT hospital_id, username, ocr_username, encrypted_password, ocr_user_id, "
+            "access_token, token_expires_at FROM ocr_service_accounts "
+            "WHERE hospital_id = ? AND username = ?",
+            (hospital_id, username),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def create_ocr_service_account(hospital_id, username, ocr_username, encrypted_password, ocr_user_id):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO ocr_service_accounts "
+            "(hospital_id, username, ocr_username, encrypted_password, ocr_user_id) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (hospital_id, username, ocr_username, encrypted_password, ocr_user_id),
+        )
+        conn.commit()
+
+
+def update_ocr_service_account_token(hospital_id, username, access_token, token_expires_at):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE ocr_service_accounts SET access_token = ?, token_expires_at = ? "
+            "WHERE hospital_id = ? AND username = ?",
+            (access_token, token_expires_at, hospital_id, username),
+        )
+        conn.commit()
+
+
 def store_document_embedding(source_table, source_id, content_text, hospital_id=None, patient_id=None):
     """Embed and store a clinical document/certificate chunk for later semantic search.
 
@@ -2782,14 +2936,16 @@ def search_employees(query, hospital_id=None):
         return cursor.fetchall()
 
 
-def create_appointment(data):
+def create_appointment(data, hospital_id=None):
     appointment_date = data["appointment_date"]
     appointment_day = str(appointment_date).split("T")[0].split(" ")[0]
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT COALESCE(MAX(token_no), 0) AS value FROM appointments WHERE DATE(appointment_date) = DATE(?)",
-            (appointment_day,),
+            "SELECT COALESCE(MAX(token_no), 0) AS value FROM appointments "
+            "WHERE DATE(appointment_date) = DATE(?) AND hospital_id = ?",
+            (appointment_day, scoped_hospital_id),
         )
         token_no = int((cursor.fetchone() or {"value": 0})["value"] or 0) + 1
         cursor.execute(
@@ -2797,8 +2953,8 @@ def create_appointment(data):
             INSERT INTO appointments (
                 patient_id, patient_name, visit_type, department, doctor_name,
                 appointment_date, token_no, status, notes, appointment_kind, follow_up_for,
-                reminder_sent_at, no_show_marked
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                reminder_sent_at, no_show_marked, hospital_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.get("patient_id"),
@@ -2814,6 +2970,7 @@ def create_appointment(data):
                 data.get("follow_up_for"),
                 data.get("reminder_sent_at"),
                 1 if data.get("no_show_marked") else 0,
+                scoped_hospital_id,
             ),
         )
         appointment_id = cursor.lastrowid
@@ -2821,11 +2978,14 @@ def create_appointment(data):
         return appointment_id, token_no
 
 
-def list_appointments(appointment_date=None, status=None, visit_type=None, doctor_name=None, patient_id=None):
+def list_appointments(appointment_date=None, status=None, visit_type=None, doctor_name=None, patient_id=None, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         clauses = []
         params = []
+        if hospital_id:
+            clauses.append("hospital_id = ?")
+            params.append(hospital_id)
         if appointment_date:
             clauses.append("DATE(appointment_date) = DATE(?)")
             params.append(appointment_date)
@@ -2976,33 +3136,34 @@ def delete_doctor_schedule(schedule_id, actor=None):
         return deleted
 
 
-def get_op_summary(target_date=None):
+def get_op_summary(target_date=None, hospital_id=None):
     day = target_date or current_ist_datetime().strftime("%Y-%m-%d")
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT COUNT(*) AS value FROM appointments WHERE visit_type = 'OP' AND DATE(appointment_date) = DATE(?)",
-            (day,),
+            "SELECT COUNT(*) AS value FROM appointments WHERE hospital_id = ? AND visit_type = 'OP' AND DATE(appointment_date) = DATE(?)",
+            (scoped_hospital_id, day),
         )
         total_appointments = cursor.fetchone()["value"]
         cursor.execute(
-            "SELECT COUNT(*) AS value FROM appointments WHERE visit_type = 'OP' AND appointment_kind = 'follow_up' AND DATE(appointment_date) = DATE(?)",
-            (day,),
+            "SELECT COUNT(*) AS value FROM appointments WHERE hospital_id = ? AND visit_type = 'OP' AND appointment_kind = 'follow_up' AND DATE(appointment_date) = DATE(?)",
+            (scoped_hospital_id, day),
         )
         follow_ups = cursor.fetchone()["value"]
         cursor.execute(
-            "SELECT COUNT(*) AS value FROM appointments WHERE visit_type = 'OP' AND status IN ('checked_in', 'in_consultation') AND DATE(appointment_date) = DATE(?)",
-            (day,),
+            "SELECT COUNT(*) AS value FROM appointments WHERE hospital_id = ? AND visit_type = 'OP' AND status IN ('checked_in', 'in_consultation') AND DATE(appointment_date) = DATE(?)",
+            (scoped_hospital_id, day),
         )
         active_queue = cursor.fetchone()["value"]
         cursor.execute(
-            "SELECT COUNT(*) AS value FROM appointments WHERE visit_type = 'OP' AND no_show_marked = 1 AND DATE(appointment_date) = DATE(?)",
-            (day,),
+            "SELECT COUNT(*) AS value FROM appointments WHERE hospital_id = ? AND visit_type = 'OP' AND no_show_marked = 1 AND DATE(appointment_date) = DATE(?)",
+            (scoped_hospital_id, day),
         )
         no_shows = cursor.fetchone()["value"]
         cursor.execute(
-            "SELECT COUNT(*) AS value FROM appointments WHERE visit_type = 'OP' AND reminder_sent_at IS NOT NULL AND DATE(appointment_date) = DATE(?)",
-            (day,),
+            "SELECT COUNT(*) AS value FROM appointments WHERE hospital_id = ? AND visit_type = 'OP' AND reminder_sent_at IS NOT NULL AND DATE(appointment_date) = DATE(?)",
+            (scoped_hospital_id, day),
         )
         reminders_sent = cursor.fetchone()["value"]
         cursor.execute(
@@ -3717,15 +3878,16 @@ def get_accounts_summary():
 
 # ==================== HospAI module operations ====================
 
-def create_encounter(data):
+def create_encounter(data, hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
             INSERT INTO encounters (
                 patient_id, encounter_type, insurance_provider, insurance_policy_no,
-                is_accident, referral_source, referral_name, status, created_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                is_accident, referral_source, referral_name, status, created_by, hospital_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["patient_id"],
@@ -3737,6 +3899,7 @@ def create_encounter(data):
                 data.get("referral_name"),
                 data.get("status", "active"),
                 data.get("created_by"),
+                scoped_hospital_id,
             ),
         )
         encounter_id = cursor.lastrowid
@@ -3744,16 +3907,19 @@ def create_encounter(data):
         return encounter_id
 
 
-def list_encounters(patient_id=None):
+def list_encounters(patient_id=None, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
+        clauses = []
+        params = []
+        if hospital_id:
+            clauses.append("hospital_id = ?")
+            params.append(hospital_id)
         if patient_id:
-            cursor.execute(
-                "SELECT * FROM encounters WHERE patient_id = ? ORDER BY arrival_at DESC",
-                (patient_id,),
-            )
-        else:
-            cursor.execute("SELECT * FROM encounters ORDER BY arrival_at DESC")
+            clauses.append("patient_id = ?")
+            params.append(patient_id)
+        where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        cursor.execute(f"SELECT * FROM encounters{where_clause} ORDER BY arrival_at DESC", tuple(params))
         return cursor.fetchall()
 
 
@@ -3917,7 +4083,7 @@ def get_patient_journey(patient_id, hospital_id=None):
     if patient.get("created_at"):
         events.append({"stage": "registration", "label": "Patient Registered", "timestamp": patient["created_at"]})
 
-    for row in list_appointments(patient_id=patient_id):
+    for row in list_appointments(patient_id=patient_id, hospital_id=hospital_id):
         appt = dict(row)
         events.append(
             {
@@ -3948,7 +4114,7 @@ def get_patient_journey(patient_id, hospital_id=None):
 
     consultation_billed = 0.0
     consultation_paid = 0.0
-    for row in list_invoices(patient_id=patient_id):
+    for row in list_invoices(patient_id=patient_id, hospital_id=hospital_id):
         invoice = dict(row)
         total_amount = float(invoice.get("total_amount") or 0)
         paid_amount = float(invoice.get("paid_amount") or 0)
@@ -3962,7 +4128,7 @@ def get_patient_journey(patient_id, hospital_id=None):
             }
         )
 
-    for row in list_invoice_payments_for_patient(patient_id):
+    for row in list_invoice_payments_for_patient(patient_id, hospital_id=hospital_id):
         payment = dict(row)
         events.append(
             {
@@ -3974,7 +4140,7 @@ def get_patient_journey(patient_id, hospital_id=None):
 
     lab_billed = 0.0
     lab_paid = 0.0
-    for row in list_diagnostics(patient_id=patient_id):
+    for row in list_diagnostics(patient_id=patient_id, hospital_id=hospital_id):
         diagnostic = dict(row)
         amount = float(diagnostic.get("amount") or 0)
         paid_amount = float(diagnostic.get("paid_amount") or 0)
@@ -3988,24 +4154,45 @@ def get_patient_journey(patient_id, hospital_id=None):
             }
         )
 
+    # Pharmacy sales have no due/partial concept -- they're paid in full at the
+    # point of sale, so billed and paid are always equal.
+    pharmacy_billed = 0.0
+    for row in list_pharmacy_sales(patient_id=patient_id, hospital_id=hospital_id):
+        sale = dict(row)
+        amount = float(sale.get("amount") or 0)
+        pharmacy_billed += amount
+        events.append(
+            {
+                "stage": "pharmacy",
+                "label": f"Pharmacy sale: {sale.get('medicine_name')} x{sale.get('quantity')} — {amount}",
+                "timestamp": sale.get("sold_at"),
+            }
+        )
+    pharmacy_paid = pharmacy_billed
+
     # Postgres returns native datetime objects while SQLite returns strings; mixing
     # None with either in a raw sort raises TypeError, so normalize everything to str
     # (Python's default datetime str() is still chronologically sortable).
     events.sort(key=lambda event: str(event["timestamp"]) if event["timestamp"] else "")
 
+    total_billed = consultation_billed + lab_billed + pharmacy_billed
+    total_paid = consultation_paid + lab_paid + pharmacy_paid
     summary = {
         "consultation_billed": consultation_billed,
         "consultation_paid": consultation_paid,
         "lab_billed": lab_billed,
         "lab_paid": lab_paid,
-        "total_billed": consultation_billed + lab_billed,
-        "total_paid": consultation_paid + lab_paid,
-        "total_due": max((consultation_billed + lab_billed) - (consultation_paid + lab_paid), 0.0),
+        "pharmacy_billed": pharmacy_billed,
+        "pharmacy_paid": pharmacy_paid,
+        "total_billed": total_billed,
+        "total_paid": total_paid,
+        "total_due": max(total_billed - total_paid, 0.0),
     }
     return {"patient": patient, "events": events, "summary": summary}
 
 
-def create_invoice(data):
+def create_invoice(data, hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         paid_amount = float(data.get("paid_amount", 0) or 0)
@@ -4019,8 +4206,8 @@ def create_invoice(data):
             INSERT INTO invoices (
                 invoice_no, patient_id, module, doctor_name, clinic_name, referral_source,
                 subtotal, tax, discount, total_amount, paid_amount, due_amount, payment_status, created_by,
-                advance_amount, refunded_amount
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                advance_amount, refunded_amount, hospital_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         if IS_POSTGRES:
             insert_sql += " RETURNING id"
@@ -4043,6 +4230,7 @@ def create_invoice(data):
                 data.get("created_by"),
                 advance_amount,
                 refunded_amount,
+                scoped_hospital_id,
             ),
         )
         invoice_id = cursor.fetchone()[0] if IS_POSTGRES else cursor.lastrowid
@@ -4050,11 +4238,14 @@ def create_invoice(data):
         return invoice_id
 
 
-def list_invoices(patient_id=None, module=None):
+def list_invoices(patient_id=None, module=None, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         clauses = ["deleted_at IS NULL"]
         params = []
+        if hospital_id:
+            clauses.append("hospital_id = ?")
+            params.append(hospital_id)
         if patient_id:
             clauses.append("patient_id = ?")
             params.append(patient_id)
@@ -4152,18 +4343,23 @@ def delete_invoice(invoice_id, actor=None):
         return deleted
 
 
-def list_invoice_payments_for_patient(patient_id):
+def list_invoice_payments_for_patient(patient_id, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
+        clause = "invoices.patient_id = ? AND invoice_payments.deleted_at IS NULL"
+        params = [patient_id]
+        if hospital_id:
+            clause += " AND invoices.hospital_id = ?"
+            params.append(hospital_id)
         cursor.execute(
-            """
+            f"""
             SELECT invoice_payments.*, invoices.invoice_no AS invoice_no
             FROM invoice_payments
             JOIN invoices ON invoices.id = invoice_payments.invoice_id
-            WHERE invoices.patient_id = ? AND invoice_payments.deleted_at IS NULL
+            WHERE {clause}
             ORDER BY invoice_payments.created_at ASC
             """,
-            (patient_id,),
+            tuple(params),
         )
         return cursor.fetchall()
 
@@ -4172,7 +4368,7 @@ def record_invoice_payment(invoice_id, data):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT total_amount, paid_amount, advance_amount, refunded_amount FROM invoices WHERE id = ?",
+            "SELECT total_amount, paid_amount, advance_amount, refunded_amount, hospital_id FROM invoices WHERE id = ?",
             (invoice_id,),
         )
         invoice = cursor.fetchone()
@@ -4194,8 +4390,8 @@ def record_invoice_payment(invoice_id, data):
 
         payment_insert_sql = """
             INSERT INTO invoice_payments (
-                invoice_id, amount, payment_mode, gateway_ref, converted_from_mode, converted_to_mode
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                invoice_id, amount, payment_mode, gateway_ref, converted_from_mode, converted_to_mode, hospital_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
         """
         if IS_POSTGRES:
             payment_insert_sql += " RETURNING id"
@@ -4208,6 +4404,7 @@ def record_invoice_payment(invoice_id, data):
                 data.get("gateway_ref"),
                 data.get("converted_from_mode"),
                 data.get("converted_to_mode"),
+                invoice["hospital_id"],
             ),
         )
         payment_id = cursor.fetchone()[0] if IS_POSTGRES else cursor.lastrowid
@@ -4306,37 +4503,43 @@ def delete_insurance_claim(claim_id, actor=None):
         return deleted
 
 
-def get_revenue_summary():
+def get_revenue_summary(hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COALESCE(SUM(total_amount), 0) AS value FROM invoices")
+        cursor.execute("SELECT COALESCE(SUM(total_amount), 0) AS value FROM invoices WHERE hospital_id = ?", (scoped_hospital_id,))
         total_billed = cursor.fetchone()["value"]
         cursor.execute(
-            "SELECT COALESCE(SUM(paid_amount + advance_amount - refunded_amount), 0) AS value FROM invoices"
+            "SELECT COALESCE(SUM(paid_amount + advance_amount - refunded_amount), 0) AS value FROM invoices WHERE hospital_id = ?",
+            (scoped_hospital_id,),
         )
         total_collected = cursor.fetchone()["value"]
-        cursor.execute("SELECT COALESCE(SUM(due_amount), 0) AS value FROM invoices")
+        cursor.execute("SELECT COALESCE(SUM(due_amount), 0) AS value FROM invoices WHERE hospital_id = ?", (scoped_hospital_id,))
         total_due = cursor.fetchone()["value"]
-        cursor.execute("SELECT COALESCE(SUM(advance_amount), 0) AS value FROM invoices")
+        cursor.execute("SELECT COALESCE(SUM(advance_amount), 0) AS value FROM invoices WHERE hospital_id = ?", (scoped_hospital_id,))
         total_advance = cursor.fetchone()["value"]
-        cursor.execute("SELECT COALESCE(SUM(refunded_amount), 0) AS value FROM invoices")
+        cursor.execute("SELECT COALESCE(SUM(refunded_amount), 0) AS value FROM invoices WHERE hospital_id = ?", (scoped_hospital_id,))
         total_refunded = cursor.fetchone()["value"]
         cursor.execute(
             """
             SELECT payment_mode AS label, COALESCE(SUM(amount), 0) AS count
             FROM invoice_payments
+            WHERE hospital_id = ?
             GROUP BY payment_mode
             ORDER BY count DESC
-            """
+            """,
+            (scoped_hospital_id,),
         )
         by_mode = [dict(row) for row in cursor.fetchall()]
         cursor.execute(
             """
             SELECT module AS label, COALESCE(SUM(paid_amount + advance_amount - refunded_amount), 0) AS count
             FROM invoices
+            WHERE hospital_id = ?
             GROUP BY module
             ORDER BY count DESC
-            """
+            """,
+            (scoped_hospital_id,),
         )
         by_module = [dict(row) for row in cursor.fetchall()]
 
@@ -4349,7 +4552,9 @@ def get_revenue_summary():
                     COALESCE(SUM(CASE WHEN due_amount > 0 AND CURRENT_TIMESTAMP - created_at >= INTERVAL '61 days' AND CURRENT_TIMESTAMP - created_at < INTERVAL '91 days' THEN due_amount ELSE 0 END), 0) AS bucket_61_90,
                     COALESCE(SUM(CASE WHEN due_amount > 0 AND CURRENT_TIMESTAMP - created_at >= INTERVAL '91 days' THEN due_amount ELSE 0 END), 0) AS bucket_91_plus
                 FROM invoices
-                """
+                WHERE hospital_id = ?
+                """,
+                (scoped_hospital_id,),
             )
         else:
             cursor.execute(
@@ -4360,7 +4565,9 @@ def get_revenue_summary():
                     COALESCE(SUM(CASE WHEN due_amount > 0 AND julianday('now') - julianday(created_at) > 60 AND julianday('now') - julianday(created_at) <= 90 THEN due_amount ELSE 0 END), 0) AS bucket_61_90,
                     COALESCE(SUM(CASE WHEN due_amount > 0 AND julianday('now') - julianday(created_at) > 90 THEN due_amount ELSE 0 END), 0) AS bucket_91_plus
                 FROM invoices
-                """
+                WHERE hospital_id = ?
+                """,
+                (scoped_hospital_id,),
             )
         aging = dict(cursor.fetchone() or {})
 
@@ -4370,7 +4577,9 @@ def get_revenue_summary():
                 COALESCE(SUM(CASE WHEN gateway_ref IS NOT NULL AND TRIM(gateway_ref) <> '' THEN amount ELSE 0 END), 0) AS gateway_collected,
                 COALESCE(SUM(CASE WHEN converted_from_mode IS NOT NULL AND TRIM(converted_from_mode) <> '' THEN amount ELSE 0 END), 0) AS converted_total
             FROM invoice_payments
-            """
+            WHERE hospital_id = ?
+            """,
+            (scoped_hospital_id,),
         )
         reconciliation = dict(cursor.fetchone() or {})
 
@@ -4381,10 +4590,11 @@ def get_revenue_summary():
                 COALESCE(NULLIF(TRIM(converted_to_mode), ''), payment_mode) AS label,
                 COALESCE(SUM(amount), 0) AS count
             FROM invoice_payments
-            WHERE converted_from_mode IS NOT NULL AND TRIM(converted_from_mode) <> ''
+            WHERE hospital_id = ? AND converted_from_mode IS NOT NULL AND TRIM(converted_from_mode) <> ''
             GROUP BY label
             ORDER BY count DESC, label ASC
-            """
+            """,
+            (scoped_hospital_id,),
         )
         conversion_breakdown = [dict(row) for row in cursor.fetchall()]
     return {
@@ -4409,12 +4619,13 @@ def get_revenue_summary():
     }
 
 
-def get_reports_overview():
-    hospital_summary = get_hospital_dashboard_summary()
-    billing_summary = get_revenue_summary()
-    pharmacy_summary = get_pharmacy_summary()
-    lab_summary = get_diagnostic_summary()
-    employee_summary = get_employee_stats()
+def get_reports_overview(hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
+    hospital_summary = get_hospital_dashboard_summary(hospital_id=scoped_hospital_id)
+    billing_summary = get_revenue_summary(hospital_id=scoped_hospital_id)
+    pharmacy_summary = get_pharmacy_summary(hospital_id=scoped_hospital_id)
+    lab_summary = get_diagnostic_summary(hospital_id=scoped_hospital_id)
+    employee_summary = get_employee_stats(hospital_id=scoped_hospital_id)
     accounts_summary = get_accounts_summary()
 
     with get_connection() as conn:
@@ -4424,9 +4635,11 @@ def get_reports_overview():
             SELECT COALESCE(NULLIF(TRIM(doctor_name), ''), 'Unassigned') AS label,
                    COALESCE(SUM(paid_amount + advance_amount - refunded_amount), 0) AS count
             FROM invoices
+            WHERE hospital_id = ?
             GROUP BY label
             ORDER BY count DESC, label ASC
-            """
+            """,
+            (scoped_hospital_id,),
         )
         doctor_income = [dict(row) for row in cursor.fetchall()]
 
@@ -4436,9 +4649,11 @@ def get_reports_overview():
                    COALESCE(SUM(total_amount), 0) AS total_billed,
                    COALESCE(SUM(due_amount), 0) AS total_due
             FROM invoices
+            WHERE hospital_id = ?
             GROUP BY label
             ORDER BY total_due DESC, total_billed DESC, label ASC
-            """
+            """,
+            (scoped_hospital_id,),
         )
         patient_financials = [dict(row) for row in cursor.fetchall()]
 
@@ -4447,9 +4662,11 @@ def get_reports_overview():
             SELECT COALESCE(NULLIF(TRIM(doctor_name), ''), 'Unassigned') AS label,
                    COALESCE(SUM(amount), 0) AS count
             FROM diagnostics
+            WHERE hospital_id = ?
             GROUP BY label
             ORDER BY count DESC, label ASC
-            """
+            """,
+            (scoped_hospital_id,),
         )
         diagnostics_by_doctor = [dict(row) for row in cursor.fetchall()]
 
@@ -4458,9 +4675,11 @@ def get_reports_overview():
             SELECT COALESCE(NULLIF(TRIM(clinic_name), ''), 'General') AS label,
                    COALESCE(SUM(total_amount), 0) AS count
             FROM invoices
+            WHERE hospital_id = ?
             GROUP BY label
             ORDER BY count DESC, label ASC
-            """
+            """,
+            (scoped_hospital_id,),
         )
         clinic_income = [dict(row) for row in cursor.fetchall()]
 
@@ -4469,9 +4688,11 @@ def get_reports_overview():
             SELECT COALESCE(NULLIF(TRIM(module), ''), 'UNKNOWN') AS label,
                    COALESCE(SUM(discount), 0) AS count
             FROM invoices
+            WHERE hospital_id = ?
             GROUP BY label
             ORDER BY count DESC, label ASC
-            """
+            """,
+            (scoped_hospital_id,),
         )
         discount_by_module = [dict(row) for row in cursor.fetchall()]
 
@@ -4480,9 +4701,11 @@ def get_reports_overview():
             SELECT COALESCE(NULLIF(TRIM(payment_status), ''), 'due') AS label,
                    COUNT(*) AS count
             FROM invoices
+            WHERE hospital_id = ?
             GROUP BY label
             ORDER BY count DESC, label ASC
-            """
+            """,
+            (scoped_hospital_id,),
         )
         payment_status_breakdown = [dict(row) for row in cursor.fetchall()]
 
@@ -4497,7 +4720,9 @@ def get_reports_overview():
                 ) AS avg_los,
                 COUNT(*) AS admission_count
                 FROM admissions
-                """
+                WHERE hospital_id = ?
+                """,
+                (scoped_hospital_id,),
             )
         else:
             cursor.execute(
@@ -4513,7 +4738,9 @@ def get_reports_overview():
                 ) AS avg_los,
                 COUNT(*) AS admission_count
                 FROM admissions
-                """
+                WHERE hospital_id = ?
+                """,
+                (scoped_hospital_id,),
             )
         alos_row = cursor.fetchone()
         average_los_days = round(float((alos_row or {"avg_los": 0})["avg_los"] or 0), 2)
@@ -4805,16 +5032,17 @@ def delete_pharmacy_purchase(purchase_id, actor=None):
         return deleted
 
 
-def create_pharmacy_sale(data):
+def create_pharmacy_sale(data, hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         amount = float(data["quantity"]) * float(data["unit_price"])
         cursor.execute(
             """
             INSERT INTO pharmacy_sales (
-                invoice_id, patient_id, prescription_ref, medicine_name, quantity, unit_price, amount
+                invoice_id, patient_id, prescription_ref, medicine_name, quantity, unit_price, amount, hospital_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.get("invoice_id"),
@@ -4824,6 +5052,7 @@ def create_pharmacy_sale(data):
                 data["quantity"],
                 data["unit_price"],
                 amount,
+                scoped_hospital_id,
             ),
         )
         sale_id = cursor.lastrowid
@@ -4839,11 +5068,14 @@ def create_pharmacy_sale(data):
         return sale_id
 
 
-def list_pharmacy_sales(medicine_name=None, invoice_id=None, patient_id=None):
+def list_pharmacy_sales(medicine_name=None, invoice_id=None, patient_id=None, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         clauses = []
         params = []
+        if hospital_id:
+            clauses.append("hospital_id = ?")
+            params.append(hospital_id)
         if medicine_name:
             clauses.append("medicine_name = ?")
             params.append(medicine_name)
@@ -4861,7 +5093,8 @@ def list_pharmacy_sales(medicine_name=None, invoice_id=None, patient_id=None):
         return cursor.fetchall()
 
 
-def get_pharmacy_summary():
+def get_pharmacy_summary(hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -4888,7 +5121,10 @@ def get_pharmacy_summary():
             """
         )
         damaged = cursor.fetchone()["value"]
-        cursor.execute("SELECT COALESCE(SUM(amount), 0) AS value FROM pharmacy_sales")
+        cursor.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS value FROM pharmacy_sales WHERE hospital_id = ?",
+            (scoped_hospital_id,),
+        )
         sales_total = cursor.fetchone()["value"]
     return {
         "low_stock_count": low_stock,
@@ -4959,7 +5195,8 @@ def delete_lab_vendor(vendor_id, actor=None):
         return deleted
 
 
-def create_diagnostic_record(data):
+def create_diagnostic_record(data, hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         paid_amount = float(data.get("paid_amount", 0))
@@ -4970,8 +5207,8 @@ def create_diagnostic_record(data):
             """
             INSERT INTO diagnostics (
                 invoice_no, patient_id, vendor_id, doctor_name, test_name, amount, paid_amount, due_amount, status,
-                sample_barcode, order_status, collected_at, reported_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                sample_barcode, order_status, collected_at, reported_at, hospital_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.get("invoice_no"),
@@ -4987,6 +5224,7 @@ def create_diagnostic_record(data):
                 data.get("order_status", "ordered"),
                 data.get("collected_at"),
                 data.get("reported_at"),
+                scoped_hospital_id,
             ),
         )
         diagnostic_id = cursor.lastrowid
@@ -4994,11 +5232,14 @@ def create_diagnostic_record(data):
         return diagnostic_id
 
 
-def list_diagnostics(patient_id=None, doctor_name=None):
+def list_diagnostics(patient_id=None, doctor_name=None, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         clauses = ["deleted_at IS NULL"]
         params = []
+        if hospital_id:
+            clauses.append("hospital_id = ?")
+            params.append(hospital_id)
         if patient_id:
             clauses.append("patient_id = ?")
             params.append(patient_id)
@@ -5072,14 +5313,15 @@ def delete_diagnostic_record(diagnostic_id, actor=None):
         return deleted
 
 
-def get_diagnostic_summary():
+def get_diagnostic_summary(hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COALESCE(SUM(amount), 0) AS value FROM diagnostics")
+        cursor.execute("SELECT COALESCE(SUM(amount), 0) AS value FROM diagnostics WHERE hospital_id = ?", (scoped_hospital_id,))
         total_amount = cursor.fetchone()["value"]
-        cursor.execute("SELECT COALESCE(SUM(paid_amount), 0) AS value FROM diagnostics")
+        cursor.execute("SELECT COALESCE(SUM(paid_amount), 0) AS value FROM diagnostics WHERE hospital_id = ?", (scoped_hospital_id,))
         total_paid = cursor.fetchone()["value"]
-        cursor.execute("SELECT COALESCE(SUM(due_amount), 0) AS value FROM diagnostics")
+        cursor.execute("SELECT COALESCE(SUM(due_amount), 0) AS value FROM diagnostics WHERE hospital_id = ?", (scoped_hospital_id,))
         total_due = cursor.fetchone()["value"]
     return {"total_amount": total_amount, "total_paid": total_paid, "total_due": total_due}
 
@@ -5406,10 +5648,11 @@ def get_audit_logs(module_name=None, limit=100):
         return cursor.fetchall()
 
 
-def get_hospital_dashboard_summary():
+def get_hospital_dashboard_summary(hospital_id=None):
     # strftime()/DATE('now') are SQLite-only; Postgres has no such functions. Compute the
     # "today" and "this month" boundaries in Python instead so the comparisons are portable
     # range/equality checks against plain ISO date strings on both engines.
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     today = current_ist_datetime().date()
     month_start = today.replace(day=1)
     if month_start.month == 12:
@@ -5433,9 +5676,9 @@ def get_hospital_dashboard_summary():
                 SUM(CASE WHEN is_accident=1 AND DATE(arrival_at)=? THEN 1 ELSE 0 END) AS daily_accident,
                 SUM(CASE WHEN is_accident=1 THEN 1 ELSE 0 END) AS monthly_accident
             FROM encounters
-            WHERE arrival_at >= ? AND arrival_at < ?
+            WHERE hospital_id = ? AND arrival_at >= ? AND arrival_at < ?
             """,
-            (today_str, today_str, today_str, month_start_str, next_month_start_str),
+            (today_str, today_str, today_str, scoped_hospital_id, month_start_str, next_month_start_str),
         )
         encounter_summary = dict(cursor.fetchone() or {})
 
@@ -5445,9 +5688,9 @@ def get_hospital_dashboard_summary():
                 COALESCE(SUM(total_amount), 0) AS total_revenue,
                 COALESCE(SUM(due_amount), 0) AS due_collection
             FROM invoices
-            WHERE created_at >= ? AND created_at < ?
+            WHERE hospital_id = ? AND created_at >= ? AND created_at < ?
             """,
-            (month_start_str, next_month_start_str),
+            (scoped_hospital_id, month_start_str, next_month_start_str),
         )
         revenue_summary = dict(cursor.fetchone() or {})
 
@@ -5455,11 +5698,11 @@ def get_hospital_dashboard_summary():
             """
             SELECT payment_mode AS label, COALESCE(SUM(amount), 0) AS count
             FROM invoice_payments
-            WHERE created_at >= ? AND created_at < ?
+            WHERE hospital_id = ? AND created_at >= ? AND created_at < ?
             GROUP BY payment_mode
             ORDER BY count DESC
             """,
-            (month_start_str, next_month_start_str),
+            (scoped_hospital_id, month_start_str, next_month_start_str),
         )
         payment_mode_breakdown = [dict(row) for row in cursor.fetchall()]
 
@@ -5467,9 +5710,9 @@ def get_hospital_dashboard_summary():
             """
             SELECT COALESCE(SUM(amount), 0) AS diagnostics_income
             FROM diagnostics
-            WHERE created_at >= ? AND created_at < ?
+            WHERE hospital_id = ? AND created_at >= ? AND created_at < ?
             """,
-            (month_start_str, next_month_start_str),
+            (scoped_hospital_id, month_start_str, next_month_start_str),
         )
         diagnostics_income_row = cursor.fetchone()
         diagnostics_income = diagnostics_income_row["diagnostics_income"] if diagnostics_income_row else 0
@@ -5478,9 +5721,9 @@ def get_hospital_dashboard_summary():
             """
             SELECT COALESCE(SUM(amount), 0) AS pharmacy_sales
             FROM pharmacy_sales
-            WHERE sold_at >= ? AND sold_at < ?
+            WHERE hospital_id = ? AND sold_at >= ? AND sold_at < ?
             """,
-            (month_start_str, next_month_start_str),
+            (scoped_hospital_id, month_start_str, next_month_start_str),
         )
         pharmacy_sales_row = cursor.fetchone()
         pharmacy_sales = pharmacy_sales_row["pharmacy_sales"] if pharmacy_sales_row else 0
@@ -5489,11 +5732,11 @@ def get_hospital_dashboard_summary():
             """
             SELECT COALESCE(referral_source, 'unknown') AS label, COUNT(*) AS count
             FROM encounters
-            WHERE arrival_at >= ? AND arrival_at < ?
+            WHERE hospital_id = ? AND arrival_at >= ? AND arrival_at < ?
             GROUP BY referral_source
             ORDER BY count DESC
             """,
-            (month_start_str, next_month_start_str),
+            (scoped_hospital_id, month_start_str, next_month_start_str),
         )
         referral_summary = [dict(row) for row in cursor.fetchall()]
 

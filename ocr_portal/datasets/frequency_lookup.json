@@ -1,0 +1,302 @@
+{
+  "100": {
+    "Frequency": "1-0-0",
+    "Meaning": "Once Morning",
+    "Administration Timing": "Morning",
+    "Example Instruction": "Take 1 tablet in morning"
+  },
+  "010": {
+    "Frequency": "0-1-0",
+    "Meaning": "Once Afternoon",
+    "Administration Timing": "Afternoon",
+    "Example Instruction": "Take 1 tablet in afternoon"
+  },
+  "001": {
+    "Frequency": "0-0-1",
+    "Meaning": "Once Night",
+    "Administration Timing": "Night",
+    "Example Instruction": "Take 1 tablet at night"
+  },
+  "101": {
+    "Frequency": "1-0-1",
+    "Meaning": "Morning + Night",
+    "Administration Timing": "Twice Daily",
+    "Example Instruction": "Take 1 tablet morning and night"
+  },
+  "110": {
+    "Frequency": "1-1-0",
+    "Meaning": "Morning + Afternoon",
+    "Administration Timing": "Twice Daily",
+    "Example Instruction": "Take after breakfast and lunch"
+  },
+  "011": {
+    "Frequency": "0-1-1",
+    "Meaning": "Afternoon + Night",
+    "Administration Timing": "Twice Daily",
+    "Example Instruction": "Take afternoon and night"
+  },
+  "111": {
+    "Frequency": "1-1-1",
+    "Meaning": "Three Times Daily",
+    "Administration Timing": "Morning + Afternoon + Night",
+    "Example Instruction": "Take three times daily"
+  },
+  "1111": {
+    "Frequency": "1-1-1-1",
+    "Meaning": "Four Times Daily",
+    "Administration Timing": "Every 6 Hours",
+    "Example Instruction": "Take four times daily"
+  },
+  "202": {
+    "Frequency": "2-0-2",
+    "Meaning": "Two tablets Morning + Night",
+    "Administration Timing": "Twice Daily",
+    "Example Instruction": "Take 2 tablets morning and night"
+  },
+  "212": {
+    "Frequency": "2-1-2",
+    "Meaning": "High Dose Frequency",
+    "Administration Timing": "TID",
+    "Example Instruction": "Take as prescribed"
+  },
+  "1001": {
+    "Frequency": "1-0-0-1",
+    "Meaning": "Morning + Bedtime",
+    "Administration Timing": "BID",
+    "Example Instruction": "Take morning and bedtime"
+  },
+  "0001": {
+    "Frequency": "0-0-0-1",
+    "Meaning": "Bedtime Only",
+    "Administration Timing": "HS",
+    "Example Instruction": "Take at bedtime"
+  },
+  "1110": {
+    "Frequency": "1-1-1-0",
+    "Meaning": "Morning + Afternoon + Evening",
+    "Administration Timing": "TID",
+    "Example Instruction": "Take before dinner"
+  },
+  "sos": {
+    "Frequency": "SOS",
+    "Meaning": "If Required",
+    "Administration Timing": "Emergency/Need basis",
+    "Example Instruction": "Take if needed"
+  },
+  "stat": {
+    "Frequency": "STAT",
+    "Meaning": "Immediately",
+    "Administration Timing": "Immediate",
+    "Example Instruction": "Administer immediately"
+  },
+  "weeklyonce": {
+    "Frequency": "Weekly Once",
+    "Meaning": "Once Weekly",
+    "Administration Timing": "Weekly",
+    "Example Instruction": "Take once every week"
+  },
+  "alternateday": {
+    "Frequency": "Alternate Day",
+    "Meaning": "Every Other Day",
+    "Administration Timing": "QOD",
+    "Example Instruction": "Take on alternate days"
+  },
+  "q4h": {
+    "Frequency": "Q4H",
+    "Meaning": "Every 4 Hours",
+    "Administration Timing": "Interval Based",
+    "Example Instruction": "Administer every 4 hours"
+  },
+  "q6h": {
+    "Frequency": "Q6H",
+    "Meaning": "Every 6 Hours",
+    "Administration Timing": "Interval Based",
+    "Example Instruction": "Administer every 6 hours"
+  },
+  "q8h": {
+    "Frequency": "Q8H",
+    "Meaning": "Every 8 Hours",
+    "Administration Timing": "Interval Based",
+    "Example Instruction": "Administer every 8 hours"
+  },
+  "od": {
+    "Frequency": "OD",
+    "Meaning": "Once daily",
+    "Administration Timing": "Once in a day",
+    "Example Instruction": "Take 1 tablet once daily"
+  },
+  "qd": {
+    "Frequency": "QD",
+    "Meaning": "Every day",
+    "Administration Timing": "Daily",
+    "Example Instruction": "Take every day"
+  },
+  "bid": {
+    "Frequency": "BID",
+    "Meaning": "Twice daily",
+    "Administration Timing": "Morning and Night",
+    "Example Instruction": "Take 1 tablet twice daily"
+  },
+  "tid": {
+    "Frequency": "TID",
+    "Meaning": "Three times daily",
+    "Administration Timing": "Morning, Afternoon, Night",
+    "Example Instruction": "Take 1 tablet three times daily"
+  },
+  "qid": {
+    "Frequency": "QID",
+    "Meaning": "Four times daily",
+    "Administration Timing": "Every 6 hours",
+    "Example Instruction": "Take 1 tablet four times daily"
+  },
+  "q1h": {
+    "Frequency": "Q1H",
+    "Meaning": "Every 1 hour",
+    "Administration Timing": "Hourly",
+    "Example Instruction": "Administer every 1 hour"
+  },
+  "q2h": {
+    "Frequency": "Q2H",
+    "Meaning": "Every 2 hours",
+    "Administration Timing": "Every 2 hours",
+    "Example Instruction": "Administer every 2 hours"
+  },
+  "q3h": {
+    "Frequency": "Q3H",
+    "Meaning": "Every 3 hours",
+    "Administration Timing": "Every 3 hours",
+    "Example Instruction": "Administer every 3 hours"
+  },
+  "q12h": {
+    "Frequency": "Q12H",
+    "Meaning": "Every 12 hours",
+    "Administration Timing": "Morning and Night",
+    "Example Instruction": "Take every 12 hours"
+  },
+  "hs/qhs": {
+    "Frequency": "HS / QHS",
+    "Meaning": "At bedtime",
+    "Administration Timing": "Night",
+    "Example Instruction": "Take at bedtime"
+  },
+  "ac": {
+    "Frequency": "AC",
+    "Meaning": "Before meals",
+    "Administration Timing": "Before food",
+    "Example Instruction": "Take before meals"
+  },
+  "pc": {
+    "Frequency": "PC",
+    "Meaning": "After meals",
+    "Administration Timing": "After food",
+    "Example Instruction": "Take after meals"
+  },
+  "prn": {
+    "Frequency": "PRN",
+    "Meaning": "As needed",
+    "Administration Timing": "When required",
+    "Example Instruction": "Take as needed"
+  },
+  "qam": {
+    "Frequency": "QAM",
+    "Meaning": "Every morning",
+    "Administration Timing": "Morning",
+    "Example Instruction": "Take every morning"
+  },
+  "qpm": {
+    "Frequency": "QPM",
+    "Meaning": "Every evening",
+    "Administration Timing": "Evening",
+    "Example Instruction": "Take every evening"
+  },
+  "continuous": {
+    "Frequency": "Continuous",
+    "Meaning": "Continuous infusion",
+    "Administration Timing": "Continuous",
+    "Example Instruction": "Continuous administration"
+  },
+  "q24h": {
+    "Frequency": "Q24H",
+    "Meaning": "Every 24 hours",
+    "Administration Timing": "Every 24 hours",
+    "Example Instruction": ""
+  },
+  "q48h": {
+    "Frequency": "Q48H",
+    "Meaning": "Every 48 hours",
+    "Administration Timing": "Alternate day",
+    "Example Instruction": ""
+  },
+  "q72h": {
+    "Frequency": "Q72H",
+    "Meaning": "Every 72 hours",
+    "Administration Timing": "Every 3 days",
+    "Example Instruction": ""
+  },
+  "qwk": {
+    "Frequency": "QWK",
+    "Meaning": "Once weekly",
+    "Administration Timing": "Weekly",
+    "Example Instruction": ""
+  },
+  "biw": {
+    "Frequency": "BIW",
+    "Meaning": "Twice weekly",
+    "Administration Timing": "Weekly",
+    "Example Instruction": ""
+  },
+  "tiw": {
+    "Frequency": "TIW",
+    "Meaning": "Three times weekly",
+    "Administration Timing": "Weekly",
+    "Example Instruction": ""
+  },
+  "qow": {
+    "Frequency": "QOW",
+    "Meaning": "Every other week",
+    "Administration Timing": "Biweekly",
+    "Example Instruction": ""
+  },
+  "monthlyonce": {
+    "Frequency": "Monthly Once",
+    "Meaning": "Once monthly",
+    "Administration Timing": "Monthly",
+    "Example Instruction": ""
+  },
+  "qmonthly": {
+    "Frequency": "QMonthly",
+    "Meaning": "Every month",
+    "Administration Timing": "Monthly",
+    "Example Instruction": ""
+  },
+  "qyearly": {
+    "Frequency": "QYearly",
+    "Meaning": "Once yearly",
+    "Administration Timing": "Annual",
+    "Example Instruction": ""
+  },
+  "qod": {
+    "Frequency": "QOD",
+    "Meaning": "Every other day",
+    "Administration Timing": "Alternate days",
+    "Example Instruction": ""
+  },
+  "qac": {
+    "Frequency": "QAC",
+    "Meaning": "Before each meal",
+    "Administration Timing": "Before meals",
+    "Example Instruction": ""
+  },
+  "qpc": {
+    "Frequency": "QPC",
+    "Meaning": "After each meal",
+    "Administration Timing": "After meals",
+    "Example Instruction": ""
+  },
+  "qhs": {
+    "Frequency": "QHS",
+    "Meaning": "Every night at bedtime",
+    "Administration Timing": "Bedtime",
+    "Example Instruction": ""
+  }
+}

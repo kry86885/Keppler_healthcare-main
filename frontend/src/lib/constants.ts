@@ -1,6 +1,6 @@
-﻿import type { ModuleOption, ModuleId, NavItem, PatientForm, SignupForm, UserTypeOption } from "../types";
+import type { ModuleOption, ModuleId, NavItem, PatientForm, SignupForm, UserTypeOption } from "../types";
 
-export const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5001";
+export const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5011";
 export const SYMPTOM_API_BASE = import.meta.env.VITE_SYMPTOM_API_BASE || "http://localhost:5002";
 
 export const USER_TYPE_OPTIONS: UserTypeOption[] = [
@@ -79,7 +79,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "patients", label: "Patients", group: "overview", permission: "patients.read", deniedHint: "Requires patient access." },
   { id: "readmit", label: "Re-admit", group: "overview", permission: "patients.write", deniedHint: "Requires patient write access." },
   { id: "add", label: "Patient Registration", group: "registration", permission: "patients.write", deniedHint: "Requires patient write access." },
-  { id: "ocr", label: "OCR Scanner", group: "registration", permission: "patients.write", deniedHint: "Requires patient write access." },
+  { id: "ocr", label: "OCR Scanner", group: "ai", permission: "patients.write", deniedHint: "Requires patient write access." },
   { id: "appointment-in", label: "Appointment In", group: "registration", permission: "patients.read", deniedHint: "Requires patient access." },
   { id: "appointment-out", label: "Appointment Out", group: "registration", permission: "patients.read", deniedHint: "Requires patient access." },
   { id: "queue", label: "Queue Management", group: "registration", permission: "patients.read", deniedHint: "Requires patient access." },
@@ -104,7 +104,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "accounts-vendor-payments", label: "Vendor Payments", group: "finance", permission: "accounts.read", deniedHint: "Requires accounts access." },
   { id: "accounts-doctor-payouts", label: "Doctor Payouts", group: "finance", permission: "accounts.read", deniedHint: "Requires accounts access." },
   { id: "reports", label: "Reports", group: "finance", permission: "reports.read", deniedHint: "Requires reports access." },
-  { id: "symptom-ai", label: "SymptoMap AI", group: "overview", permission: "symptom_ai.use", deniedHint: "Requires SymptoMap AI access." },
+  { id: "symptom-ai", label: "SymptoMap AI", group: "ai", permission: "symptom_ai.use", deniedHint: "Requires SymptoMap AI access." },
   { id: "employees", label: "Employee Management", group: "admin", permission: "employees.read", deniedHint: "Requires admin access." },
   { id: "settings", label: "Settings" },
 ];

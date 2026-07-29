@@ -29,14 +29,14 @@ reports_bp = Blueprint('reports', __name__)
 @reports_bp.get("/api/reports/overview")
 @require_permissions("reports.read")
 def reports_overview():
-    return jsonify(get_reports_overview())
+    return jsonify(get_reports_overview(hospital_id=current_hospital_id()))
 
 
 
 @reports_bp.get("/api/reports/export/csv")
 @require_permissions("reports.read")
 def reports_export_csv():
-    overview = get_reports_overview()
+    overview = get_reports_overview(hospital_id=current_hospital_id())
     csv_stream = io.StringIO()
     writer = csv.writer(csv_stream)
     writer.writerow(["section", "label", "value"])
@@ -68,7 +68,7 @@ def reports_export_csv():
 @reports_bp.get("/api/reports/export/pdf")
 @require_permissions("reports.read")
 def reports_export_pdf():
-    overview = get_reports_overview()
+    overview = get_reports_overview(hospital_id=current_hospital_id())
     pdf_bytes = generate_pdf(
         "Hospital Operations",
         "reports_overview",
@@ -87,7 +87,7 @@ def reports_export_pdf():
 @reports_bp.get("/api/reports/export/word")
 @require_permissions("reports.read")
 def reports_export_word():
-    overview = get_reports_overview()
+    overview = get_reports_overview(hospital_id=current_hospital_id())
     word_bytes = generate_word(
         "Hospital Operations",
         "reports_overview",

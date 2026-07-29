@@ -1,335 +1,716 @@
-import { useEffect, useState } from "react";
-import type { Dispatch, SetStateAction } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import DocumentUploadDropzone from "../components/DocumentUploadDropzone";
 import MarkdownReport from "../components/MarkdownReport";
-import { Alert, Button, Select, Textarea } from "../components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  ConfirmDialog,
+  Input,
+  Modal,
+  Select,
+  Table,
+  TableCell,
+  TableHead,
+  TableRow,
+  Tabs,
+  TabsContent,
+  TabsTrigger,
+} from "../components/ui";
 import { API_BASE, SUPPORTED_DOCUMENT_ACCEPT, SUPPORTED_DOCUMENT_EXTENSIONS } from "../lib/constants";
-import { reportError, withAuthHeaders } from "../lib/api";
+import { apiFetch, reportError, withAuthHeaders } from "../lib/api";
+import { formatDateTime } from "../lib/format";
 import type { Notice } from "../types";
 
 type Props = {
   setNotice: Dispatch<SetStateAction<Notice | null>>;
-  ocrLanguage?: string;
-  onNavigate: (page: string) => void;
 };
 
-const IMAGE_NAME_PATTERN = /\.(png|jpe?g|webp|bmp|gif|tiff?|heic|heif)$/i;
+type OcrJob = {
+  job_id: string;
+  status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+  progress: number;
+  error_message?: string | null;
+};
 
-const OCR_DOC_TYPES = [
-  { value: "demographics", label: "Patient ID / Demographics Card" },
-  { value: "prescriptions", label: "Medical Prescription" },
-  { value: "lab_report", label: "Lab / Diagnostic Report" },
-  { value: "xray_mri", label: "X-Ray / MRI Report" },
-  { value: "general", label: "General Medical Document" },
+type OcrJobResult = {
+  filename: string;
+  combined_markdown: string;
+  entities: unknown[];
+  confidence_score: number | null;
+};
+
+type VaultDoc = {
+  id: number;
+  filename: string;
+  doc_category: string | null;
+  confidence_score: number | null;
+  extraction_date: string | null;
+};
+
+type VaultDocDetail = {
+  id: number;
+  markdown: string;
+};
+
+type KbDoc = {
+  doc_id: number;
+  filename: string;
+  category: string | null;
+  chunk_count: number;
+};
+
+type ChatCitation = {
+  doc_id: number;
+  filename: string;
+  page_label?: string | null;
+  snippet?: string | null;
+};
+
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  citations?: ChatCitation[];
+};
+
+const EXPORT_FORMATS: { value: string; label: string }[] = [
+  { value: "md", label: "Markdown" },
+  { value: "pdf", label: "PDF" },
+  { value: "docx", label: "Word" },
+  { value: "xlsx", label: "Excel" },
 ];
 
-function calculateAgeFromDob(dob: string): string {
-  if (!dob) return "";
-  const birthDate = new Date(dob);
-  if (Number.isNaN(birthDate.getTime())) return "";
+const STROKE = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
 
-  const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const monthDiff = today.getMonth() - birthDate.getMonth();
-  const birthdayPassed = monthDiff > 0 || (monthDiff === 0 && today.getDate() >= birthDate.getDate());
-  if (!birthdayPassed) {
-    age -= 1;
-  }
-  if (age < 0) return "";
-  return String(age);
-}
-
-function normalizeDateToIso(raw: string): string | null {
-  const cleaned = raw.replace(/[.]/g, "/").replace(/-/g, "/").trim();
-  const parts = cleaned.split("/").map((part) => part.trim());
-  if (parts.length !== 3) return null;
-
-  let day = 0;
-  let month = 0;
-  let year = 0;
-
-  if (parts[0].length === 4) {
-    year = Number(parts[0]);
-    month = Number(parts[1]);
-    day = Number(parts[2]);
-  } else if (parts[2].length === 4) {
-    day = Number(parts[0]);
-    month = Number(parts[1]);
-    year = Number(parts[2]);
-  } else {
-    return null;
-  }
-
-  if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year)) return null;
-  if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return null;
-
-  const candidate = new Date(Date.UTC(year, month - 1, day));
-  const valid =
-    candidate.getUTCFullYear() === year && candidate.getUTCMonth() === month - 1 && candidate.getUTCDate() === day;
-  if (!valid) return null;
-
-  const today = new Date();
-  const utcToday = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-  if (candidate.getTime() > utcToday.getTime()) return null;
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-function extractDobFromText(text: string): string | null {
-  const labeledPatterns = [
-    /(?:date\s*of\s*birth|dob|d\.o\.b)\s*[:\-]?\s*((?:\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})|(?:\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}))/i,
-    /(?:birth\s*date)\s*[:\-]?\s*((?:\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})|(?:\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}))/i,
-  ];
-
-  for (const pattern of labeledPatterns) {
-    const match = text.match(pattern);
-    if (!match?.[1]) continue;
-    const iso = normalizeDateToIso(match[1]);
-    if (iso) return iso;
-  }
-
-  const genericDatePattern = /\b((?:\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4})|(?:\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}))\b/g;
-  const matches = text.match(genericDatePattern) || [];
-  for (const raw of matches) {
-    const iso = normalizeDateToIso(raw);
-    if (iso) return iso;
-  }
-  return null;
-}
-
-function extractAgeFromText(text: string): string {
-  const match = text.match(/(?:age|aged)\s*[:\-]?\s*(\d{1,3})\b/i);
-  if (!match?.[1]) return "";
-  const value = Number(match[1]);
-  if (!Number.isInteger(value) || value < 0 || value > 150) return "";
-  return String(value);
-}
-
-function OriginalDocumentPreview({ file }: { file?: File }) {
-  const [url, setUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!file) {
-      setUrl(null);
-      return;
-    }
-    const objectUrl = URL.createObjectURL(file);
-    setUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [file]);
-
-  if (!file || !url) {
-    return <p className="muted">No source document selected.</p>;
-  }
-
-  const mime = (file.type || "").toLowerCase();
-  const isPdf = mime === "application/pdf" || /\.pdf$/i.test(file.name);
-  const isImage = mime.startsWith("image/") || IMAGE_NAME_PATTERN.test(file.name);
-
-  if (isImage) {
-    return <img className="ocr-source-image" src={url} alt={file.name} style={{ maxWidth: "100%", maxHeight: "400px", borderRadius: "8px", border: "1px solid var(--border-color)" }} />;
-  }
-
-  if (isPdf) {
-    return <iframe className="ocr-source-pdf" src={url} title={`Preview ${file.name}`} style={{ width: "100%", height: "400px", borderRadius: "8px", border: "1px solid var(--border-color)" }} />;
-  }
-
+function Icon({ name, size = 18 }: { name: "upload" | "folder" | "chat" | "file" | "check" | "clock" | "alert"; size?: number }) {
+  const paths: Record<string, ReactNode> = {
+    upload: (
+      <>
+        <path d="M12 16V4M12 4l-4 4M12 4l4 4" {...STROKE} />
+        <path d="M4 16v2.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V16" {...STROKE} />
+      </>
+    ),
+    folder: (
+      <>
+        <path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4l1.6 2H19a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5Z" {...STROKE} />
+      </>
+    ),
+    chat: (
+      <>
+        <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H9l-4 3v-3H5.5A1.5 1.5 0 0 1 4 14.5Z" {...STROKE} />
+      </>
+    ),
+    file: (
+      <>
+        <path d="M7 3.5h7l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19V5A1.5 1.5 0 0 1 7 3.5Z" {...STROKE} />
+        <path d="M14 3.5V7a1 1 0 0 0 1 1h3.5" {...STROKE} />
+      </>
+    ),
+    check: <path d="M5 12.5l4.5 4.5L19 7" {...STROKE} />,
+    clock: (
+      <>
+        <circle cx="12" cy="12" r="8" {...STROKE} />
+        <path d="M12 8v4l3 2" {...STROKE} />
+      </>
+    ),
+    alert: (
+      <>
+        <path d="M12 8.5v4.2" {...STROKE} />
+        <path d="M10.3 4.3 2.9 17.5A1.8 1.8 0 0 0 4.5 20h15a1.8 1.8 0 0 0 1.6-2.5L13.7 4.3a1.8 1.8 0 0 0-3.4 0Z" {...STROKE} />
+        <circle cx="12" cy="16.3" r="0.9" fill="currentColor" stroke="none" />
+      </>
+    ),
+  };
   return (
-    <a className="link" href={url} target="_blank" rel="noreferrer">
-      Open original document
-    </a>
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      {paths[name]}
+    </svg>
   );
 }
 
-export default function OcrPage({ setNotice, ocrLanguage = "eng", onNavigate }: Props) {
-  const [selectedDocType, setSelectedDocType] = useState("demographics");
+function confidenceVariant(score: number | null): "default" | "secondary" | "destructive" {
+  if (score == null) return "secondary";
+  if (score >= 90) return "default";
+  if (score >= 70) return "secondary";
+  return "destructive";
+}
+
+function jobStatusMeta(status: OcrJob["status"]): { label: string; variant: "default" | "secondary" | "destructive"; icon: "clock" | "check" | "alert" } {
+  switch (status) {
+    case "COMPLETED":
+      return { label: "Completed", variant: "default", icon: "check" };
+    case "FAILED":
+      return { label: "Failed", variant: "destructive", icon: "alert" };
+    case "PROCESSING":
+      return { label: "Processing", variant: "secondary", icon: "clock" };
+    default:
+      return { label: "Queued", variant: "secondary", icon: "clock" };
+  }
+}
+
+function downloadExport(path: string) {
+  window.open(`${API_BASE}${path}`, "_blank", "noopener,noreferrer");
+}
+
+export default function OcrPage({ setNotice }: Props) {
+  const [tab, setTab] = useState<"upload" | "vault" | "chat">("upload");
+
+  // Upload & Scan
+  const [blueprints, setBlueprints] = useState<string[]>(["Universal OCR (Any Text)"]);
+  const [selectedBlueprint, setSelectedBlueprint] = useState("Universal OCR (Any Text)");
   const [file, setFile] = useState<File | undefined>(undefined);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [ocrText, setOcrText] = useState("");
-  const [status, setStatus] = useState("");
-  const [extractedDob, setExtractedDob] = useState("");
-  const [extractedAge, setExtractedAge] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<OcrJob | null>(null);
+  const [jobResult, setJobResult] = useState<OcrJobResult | null>(null);
+  const pollTimeoutRef = useRef<number | null>(null);
+
+  // My Documents (vault)
+  const [vaultLoaded, setVaultLoaded] = useState(false);
+  const [vaultDocs, setVaultDocs] = useState<VaultDoc[]>([]);
+  const [vaultDetail, setVaultDetail] = useState<VaultDocDetail | null>(null);
+  const [vaultDetailOpen, setVaultDetailOpen] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Ask AI (chat)
+  const [chatLoaded, setChatLoaded] = useState(false);
+  const [kbDocs, setKbDocs] = useState<KbDoc[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+
+  useEffect(() => {
+    apiFetch<{ blueprints: string[] }>("/api/ocr-portal/blueprints")
+      .then((data) => {
+        if (data.blueprints?.length) {
+          setBlueprints(data.blueprints);
+          setSelectedBlueprint(data.blueprints[0]);
+        }
+      })
+      .catch(() => {
+        // Fall back to the default option already in state -- non-fatal.
+      });
+  }, []);
+
+  // ---- Upload & Scan ----------------------------------------------------
 
   const handleFileSelect = (selectedFile?: File) => {
     setFile(selectedFile);
-    setOcrText("");
-    setStatus("");
-    setExtractedDob("");
-    setExtractedAge("");
+    setActiveJobId(null);
+    setJobStatus(null);
+    setJobResult(null);
   };
 
-  const handleProcessOcr = async () => {
+  const handleUpload = async () => {
     if (!file) {
-      setStatus("Please upload an image or document first.");
+      setNotice({ type: "warning", message: "Choose a file to scan first." });
       return;
     }
-
-    setIsProcessing(true);
-    setStatus("Running AI Optical Character Recognition (OCR)...");
-    setOcrText("");
-    setExtractedDob("");
-    setExtractedAge("");
-
+    setUploading(true);
     try {
       const body = new FormData();
       body.append("file", file);
-      body.append("language", ocrLanguage);
-      body.append("doc_type", selectedDocType);
-
-      const response = await fetch(`${API_BASE}/api/ocr`, {
+      body.append("blueprint", selectedBlueprint);
+      const response = await fetch(`${API_BASE}/api/ocr-portal/upload`, {
         method: "POST",
         headers: withAuthHeaders({}, "POST"),
         body,
         credentials: "include",
       });
-
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(`Server returned status ${response.status}`);
+        throw Object.assign(new Error(data.error || "Upload failed."), { status: response.status });
       }
-
-      const data = await response.json();
-      const text = data.text || "";
-      setOcrText(text);
-      setStatus("OCR processing completed successfully!");
-
-      // Try to extract DOB and Age
-      const dob = extractDobFromText(text) || "";
-      let age = extractAgeFromText(text);
-      if (dob && !age) {
-        age = calculateAgeFromDob(dob);
-      }
-
-      setExtractedDob(dob);
-      setExtractedAge(age);
-
-      if (dob || age) {
-        setNotice({
-          type: "success",
-          message: `Demographics detected! DOB: ${dob || "N/A"}, Age: ${age || "N/A"}`,
-        });
-      }
-    } catch (err) {
-      reportError(setNotice, err as { message?: string }, "Failed to process OCR on the document.");
-      setStatus("OCR processing failed. Please check backend server connection.");
+      setJobResult(null);
+      setJobStatus({ job_id: data.job_id, status: "PENDING", progress: 0 });
+      setActiveJobId(data.job_id);
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Failed to upload document.");
     } finally {
-      setIsProcessing(false);
+      setUploading(false);
     }
   };
 
-  const handleProceedToRegistration = () => {
-    sessionStorage.setItem(
-      "ocr_demographics",
-      JSON.stringify({
-        dob: extractedDob,
-        age: extractedAge,
-        notes: ocrText ? `[OCR Extracted Notes]:\n${ocrText}` : "",
-      })
-    );
-    setNotice({
-      type: "success",
-      message: "Pre-filling Patient Registration form with extracted OCR demographics...",
-    });
-    onNavigate("add");
-  };
+  useEffect(() => {
+    if (!activeJobId) return undefined;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const data = await apiFetch<OcrJob>(`/api/ocr-portal/jobs/${activeJobId}`);
+        if (cancelled) return;
+        setJobStatus(data);
+
+        if (data.status === "COMPLETED") {
+          const result = await apiFetch<OcrJobResult>(`/api/ocr-portal/jobs/${activeJobId}/result`);
+          if (!cancelled) setJobResult(result);
+          return;
+        }
+        if (data.status === "FAILED") {
+          reportError(setNotice, { message: data.error_message || "OCR processing failed." }, "OCR processing failed.");
+          return;
+        }
+        pollTimeoutRef.current = window.setTimeout(poll, 2000);
+      } catch (error) {
+        if (!cancelled) {
+          reportError(setNotice, error as { message?: string; status?: number }, "Lost connection while checking job status.");
+        }
+      }
+    };
+
+    void poll();
+    return () => {
+      cancelled = true;
+      if (pollTimeoutRef.current) window.clearTimeout(pollTimeoutRef.current);
+    };
+  }, [activeJobId, setNotice]);
 
   const handleClear = () => {
     setFile(undefined);
-    setOcrText("");
-    setStatus("");
-    setExtractedDob("");
-    setExtractedAge("");
+    setActiveJobId(null);
+    setJobStatus(null);
+    setJobResult(null);
   };
+
+  // ---- My Documents (vault) ----------------------------------------------
+
+  const loadVault = async () => {
+    try {
+      const data = await apiFetch<VaultDoc[]>("/api/ocr-portal/vault");
+      setVaultDocs(data);
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load your documents.");
+    }
+  };
+
+  const openVaultTab = () => {
+    setTab("vault");
+    if (!vaultLoaded) {
+      setVaultLoaded(true);
+      void loadVault();
+    }
+  };
+
+  const openVaultDetail = async (doc: VaultDoc) => {
+    try {
+      const data = await apiFetch<VaultDocDetail>(`/api/ocr-portal/vault/${doc.id}`);
+      setVaultDetail(data);
+      setVaultDetailOpen(true);
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load document.");
+    }
+  };
+
+  const handleDeleteConfirmed = async () => {
+    if (deleteTargetId == null) return;
+    setDeleting(true);
+    try {
+      await apiFetch(`/api/ocr-portal/vault/${deleteTargetId}`, { method: "DELETE" });
+      setVaultDocs((prev) => prev.filter((doc) => doc.id !== deleteTargetId));
+      setNotice({ type: "success", message: "Document deleted." });
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Unable to delete document.");
+    } finally {
+      setDeleting(false);
+      setDeleteTargetId(null);
+    }
+  };
+
+  const handleAddToKnowledgeBase = async (doc: VaultDoc) => {
+    try {
+      await apiFetch("/api/ocr-portal/assistant/ingest", {
+        method: "POST",
+        body: JSON.stringify({ doc_ids: [doc.id] }),
+      });
+      setNotice({ type: "success", message: `${doc.filename} is being added to the knowledge base.` });
+      if (chatLoaded) void loadKb();
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Unable to add document to knowledge base.");
+    }
+  };
+
+  // ---- Ask AI (chat) -------------------------------------------------------
+
+  const loadKb = async () => {
+    try {
+      const data = await apiFetch<KbDoc[]>("/api/ocr-portal/assistant/kb");
+      setKbDocs(data);
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load knowledge base.");
+    }
+  };
+
+  const loadChatHistory = async () => {
+    try {
+      const data = await apiFetch<{ role: "user" | "assistant"; content: string }[]>(
+        "/api/ocr-portal/assistant/history"
+      );
+      setChatMessages(data);
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load chat history.");
+    }
+  };
+
+  const openChatTab = () => {
+    setTab("chat");
+    if (!chatLoaded) {
+      setChatLoaded(true);
+      void loadKb();
+      void loadChatHistory();
+    }
+  };
+
+  const handleRemoveFromKb = async (doc: KbDoc) => {
+    try {
+      await apiFetch(`/api/ocr-portal/assistant/kb/${doc.doc_id}`, { method: "DELETE" });
+      setKbDocs((prev) => prev.filter((d) => d.doc_id !== doc.doc_id));
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Unable to remove document.");
+    }
+  };
+
+  const handleChatSend = async () => {
+    const message = chatInput.trim();
+    if (!message) return;
+    setChatMessages((prev) => [...prev, { role: "user", content: message }]);
+    setChatInput("");
+    setChatLoading(true);
+    try {
+      const data = await apiFetch<{ role: "assistant"; content: string; citations: ChatCitation[] }>(
+        "/api/ocr-portal/assistant/chat",
+        { method: "POST", body: JSON.stringify({ message, session_id: "default" }) }
+      );
+      setChatMessages((prev) => [...prev, { role: "assistant", content: data.content, citations: data.citations }]);
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Unable to reach the knowledge base.");
+      setChatMessages((prev) => prev.slice(0, -1));
+      setChatInput(message);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleClearChat = async () => {
+    try {
+      await apiFetch("/api/ocr-portal/assistant/history", { method: "DELETE" });
+      setChatMessages([]);
+      setNotice({ type: "success", message: "Chat history cleared." });
+    } catch (error) {
+      reportError(setNotice, error as { message?: string; status?: number }, "Unable to clear chat history.");
+    }
+  };
+
+  const statusMeta = jobStatus ? jobStatusMeta(jobStatus.status) : null;
 
   return (
     <section className="page-section ocr-scanner-page">
       <div className="section-header">
-        <div>
-          <h2>Intelligent OCR Scanner</h2>
-          <p className="muted">
-            Upload medical ID cards, prescriptions, lab reports, or referral letters for instant AI text extraction and demographics processing.
-          </p>
-        </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: "2rem", padding: "1.5rem" }}>
-        <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", marginBottom: "1.5rem" }}>
-          <div style={{ flex: "1 1 250px" }}>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600 }}>Document Category</label>
-            <Select value={selectedDocType} onChange={(e) => setSelectedDocType(e.target.value)}>
-              {OCR_DOC_TYPES.map((doc) => (
-                <option key={doc.value} value={doc.value}>
-                  {doc.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: "1.5rem" }}>
-          <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600 }}>Upload Image / PDF Document</label>
-          <DocumentUploadDropzone
-            accept={SUPPORTED_DOCUMENT_ACCEPT}
-            file={file}
-            helperText={`Supported formats: ${SUPPORTED_DOCUMENT_EXTENSIONS.map((ext) => ext.toUpperCase()).join(", ")}`}
-            onFileSelect={handleFileSelect}
-          />
-        </div>
-
-        <div className="form-actions" style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-          <Button variant="primary" type="button" onClick={() => void handleProcessOcr()} disabled={!file || isProcessing}>
-            {isProcessing ? "Processing OCR..." : "Start OCR Scanning"}
-          </Button>
-          <Button variant="secondary" type="button" onClick={handleClear} disabled={!file && !ocrText}>
-            Clear / Reset
-          </Button>
-          {status && <span className="muted" style={{ marginLeft: "0.5rem" }}>{status}</span>}
-        </div>
-      </div>
-
-      {(extractedDob || extractedAge) && (
-        <div className="card" style={{ marginBottom: "2rem", padding: "1.5rem", borderLeft: "4px solid var(--primary-color)", backgroundColor: "var(--card-bg-alt, rgba(0, 120, 212, 0.05))" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
-            <div>
-              <h4 style={{ margin: "0 0 0.5rem 0", color: "var(--primary-color)" }}>✨ Patient Demographics Detected!</h4>
-              <p style={{ margin: 0 }}>
-                <strong>Date of Birth:</strong> {extractedDob || "Not found"} &nbsp;|&nbsp; <strong>Calculated Age:</strong> {extractedAge ? `${extractedAge} yrs` : "Not found"}
-              </p>
-            </div>
-            <Button variant="primary" type="button" onClick={handleProceedToRegistration}>
-              Register Patient with These Details ➔
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {(file || ocrText) && (
-        <div className="card" style={{ padding: "1.5rem" }}>
-          <h3 style={{ marginTop: 0, marginBottom: "1.5rem" }}>OCR Analysis & Extraction Results</h3>
-          
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "2rem", marginBottom: "1.5rem" }}>
-            <div>
-              <h4 className="muted" style={{ marginTop: 0 }}>Source Document</h4>
-              <OriginalDocumentPreview file={file} />
-            </div>
-            <div>
-              <h4 className="muted" style={{ marginTop: 0 }}>Formatted AI Output</h4>
-              <div style={{ maxHeight: "400px", overflowY: "auto", padding: "1rem", border: "1px solid var(--border-color)", borderRadius: "8px", background: "var(--bg-color)" }}>
-                {ocrText ? <MarkdownReport text={ocrText} /> : <p className="muted">Processing text...</p>}
-              </div>
-            </div>
-          </div>
-
+        <div className="ocr-page-title">
+          <span className="ocr-page-icon">
+            <Icon name="file" size={22} />
+          </span>
           <div>
-            <h4 className="muted" style={{ marginTop: 0 }}>Raw Extracted Text (Editable)</h4>
-            <Textarea
-              value={ocrText}
-              onChange={(e) => setOcrText(e.target.value)}
-              rows={8}
-              placeholder="Extracted OCR text will appear here once processing completes..."
-              style={{ width: "100%", fontFamily: "monospace" }}
-            />
+            <h2>OCR</h2>
+            <p className="muted">
+              Upload scanned medical records, prescriptions, and reports for AI-powered text extraction, then browse
+              or chat with what you've scanned.
+            </p>
           </div>
         </div>
+      </div>
+
+      <Tabs>
+        <TabsTrigger active={tab === "upload"} onClick={() => setTab("upload")}>
+          <span className="ocr-tab-label"><Icon name="upload" size={15} /> Upload &amp; Scan</span>
+        </TabsTrigger>
+        <TabsTrigger active={tab === "vault"} onClick={openVaultTab}>
+          <span className="ocr-tab-label"><Icon name="folder" size={15} /> My Documents{vaultDocs.length > 0 ? ` (${vaultDocs.length})` : ""}</span>
+        </TabsTrigger>
+        <TabsTrigger active={tab === "chat"} onClick={openChatTab}>
+          <span className="ocr-tab-label"><Icon name="chat" size={15} /> Ask AI</span>
+        </TabsTrigger>
+      </Tabs>
+
+      {tab === "upload" && (
+        <TabsContent>
+          <div className="ocr-workspace-grid">
+            <Card>
+              <CardHeader>
+                <CardTitle>Upload a Document</CardTitle>
+                <CardDescription>Choose a document type, then upload an image or PDF for AI text extraction.</CardDescription>
+              </CardHeader>
+              <CardContent className="ocr-upload-form">
+                <label className="ocr-field-label">
+                  Document Type
+                  <Select value={selectedBlueprint} onChange={(e) => setSelectedBlueprint(e.target.value)}>
+                    {blueprints.map((bp) => (
+                      <option key={bp} value={bp}>
+                        {bp}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+
+                <DocumentUploadDropzone
+                  accept={SUPPORTED_DOCUMENT_ACCEPT}
+                  file={file}
+                  helperText={`Supported formats: ${SUPPORTED_DOCUMENT_EXTENSIONS.map((ext) => ext.toUpperCase()).join(", ")}`}
+                  disabled={uploading}
+                  onFileSelect={handleFileSelect}
+                />
+
+                <div className="ocr-form-actions">
+                  <Button variant="primary" type="button" onClick={() => void handleUpload()} disabled={!file || uploading}>
+                    {uploading ? "Uploading..." : "Start OCR Scanning"}
+                  </Button>
+                  <Button variant="secondary" type="button" onClick={handleClear} disabled={!file && !jobStatus}>
+                    Clear / Reset
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="ocr-status-card">
+              <CardHeader>
+                <CardTitle>Extraction Status</CardTitle>
+                <CardDescription>Live progress for your current scan.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!jobStatus && (
+                  <div className="ocr-empty-panel">
+                    <Icon name="clock" size={28} />
+                    <p className="muted">Upload a document to see extraction progress here.</p>
+                  </div>
+                )}
+
+                {jobStatus && statusMeta && (
+                  <div className="ocr-status-panel">
+                    <div className="ocr-status-row">
+                      <Badge variant={statusMeta.variant}>
+                        <span className="ocr-badge-icon"><Icon name={statusMeta.icon} size={13} /></span>
+                        {statusMeta.label}
+                      </Badge>
+                      {jobResult?.confidence_score != null && (
+                        <Badge variant={confidenceVariant(jobResult.confidence_score)}>
+                          {Math.round(jobResult.confidence_score)}% confidence
+                        </Badge>
+                      )}
+                    </div>
+
+                    {jobStatus.status !== "COMPLETED" && jobStatus.status !== "FAILED" && (
+                      <div className="ocr-progress-bar">
+                        <div
+                          className="ocr-progress-bar-fill"
+                          style={{ width: `${Math.min(100, Math.max(4, jobStatus.progress || 0))}%` }}
+                        />
+                      </div>
+                    )}
+
+                    {jobStatus.status === "FAILED" && (
+                      <p className="ocr-error-text">{jobStatus.error_message || "Unknown error."}</p>
+                    )}
+
+                    {jobResult && (
+                      <div className="ocr-export-row">
+                        {EXPORT_FORMATS.map((fmt) => (
+                          <Button
+                            key={fmt.value}
+                            variant="ghost"
+                            size="sm"
+                            type="button"
+                            onClick={() => downloadExport(`/api/ocr-portal/jobs/${activeJobId}/export?format=${fmt.value}`)}
+                          >
+                            {fmt.label}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {jobResult && (
+            <Card className="ocr-result-card">
+              <CardHeader>
+                <CardTitle>{jobResult.filename}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="ocr-result-markdown">
+                  <MarkdownReport text={jobResult.combined_markdown} />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
       )}
+
+      {tab === "vault" && (
+        <TabsContent>
+          <Card>
+            <CardHeader>
+              <CardTitle>My Documents</CardTitle>
+              <CardDescription>Everything you've previously scanned. Click a row to view the full text.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {vaultDocs.length === 0 && (
+                <div className="ocr-empty-panel">
+                  <Icon name="folder" size={28} />
+                  <p className="muted">No documents yet. Scan one from the Upload &amp; Scan tab.</p>
+                </div>
+              )}
+              {vaultDocs.length > 0 && (
+                <Table className="ocr-vault-table">
+                  <TableHead>
+                    <TableCell>Filename</TableCell>
+                    <TableCell>Category</TableCell>
+                    <TableCell>Confidence</TableCell>
+                    <TableCell>Date</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableHead>
+                  {vaultDocs.map((doc) => (
+                    <TableRow key={doc.id}>
+                      <TableCell>
+                        <button type="button" className="ocr-doc-link" onClick={() => void openVaultDetail(doc)}>
+                          <Icon name="file" size={15} /> {doc.filename}
+                        </button>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{doc.doc_category || "Uncategorized"}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {doc.confidence_score != null ? (
+                          <Badge variant={confidenceVariant(doc.confidence_score)}>{Math.round(doc.confidence_score)}%</Badge>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell>{formatDateTime(doc.extraction_date)}</TableCell>
+                      <TableCell>
+                        <div className="ocr-row-actions">
+                          <Button variant="ghost" size="sm" type="button" onClick={() => void handleAddToKnowledgeBase(doc)}>
+                            Add to KB
+                          </Button>
+                          <Button variant="ghost" size="sm" type="button" onClick={() => downloadExport(`/api/ocr-portal/vault/${doc.id}/export/pdf`)}>
+                            PDF
+                          </Button>
+                          <Button variant="destructive" size="sm" type="button" onClick={() => setDeleteTargetId(doc.id)}>
+                            Delete
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      )}
+
+      {tab === "chat" && (
+        <TabsContent>
+          <div className="ocr-chat-grid">
+            <Card>
+              <CardHeader>
+                <CardTitle>Knowledge Base</CardTitle>
+                <CardDescription>Documents currently available to Ask AI.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {kbDocs.length === 0 && (
+                  <div className="ocr-empty-panel ocr-empty-panel-compact">
+                    <p className="muted">Add a document from My Documents to start chatting.</p>
+                  </div>
+                )}
+                <div className="ocr-kb-list">
+                  {kbDocs.map((doc) => (
+                    <div key={doc.doc_id} className="ocr-kb-item">
+                      <span className="ocr-kb-item-name"><Icon name="file" size={14} /> {doc.filename}</span>
+                      <Button variant="ghost" size="sm" type="button" onClick={() => void handleRemoveFromKb(doc)}>
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="ocr-chat-card">
+              <CardHeader className="ocr-chat-header">
+                <div>
+                  <CardTitle>Ask AI</CardTitle>
+                  <CardDescription>Ask questions grounded in your knowledge base documents.</CardDescription>
+                </div>
+                <Button variant="ghost" size="sm" type="button" onClick={() => void handleClearChat()} disabled={!chatMessages.length}>
+                  Clear Chat
+                </Button>
+              </CardHeader>
+              <CardContent className="ocr-chat-content">
+                <div className="ocr-chat-history">
+                  {chatMessages.length === 0 && (
+                    <div className="ocr-empty-panel ocr-empty-panel-compact">
+                      <Icon name="chat" size={24} />
+                      <p className="muted">Ask a question about your documents.</p>
+                    </div>
+                  )}
+                  {chatMessages.map((message, index) => (
+                    <div key={index} className={`ocr-chat-message ocr-chat-${message.role}`}>
+                      <span className="ocr-chat-role">{message.role === "user" ? "You" : "Assistant"}</span>
+                      <MarkdownReport text={message.content} />
+                      {!!message.citations?.length && (
+                        <div className="ocr-chat-citations">
+                          {message.citations.map((c, i) => (
+                            <Badge key={i} variant="outline">{c.filename}</Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {chatLoading && <p className="muted ocr-chat-thinking">Thinking...</p>}
+                </div>
+                <div className="ocr-form-row">
+                  <Input
+                    value={chatInput}
+                    placeholder="Ask a question about your documents..."
+                    onChange={(event) => setChatInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !chatLoading) {
+                        event.preventDefault();
+                        void handleChatSend();
+                      }
+                    }}
+                    disabled={chatLoading}
+                  />
+                  <Button onClick={() => void handleChatSend()} disabled={chatLoading || !chatInput.trim()}>
+                    Send
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      )}
+
+      <Modal open={vaultDetailOpen} onClose={() => setVaultDetailOpen(false)} title="Document">
+        {vaultDetail && <MarkdownReport text={vaultDetail.markdown} />}
+      </Modal>
+
+      <ConfirmDialog
+        open={deleteTargetId != null}
+        onClose={() => setDeleteTargetId(null)}
+        onConfirm={handleDeleteConfirmed}
+        title="Delete document?"
+        description="This removes it from your vault permanently."
+        confirmLabel="Delete"
+        loading={deleting}
+      />
     </section>
   );
 }

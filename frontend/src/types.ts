@@ -140,6 +140,8 @@ export interface JourneySummary {
   consultation_paid: number;
   lab_billed: number;
   lab_paid: number;
+  pharmacy_billed: number;
+  pharmacy_paid: number;
   total_billed: number;
   total_paid: number;
   total_due: number;
@@ -404,7 +406,7 @@ export interface NavItem {
   label: string;
   permission?: string;
   deniedHint?: string;
-  group?: "overview" | "registration" | "operations" | "finance" | "admin";
+  group?: "overview" | "ai" | "registration" | "operations" | "finance" | "admin";
 }
 
 export interface Employee {

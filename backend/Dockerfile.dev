@@ -8,6 +8,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-EXPOSE 5001
+EXPOSE 5011
 
 CMD ["python", "app.py"]

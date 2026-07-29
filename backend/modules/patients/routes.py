@@ -371,7 +371,7 @@ def documents_create(patient_id):
 @require_permissions("patients.read")
 def patient_encounters(patient_id):
     return jsonify(
-        {"encounters": rows_to_dicts(list_encounters(patient_id=patient_id))}
+        {"encounters": rows_to_dicts(list_encounters(patient_id=patient_id, hospital_id=current_hospital_id()))}
     )
 
 
@@ -394,7 +394,8 @@ def patient_encounter_create(patient_id):
             "referral_name": payload.get("referral_name"),
             "status": payload.get("status", "active"),
             "created_by": g.current_user.get("username"),
-        }
+        },
+        hospital_id=current_hospital_id(),
     )
     log_audit_event(
         "create", "encounters", str(encounter_id), {"patient_id": patient_id}
