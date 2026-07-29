@@ -25,3 +25,5 @@ ocr_portal/.env
 frontend/tests/e2e/artifacts/
 
 backend/rag_workspaces/
+"latest suvarna.zip"
+*.zip
