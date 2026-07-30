@@ -1008,6 +1008,413 @@ main {
   margin-bottom: 0.6rem;
 }
 
+.journey-steps {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  box-shadow: var(--shadow-sm);
+  overflow-x: auto;
+}
+
+.journey-step-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.journey-step-wrap:last-child {
+  flex: 0 0 auto;
+}
+
+.journey-step {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: 0.15rem 0.2rem;
+  border-radius: calc(var(--radius) - 6px);
+  text-align: left;
+}
+
+.journey-step-clickable {
+  cursor: pointer;
+}
+
+.journey-step-clickable:hover {
+  background: hsl(var(--accent) / 0.1);
+}
+
+.journey-step-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  border: 2px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--card));
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.journey-step-active .journey-step-circle {
+  background: linear-gradient(130deg, #0b8e92 0%, #0d6fc2 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 6px 14px rgba(13, 111, 194, 0.32);
+}
+
+.journey-step-completed .journey-step-circle {
+  background: hsl(var(--accent) / 0.16);
+  border-color: hsl(var(--accent));
+  color: hsl(var(--accent));
+}
+
+.journey-step-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.journey-step-label {
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: hsl(var(--foreground));
+  white-space: nowrap;
+}
+
+.journey-step-upcoming .journey-step-label {
+  color: hsl(var(--muted-foreground));
+}
+
+.journey-step-hint {
+  font-size: 0.72rem;
+  color: hsl(var(--muted-foreground));
+  white-space: nowrap;
+}
+
+.journey-step-connector {
+  flex: 1;
+  height: 2px;
+  min-width: 18px;
+  margin: 0 0.5rem;
+  background: hsl(var(--border));
+  border-radius: 2px;
+}
+
+.journey-step-connector.filled {
+  background: hsl(var(--accent));
+}
+
+@media (max-width: 720px) {
+  .journey-step-hint {
+    display: none;
+  }
+  .journey-step-connector {
+    min-width: 10px;
+    margin: 0 0.3rem;
+  }
+}
+
+.module-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 2.2rem 1rem;
+  text-align: center;
+  color: hsl(var(--muted-foreground));
+}
+
+.module-empty-state-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  background: hsl(var(--accent) / 0.12);
+  color: hsl(var(--accent));
+  font-size: 1.4rem;
+  margin-bottom: 0.2rem;
+}
+
+.module-empty-state-title {
+  font-weight: 800;
+  color: hsl(var(--foreground));
+  font-size: 0.92rem;
+}
+
+.module-empty-state-hint {
+  font-size: 0.8rem;
+  max-width: 32ch;
+}
+
+/* Queue stat summary bar */
+.queue-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.queue-stat-card {
+  flex: 1 1 140px;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  box-shadow: var(--shadow-sm);
+}
+
+.queue-stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  font-size: 1.05rem;
+}
+
+.queue-stat-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.queue-stat-value {
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: hsl(var(--foreground));
+}
+
+.queue-stat-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: hsl(var(--muted-foreground));
+}
+
+/* Queue filter toolbar */
+.queue-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.queue-toolbar-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+  flex: 1 1 170px;
+  max-width: 240px;
+}
+
+.queue-toolbar-field label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: hsl(var(--muted-foreground));
+}
+
+.queue-toolbar-refresh {
+  flex: 0 0 auto;
+}
+
+/* Appointment "ticket" cards */
+.queue-card-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.queue-card {
+  display: flex;
+  align-items: stretch;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: calc(var(--radius) - 2px);
+  border: 1px solid hsl(var(--border));
+  border-left-width: 4px;
+  background: hsl(var(--card));
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+
+.queue-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.queue-card-token {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 52px;
+  border-right: 1px dashed hsl(var(--border));
+  padding-right: 0.85rem;
+}
+
+.queue-card-token-num {
+  font-size: 1.3rem;
+  font-weight: 900;
+  line-height: 1;
+  color: hsl(var(--foreground));
+}
+
+.queue-card-token-label {
+  margin-top: 0.2rem;
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: hsl(var(--muted-foreground));
+}
+
+.queue-card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  justify-content: center;
+}
+
+.queue-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.queue-card-name {
+  font-size: 1rem;
+  font-weight: 800;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.queue-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.95rem;
+}
+
+.queue-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+  font-size: 0.78rem;
+  color: hsl(var(--muted-foreground));
+  min-width: 0;
+}
+
+.queue-meta-item svg {
+  flex-shrink: 0;
+}
+
+.queue-card-notes {
+  font-size: 0.78rem;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 0.6);
+  padding: 0.4rem 0.6rem;
+  border-radius: calc(var(--radius) - 8px);
+  overflow-wrap: anywhere;
+}
+
+.queue-card-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.queue-card-actions .ui-button,
+.queue-card-actions button {
+  white-space: nowrap;
+}
+
+.queue-status-pill {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0.24rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* Status tone palette, shared by stat icons, pills, and card accents */
+.queue-card-scheduled,
+.queue-stat-icon-scheduled { border-left-color: #b45309; }
+.queue-status-pill-scheduled,
+.queue-stat-icon-scheduled { background: rgba(217, 119, 6, 0.14); color: #9a5b0a; }
+
+.queue-card-checked-in { border-left-color: #1d4ed8; }
+.queue-status-pill-checked-in,
+.queue-stat-icon-checked-in { background: rgba(37, 99, 235, 0.14); color: #1d4ed8; }
+
+.queue-card-in-consultation { border-left-color: #7c3aed; }
+.queue-status-pill-in-consultation,
+.queue-stat-icon-in-consultation { background: rgba(124, 58, 237, 0.14); color: #7c3aed; }
+
+.queue-card-completed { border-left-color: #15803d; }
+.queue-status-pill-completed,
+.queue-stat-icon-completed { background: rgba(21, 128, 61, 0.14); color: #15803d; }
+
+.queue-card-cancelled { border-left-color: #b91c1c; opacity: 0.82; }
+.queue-status-pill-cancelled,
+.queue-stat-icon-cancelled { background: rgba(185, 28, 28, 0.14); color: #b91c1c; }
+
+@media (max-width: 640px) {
+  .queue-card {
+    flex-direction: column;
+  }
+  .queue-card-token {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 0.4rem;
+    width: auto;
+    border-right: none;
+    border-bottom: 1px dashed hsl(var(--border));
+    padding-right: 0;
+    padding-bottom: 0.5rem;
+  }
+  .queue-card-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .queue-card-actions .ui-button,
+  .queue-card-actions button {
+    flex: 1 1 auto;
+  }
+}
+
 .module-form-grid {
   display: grid;
   gap: 0.55rem;

@@ -988,14 +988,16 @@ function App() {
         {page === "ocr" && hasPermission("patients.write") && <OcrPage setNotice={setNotice} />}
 
         {page === "appointment-in" && hasPermission("patients.read") && (
-          <RegistrationDeskPage mode="appointment-in" selectedPatient={selectedPatient} setNotice={setNotice} />
+          <RegistrationDeskPage mode="appointment-in" selectedPatient={selectedPatient} setNotice={setNotice} onNavigate={navigateToPage} />
         )}
 
         {page === "appointment-out" && hasPermission("patients.read") && (
-          <RegistrationDeskPage mode="appointment-out" selectedPatient={selectedPatient} setNotice={setNotice} />
+          <RegistrationDeskPage mode="appointment-out" selectedPatient={selectedPatient} setNotice={setNotice} onNavigate={navigateToPage} />
         )}
-        {page === "queue" && hasPermission("patients.read") && <QueuePage setNotice={setNotice} />}
-        {page === "doctor-prescription" && hasPermission("patients.read") && <DoctorPrescriptionPage setNotice={setNotice} />}
+        {page === "queue" && hasPermission("patients.read") && (
+          <QueuePage setNotice={setNotice} onNavigate={navigateToPage} isReceptionist={user?.access_role === "receptionist"} />
+        )}
+        {page === "doctor-prescription" && hasPermission("patients.read") && <DoctorPrescriptionPage setNotice={setNotice} onNavigate={navigateToPage} />}
         {page === "patient-journey" && hasPermission("patients.read") && <PatientJourneyPage setNotice={setNotice} />}
 
         {page === "consent-desk" && hasPermission("patients.write") && (

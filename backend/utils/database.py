@@ -529,6 +529,29 @@ def init_database():
                 """
             )
 
+        if IS_POSTGRES:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS whatsapp_media (
+                    token TEXT PRIMARY KEY,
+                    content BYTEA NOT NULL,
+                    mime_type TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS whatsapp_media (
+                    token TEXT PRIMARY KEY,
+                    content BLOB NOT NULL,
+                    mime_type TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+
         ensure_hospital_columns(conn)
         ensure_user_columns(conn)
         ensure_document_columns(conn)
@@ -2435,6 +2458,29 @@ def get_document(document_id, hospital_id=None):
         return cursor.fetchone()
 
 
+def store_whatsapp_media(content: bytes, mime_type: str = "application/pdf") -> str:
+    """Stash a generated file (e.g. a prescription PDF) under a random token so it
+    can be served back over a short-lived, unauthenticated URL that WhatsApp's
+    servers are able to fetch directly (they can't send session cookies)."""
+    token = uuid_lib.uuid4().hex
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO whatsapp_media (token, content, mime_type) VALUES (?, ?, ?)",
+            (token, content, mime_type),
+        )
+        conn.commit()
+    return token
+
+
+def get_whatsapp_media(token: str):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT content, mime_type FROM whatsapp_media WHERE token = ?", (token,))
+        row = cursor.fetchone()
+        return (row["content"], row["mime_type"]) if row else (None, None)
+
+
 def delete_document(document_id, hospital_id=None, actor=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
@@ -3022,6 +3068,19 @@ def list_appointments(appointment_date=None, status=None, visit_type=None, docto
             tuple(params),
         )
         return cursor.fetchall()
+
+
+def get_appointment_by_id(appointment_id, hospital_id=None):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if hospital_id:
+            cursor.execute(
+                "SELECT * FROM appointments WHERE id = ? AND hospital_id = ?",
+                (appointment_id, hospital_id),
+            )
+        else:
+            cursor.execute("SELECT * FROM appointments WHERE id = ?", (appointment_id,))
+        return cursor.fetchone()
 
 
 def update_appointment(appointment_id, data):

@@ -1,16 +1,17 @@
+import logging
 from flask import Blueprint, request, jsonify, g
 from datetime import datetime
 import app
 
 from app import (
-    require_permissions, 
-    log_audit_event, 
-    validate_required_fields, 
-    rows_to_dicts, 
-    to_amount_paise, 
-    create_razorpay_order, 
-    require_razorpay_configured, 
-    current_hospital_id, 
+    require_permissions,
+    log_audit_event,
+    validate_required_fields,
+    rows_to_dicts,
+    to_amount_paise,
+    create_razorpay_order,
+    require_razorpay_configured,
+    current_hospital_id,
     RAZORPAY_KEY_ID,
     normalize_payment_mode
 )
@@ -19,11 +20,42 @@ from utils.database import (
     list_appointments,
     create_appointment,
     update_appointment,
+    get_appointment_by_id,
+    get_patient,
     create_invoice,
     record_invoice_payment
 )
+from core.whatsapp import send_whatsapp_message
 
 appointments_bp = Blueprint('appointments', __name__)
+logger = logging.getLogger(__name__)
+
+
+def _notify_patient_consultation_started(appointment_id, hospital_id):
+    """Best-effort WhatsApp nudge telling the patient which doctor/department
+    is ready for them. Never raises - a messaging failure must not affect the
+    appointment status update that triggered it."""
+    try:
+        appointment = get_appointment_by_id(appointment_id, hospital_id=hospital_id)
+        if not appointment:
+            return
+        patient_id = appointment["patient_id"]
+        phone = None
+        if patient_id:
+            patient = get_patient(patient_id, hospital_id=hospital_id)
+            phone = patient["phone"] if patient else None
+        if not phone:
+            return
+        doctor = appointment["doctor_name"] or "your doctor"
+        department = (appointment["department"] or "").strip()
+        location = f"the {department} department" if department else "the consultation room"
+        body = (
+            f"Hi {appointment['patient_name']}, Dr. {doctor} is ready to see you now in "
+            f"{location}. Please proceed with Token #{appointment['token_no']}."
+        )
+        send_whatsapp_message(phone, body)
+    except Exception:
+        logger.exception("Failed to send consultation-start WhatsApp notification for appointment %s", appointment_id)
 
 # NOTE: Add your utils.database imports here after extraction.
 
@@ -85,6 +117,8 @@ def appointments_update(appointment_id):
         str(appointment_id),
         {"status": payload.get("status")},
     )
+    if payload.get("status") == "in_consultation":
+        _notify_patient_consultation_started(appointment_id, current_hospital_id())
     return jsonify({"status": "ok"})
 
 

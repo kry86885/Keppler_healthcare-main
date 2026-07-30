@@ -719,6 +719,9 @@ app.register_blueprint(symptom_ai_bp)
 from modules.ocr_portal.routes import ocr_portal_bp
 app.register_blueprint(ocr_portal_bp)
 
+from modules.whatsapp.routes import whatsapp_bp
+app.register_blueprint(whatsapp_bp)
+
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "5001"))

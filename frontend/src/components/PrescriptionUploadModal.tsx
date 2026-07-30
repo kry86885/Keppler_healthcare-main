@@ -1,11 +1,13 @@
 import { useState, useRef } from "react";
-import { Button, Input, Table, TableCell, TableHead, TableRow } from "./ui";
-import { apiFetch } from "../lib/api";
+import { Button, Input, Table, TableCell, TableHead, TableRow, Textarea } from "./ui";
+import { apiFetch, withAuthHeaders } from "../lib/api";
+import { API_BASE } from "../lib/constants";
 import type { Notice } from "../types";
 
 type Props = {
   patientId: string;
   patientName: string;
+  doctorName?: string;
   onClose: () => void;
   setNotice: (notice: Notice | null) => void;
 };
@@ -16,12 +18,22 @@ type ParsedMedicine = {
   dosage: string;
 };
 
-export default function PrescriptionUploadModal({ patientId, patientName, onClose, setNotice }: Props) {
+const POLL_INTERVAL_MS = 3000;
+const MAX_POLL_ATTEMPTS = 60; // ~3 minutes for large scanned/multi-page documents
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export default function PrescriptionUploadModal({ patientId, patientName, doctorName, onClose, setNotice }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [parsing, setParsing] = useState(false);
+  const [savingText, setSavingText] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [ocrText, setOcrText] = useState("");
   const [medicines, setMedicines] = useState<ParsedMedicine[]>([]);
-  const [step, setStep] = useState<"upload" | "verify" | "done">("upload");
+  const [step, setStep] = useState<"upload" | "review" | "verify" | "done">("upload");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = async () => {
@@ -32,40 +44,137 @@ export default function PrescriptionUploadModal({ patientId, patientName, onClos
       formData.append("file", file);
       formData.append("blueprint", "Universal OCR (Any Text)");
 
-      const uploadRes = await fetch("/api/ocr-portal/upload", {
+      const uploadRes = await fetch(`${API_BASE}/api/ocr-portal/upload`, {
         method: "POST",
         body: formData,
-        headers: {
-          Authorization: `Bearer ${window.localStorage.getItem("token")}`,
-        },
+        headers: withAuthHeaders({}, "POST"),
+        credentials: "include",
       });
 
       if (!uploadRes.ok) {
         throw new Error("Failed to upload prescription");
       }
-      
+
       const { job_id } = await uploadRes.json();
-      
-      // Poll for job completion
-      let ocrText = "";
-      for (let i = 0; i < 15; i++) {
-        await new Promise((r) => setTimeout(r, 2000));
-        const statusData = await apiFetch<{ status: string; result_text?: string }>(`/api/ocr-portal/jobs/${job_id}`);
-        if (statusData.status === "completed") {
-          ocrText = statusData.result_text || "";
+
+      // Poll for job completion. The OCR service reports status in upper case
+      // (PENDING/PROCESSING/COMPLETED/FAILED).
+      let finalStatus = "";
+      let errorMessage = "";
+      for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
+        await sleep(POLL_INTERVAL_MS);
+        const statusData = await apiFetch<{ status: string; error_message?: string }>(
+          `/api/ocr-portal/jobs/${job_id}`
+        );
+        const status = (statusData.status || "").toUpperCase();
+        if (status === "COMPLETED") {
+          finalStatus = status;
           break;
-        } else if (statusData.status === "failed") {
-          throw new Error("OCR processing failed.");
+        } else if (status === "FAILED") {
+          errorMessage = statusData.error_message || "OCR processing failed.";
+          break;
         }
       }
 
-      if (!ocrText) {
+      if (errorMessage) {
+        throw new Error(errorMessage);
+      }
+      if (finalStatus !== "COMPLETED") {
+        throw new Error("OCR is taking longer than expected. Please try again shortly.");
+      }
+
+      const resultData = await apiFetch<{ combined_markdown?: string }>(
+        `/api/ocr-portal/jobs/${job_id}/result`
+      );
+      const extractedText = resultData.combined_markdown || "";
+
+      if (!extractedText) {
         throw new Error("No text extracted from OCR.");
       }
 
+      setOcrText(extractedText);
+      setStep("review");
+    } catch (err: any) {
+      setNotice({ type: "error", message: err.message || "Failed to process prescription." });
+    } finally {
       setUploading(false);
-      setParsing(true);
+    }
+  };
 
+  const handlePrint = async () => {
+    if (!ocrText.trim()) return;
+    setPrinting(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/export/pdf`, {
+        method: "POST",
+        headers: withAuthHeaders({ "Content-Type": "application/json" }, "POST"),
+        credentials: "include",
+        body: JSON.stringify({
+          patient_name: patientName,
+          doc_type: "Prescription",
+          ocr_text: ocrText,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to generate the prescription PDF.");
+      }
+
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const printWindow = window.open(blobUrl, "_blank");
+      if (!printWindow) {
+        setNotice({ type: "warning", message: "Allow pop-ups to print the prescription." });
+        return;
+      }
+      // Blob-URL PDFs opened via window.open don't reliably fire "load" on the
+      // opener side across browsers, so give the built-in PDF viewer a moment
+      // to render before invoking print.
+      setTimeout(() => {
+        printWindow.print();
+      }, 800);
+    } catch (err: any) {
+      setNotice({ type: "error", message: err.message || "Failed to print prescription." });
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const handleSaveText = async () => {
+    if (!file) return;
+    setSavingText(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("doc_type", "prescriptions");
+      formData.append("ocr_text", ocrText);
+      if (doctorName) {
+        formData.append("doctor_name", doctorName);
+      }
+
+      const res = await fetch(`${API_BASE}/api/patients/${patientId}/documents`, {
+        method: "POST",
+        body: formData,
+        headers: withAuthHeaders({}, "POST"),
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.error || "Failed to save prescription text.");
+      }
+
+      setNotice({ type: "success", message: "Prescription saved. The patient will be notified on WhatsApp shortly." });
+    } catch (err: any) {
+      setNotice({ type: "error", message: err.message || "Failed to save prescription text." });
+    } finally {
+      setSavingText(false);
+    }
+  };
+
+  const handleParseMedicines = async () => {
+    setParsing(true);
+    try {
       const parseData = await apiFetch<{ medicines: ParsedMedicine[] }>("/api/ocr-portal/parse-prescription", {
         method: "POST",
         body: JSON.stringify({ text: ocrText }),
@@ -74,9 +183,8 @@ export default function PrescriptionUploadModal({ patientId, patientName, onClos
       setMedicines(parseData.medicines || []);
       setStep("verify");
     } catch (err: any) {
-      setNotice({ type: "error", message: err.message || "Failed to process prescription." });
+      setNotice({ type: "error", message: err.message || "Failed to parse medicines." });
     } finally {
-      setUploading(false);
       setParsing(false);
     }
   };
@@ -128,9 +236,35 @@ export default function PrescriptionUploadModal({ patientId, patientName, onClos
             />
             <div style={{ display: "flex", gap: "1rem", justifyContent: "flex-end" }}>
               <Button onClick={onClose}>Cancel</Button>
-              <Button onClick={handleUpload} disabled={!file || uploading || parsing}>
-                {uploading ? "Extracting..." : parsing ? "Parsing..." : "Upload & Analyze"}
+              <Button onClick={handleUpload} disabled={!file || uploading}>
+                {uploading ? "Extracting..." : "Upload & Extract Text"}
               </Button>
+            </div>
+          </div>
+        )}
+
+        {step === "review" && (
+          <div>
+            <p>Review the extracted text below. Correct any OCR mistakes before saving.</p>
+            <Textarea
+              value={ocrText}
+              onChange={(e) => setOcrText(e.target.value)}
+              rows={12}
+              style={{ width: "100%", marginBottom: "1rem", fontFamily: "monospace" }}
+            />
+            <div style={{ display: "flex", gap: "1rem", justifyContent: "space-between", flexWrap: "wrap" }}>
+              <Button onClick={handleParseMedicines} disabled={parsing || !ocrText.trim()}>
+                {parsing ? "Parsing..." : "Parse Medicines for Pharmacy"}
+              </Button>
+              <div style={{ display: "flex", gap: "1rem" }}>
+                <Button onClick={onClose}>Close</Button>
+                <Button onClick={handlePrint} disabled={printing || !ocrText.trim()}>
+                  {printing ? "Preparing..." : "Print"}
+                </Button>
+                <Button onClick={handleSaveText} disabled={savingText || !ocrText.trim()}>
+                  {savingText ? "Saving..." : "Save & Notify Patient"}
+                </Button>
+              </div>
             </div>
           </div>
         )}
@@ -178,7 +312,7 @@ export default function PrescriptionUploadModal({ patientId, patientName, onClos
                 Add Medicine
               </Button>
               <div style={{ display: "flex", gap: "1rem" }}>
-                <Button onClick={onClose}>Cancel</Button>
+                <Button onClick={() => setStep("review")}>Back</Button>
                 <Button onClick={handleConfirm}>Confirm & Send to Pharmacy</Button>
               </div>
             </div>

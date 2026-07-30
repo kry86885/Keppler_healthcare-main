@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { FiCalendar } from "react-icons/fi";
 import { Button, Input, Label, Select, Textarea } from "../components/ui";
 import { apiFetch, reportError } from "../lib/api";
 import { SYMPTOM_API_BASE } from "../lib/constants";
 import { updateAppointmentStatus as putAppointmentStatus } from "../lib/appointments";
-import { formatDateTime } from "../lib/format";
 import { openRazorpayCheckout } from "../lib/razorpay";
 import type { Appointment, Notice, Patient } from "../types";
 import PatientAutocomplete from "../components/PatientAutocomplete";
+import PatientJourneySteps from "../components/PatientJourneySteps";
+import AppointmentQueueCard from "../components/AppointmentQueueCard";
 
 type RegistrationMode = "appointment-in" | "appointment-out" | "consent" | "insurance";
 
@@ -15,6 +17,7 @@ type Props = {
   mode: RegistrationMode;
   selectedPatient: Patient | null;
   setNotice: Dispatch<SetStateAction<Notice | null>>;
+  onNavigate?: (page: string) => void;
 };
 
 type Department = {
@@ -76,7 +79,7 @@ function patientFullName(patient: Patient | null) {
   return `${patient?.name || ""} ${patient?.middle_name || ""} ${patient?.last_name || ""}`.trim();
 }
 
-export default function RegistrationDeskPage({ mode, selectedPatient, setNotice }: Props) {
+export default function RegistrationDeskPage({ mode, selectedPatient, setNotice, onNavigate }: Props) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [savingAppointment, setSavingAppointment] = useState(false);
@@ -329,7 +332,8 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice 
       }));
       await loadAppointments();
       await loadDoctorSuggestions();
-      setNotice({ type: "success", message: `Appointment scheduled. Token #${data.token_no}.` });
+      setNotice({ type: "success", message: `Appointment scheduled. Token #${data.token_no}. Redirecting to queue...` });
+      onNavigate?.("queue");
     } catch (error) {
       reportError(setNotice, error as { message?: string; status?: number }, "Unable to schedule appointment.");
     } finally {
@@ -421,7 +425,8 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice 
       }));
       await loadAppointments();
       await loadDoctorSuggestions();
-      setNotice({ type: "success", message: `Appointment scheduled with Razorpay. Token #${verification.token_no}.` });
+      setNotice({ type: "success", message: `Appointment scheduled with Razorpay. Token #${verification.token_no}. Redirecting to queue...` });
+      onNavigate?.("queue");
     } catch (error) {
       reportError(setNotice, error as { message?: string; status?: number }, "Unable to schedule appointment via Razorpay.");
     } finally {
@@ -434,6 +439,12 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice 
       await putAppointmentStatus(appointmentId, status);
       await loadAppointments();
       setNotice({ type: "success", message: `Token status updated to ${status.replace("_", " ")}.` });
+      // Starting the visit hands the patient off to the doctor's consultation
+      // desk; "completed" is only reachable from the appointment-out desk
+      // itself, so there's nowhere further to send the operator for that one.
+      if (status === "in_consultation") {
+        onNavigate?.("doctor-prescription");
+      }
     } catch (error) {
       reportError(setNotice, error as { message?: string; status?: number }, "Unable to update appointment status.");
     }
@@ -722,10 +733,10 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice 
 
   return (
     <section className="module-page">
+      {mode === "appointment-in" ? <PatientJourneySteps current="appointment-in" onNavigate={onNavigate} /> : null}
       <div className="module-panel-head">
         <h3>{mode === "appointment-in" ? "Appointment In Desk" : "Appointment Out Desk"}</h3>
       </div>
-
 
 
       {mode === "appointment-in" ? (
@@ -866,43 +877,50 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice 
       <div className="panel registration-desk-panel">
         <h4>{mode === "appointment-in" ? "Appointment Queue (In)" : "Appointment Queue (Out)"}</h4>
         {appointmentsLoading ? <p className="muted">Loading queue...</p> : null}
-        {!appointmentsLoading && queue.length === 0 ? <p className="muted">No appointments found for today.</p> : null}
+        {!appointmentsLoading && queue.length === 0 ? (
+          <div className="module-empty-state">
+            <span className="module-empty-state-icon">
+              <FiCalendar aria-hidden />
+            </span>
+            <p className="module-empty-state-title">No appointments found for today</p>
+            <p className="module-empty-state-hint">
+              {mode === "appointment-in"
+                ? "Schedule an appointment above to assign a token and send the patient to the queue."
+                : "Checked-in patients will appear here once they're ready to be marked out."}
+            </p>
+          </div>
+        ) : null}
         {!appointmentsLoading && queue.length > 0 ? (
-          <div className="module-mobile-list" style={{ display: "grid" }}>
+          <div className="queue-card-list">
             {queue.map((appointment) => (
-              <article className="module-mobile-card" key={appointment.id}>
-                <h4>
-                  Token #{appointment.token_no} · {appointment.patient_name}
-                </h4>
-                <p><strong>Visit:</strong> {appointment.visit_type}</p>
-                <p><strong>Department:</strong> {appointment.department || "-"}</p>
-                <p><strong>Doctor:</strong> {appointment.doctor_name || "-"}</p>
-                <p><strong>Time:</strong> {formatDateTime(appointment.appointment_date)}</p>
-                <p><strong>Status:</strong> {appointment.status.replace("_", " ")}</p>
-                {appointment.notes ? <p><strong>Notes:</strong> {appointment.notes}</p> : null}
-                <div className="module-card-actions">
-                  {mode === "appointment-in" && appointment.status === "scheduled" ? (
-                    <Button type="button" size="sm" onClick={() => void updateAppointmentStatus(appointment.id, "checked_in")}>
-                      Check In
-                    </Button>
-                  ) : null}
-                  {mode === "appointment-in" && appointment.status === "checked_in" ? (
-                    <Button type="button" size="sm" onClick={() => void updateAppointmentStatus(appointment.id, "in_consultation")}>
-                      Start Visit
-                    </Button>
-                  ) : null}
-                  {mode === "appointment-out" && (appointment.status === "checked_in" || appointment.status === "in_consultation") ? (
-                    <Button type="button" size="sm" variant="secondary" onClick={() => void updateAppointmentStatus(appointment.id, "completed")}>
-                      Complete
-                    </Button>
-                  ) : null}
-                  {(mode === "appointment-in" || mode === "appointment-out") && appointment.status !== "completed" && appointment.status !== "cancelled" ? (
-                    <Button type="button" size="sm" variant="ghost" onClick={() => void updateAppointmentStatus(appointment.id, "cancelled")}>
-                      Cancel
-                    </Button>
-                  ) : null}
-                </div>
-              </article>
+              <AppointmentQueueCard
+                key={appointment.id}
+                appointment={appointment}
+                actions={
+                  <>
+                    {mode === "appointment-in" && appointment.status === "scheduled" ? (
+                      <Button type="button" size="sm" onClick={() => void updateAppointmentStatus(appointment.id, "checked_in")}>
+                        Check In
+                      </Button>
+                    ) : null}
+                    {mode === "appointment-in" && appointment.status === "checked_in" ? (
+                      <Button type="button" size="sm" onClick={() => void updateAppointmentStatus(appointment.id, "in_consultation")}>
+                        Start Visit
+                      </Button>
+                    ) : null}
+                    {mode === "appointment-out" && (appointment.status === "checked_in" || appointment.status === "in_consultation") ? (
+                      <Button type="button" size="sm" variant="secondary" onClick={() => void updateAppointmentStatus(appointment.id, "completed")}>
+                        Complete
+                      </Button>
+                    ) : null}
+                    {(mode === "appointment-in" || mode === "appointment-out") && appointment.status !== "completed" && appointment.status !== "cancelled" ? (
+                      <Button type="button" size="sm" variant="ghost" onClick={() => void updateAppointmentStatus(appointment.id, "cancelled")}>
+                        Cancel
+                      </Button>
+                    ) : null}
+                  </>
+                }
+              />
             ))}
           </div>
         ) : null}

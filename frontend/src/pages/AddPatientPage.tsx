@@ -4,6 +4,7 @@ import { Alert, Button, Checkbox, Input, Label, Select, Textarea } from "../comp
 import { EMPTY_PATIENT_FORM } from "../lib/constants";
 import { apiFetch, reportError } from "../lib/api";
 import type { Notice, PatientForm } from "../types";
+import PatientJourneySteps from "../components/PatientJourneySteps";
 
 type Props = {
   onCreate: (
@@ -94,10 +95,10 @@ export default function AddPatientPage({ onCreate, setNotice, onNavigate }: Prop
 
     setNotice({
       type: "success",
-      message: `Patient ${createdPatient.patient_id} registered.`,
+      message: `Patient ${createdPatient.patient_id} registered. Redirecting to appointment booking...`,
     });
 
-    onNavigate("queue");
+    onNavigate("appointment-in");
   };
 
   const handleChange = (field: keyof PatientForm) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -122,6 +123,7 @@ export default function AddPatientPage({ onCreate, setNotice, onNavigate }: Prop
 
   return (
     <section className="form-layout">
+      <PatientJourneySteps current="add" onNavigate={onNavigate} />
       <div className="panel">
         <h3>Patient Registration</h3>
         <p className="muted">Patient ID: {patientId || "Will be generated on save"}</p>

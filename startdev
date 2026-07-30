@@ -138,7 +138,7 @@ echo "Starting frontend..."
   export VITE_SYMPTOM_API_BASE="${VITE_SYMPTOM_API_BASE:-http://localhost:5002}"
   export CHOKIDAR_USEPOLLING=true
   export WATCHPACK_POLLING=true
-  npm run electron:dev \
+  npm run dev -- --host \
     > >(tee -a "${FRONTEND_LOG}") \
     2> >(tee -a "${FRONTEND_LOG}" >&2)
 ) &
@@ -161,6 +161,6 @@ echo "Symptom:  http://localhost:5002"
 if [[ "${OCR_PORTAL_STARTED}" == "true" ]]; then
   echo "OCR backend: http://localhost:7621 (proxied through the main backend, no direct browser access)"
 fi
-echo "Electron app: opens automatically"
+echo "Web app: running on all network interfaces"
 
 wait

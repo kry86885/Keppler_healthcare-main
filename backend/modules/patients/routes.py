@@ -1,14 +1,17 @@
+import logging
+import os
+
 from flask import Blueprint, request, jsonify, g
 from werkzeug.exceptions import BadRequest
 
 from app import (
-    require_permissions, 
-    log_audit_event, 
-    validate_required_fields, 
-    save_uploaded_file, 
-    current_hospital_id, 
-    row_to_dict, 
-    rows_to_dicts, 
+    require_permissions,
+    log_audit_event,
+    validate_required_fields,
+    save_uploaded_file,
+    current_hospital_id,
+    row_to_dict,
+    rows_to_dicts,
     normalize_department_name
 )
 
@@ -33,6 +36,7 @@ from utils.database import (
     get_admissions,
     get_documents,
     add_document,
+    store_whatsapp_media,
     list_encounters,
     create_encounter,
     list_bed_allocations,
@@ -48,8 +52,47 @@ from utils.database import (
     add_patient_movement,
     get_patient_journey
 )
+from core.export import generate_pdf
+from core.whatsapp import send_whatsapp_message
 
 patients_bp = Blueprint('patients', __name__)
+logger = logging.getLogger(__name__)
+
+
+def _notify_patient_prescription_ready(patient, ocr_text, doctor_name=None):
+    """Best-effort WhatsApp delivery of the digitized prescription as a PDF.
+    Never raises - a messaging failure must not affect the document save that
+    triggered it. Falls back to a text-only notice if PUBLIC_BASE_URL isn't
+    set (a PDF attachment needs a URL Twilio's servers can fetch, which can't
+    be localhost)."""
+    try:
+        phone = patient["phone"] if patient else None
+        if not phone:
+            return
+        patient_name = " ".join(
+            part for part in [patient["name"], patient["last_name"]] if part
+        ).strip() or "Patient"
+        doctor_line = f" from Dr. {doctor_name}" if doctor_name else ""
+        public_base_url = (os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+
+        if not public_base_url:
+            send_whatsapp_message(
+                phone,
+                f"Hi {patient_name}, your prescription{doctor_line} has been recorded. "
+                "Please collect a printed copy at the front desk.",
+            )
+            return
+
+        pdf_bytes = generate_pdf(patient_name, "Prescription", ocr_text)
+        token = store_whatsapp_media(pdf_bytes, mime_type="application/pdf")
+        media_url = f"{public_base_url}/api/whatsapp/media/{token}"
+        send_whatsapp_message(
+            phone,
+            f"Hi {patient_name}, here is your prescription and visit summary{doctor_line}.",
+            media_url=media_url,
+        )
+    except Exception:
+        logger.exception("Failed to send prescription WhatsApp notification for patient %s", patient.get("patient_id") if patient else None)
 
 # NOTE: Add your utils.database imports here after extraction.
 
@@ -361,6 +404,11 @@ def documents_create(patient_id):
         file_data=None,
         hospital_id=hospital_id,
     )
+
+    if doc_type == "prescriptions" and ocr_text.strip():
+        doctor_name = (request.form.get("doctor_name") or "").strip() or None
+        _notify_patient_prescription_ready(patient, ocr_text, doctor_name)
+
     return jsonify(
         {"document_id": document_id, "file_path": filepath, "stored_in_db": False}
     )
