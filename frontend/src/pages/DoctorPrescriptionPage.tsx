@@ -218,7 +218,7 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
       const data = await apiFetch<{ appointments?: Appointment[] }>(`/api/appointments?date=${today}`);
       const appts = data?.appointments ?? [];
       setActiveAppts(appts.filter(a => a.status === "in_consultation"));
-      setQueue(appts.filter(a => a.status === "checked_in"));
+      setQueue(appts.filter(a => a.status === "checked_in" || a.status === "scheduled"));
       setSeenToday(appts.filter(a => a.status === "completed").length);
       setNoShows(appts.filter(a => a.status === "no_show").length);
     } catch (err) {
