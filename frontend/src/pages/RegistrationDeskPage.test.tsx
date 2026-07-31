@@ -60,7 +60,6 @@ describe("RegistrationDeskPage", () => {
     });
 
     expect(container.textContent).toContain("Appointment In Desk");
-    expect(container.textContent).toContain("Department Master");
     expect(container.textContent).toContain("Schedule & Assign Token");
     expect(container.textContent).toContain("Token #7");
 

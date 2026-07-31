@@ -8,7 +8,7 @@ import { updateAppointmentStatus as putAppointmentStatus } from "../lib/appointm
 import { openRazorpayCheckout } from "../lib/razorpay";
 import type { Appointment, Notice, Patient } from "../types";
 import PatientAutocomplete from "../components/PatientAutocomplete";
-import PatientJourneySteps from "../components/PatientJourneySteps";
+
 import AppointmentQueueCard from "../components/AppointmentQueueCard";
 
 type RegistrationMode = "appointment-in" | "appointment-out" | "consent" | "insurance";
@@ -733,7 +733,7 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
 
   return (
     <section className="module-page">
-      {mode === "appointment-in" ? <PatientJourneySteps current="appointment-in" onNavigate={onNavigate} /> : null}
+      
       <div className="module-panel-head">
         <h3>{mode === "appointment-in" ? "Appointment In Desk" : "Appointment Out Desk"}</h3>
       </div>

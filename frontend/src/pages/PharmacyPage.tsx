@@ -367,6 +367,15 @@ export default function PharmacyPage({ setNotice }: Props) {
         };
       });
 
+      // Prompt for missing prices
+      for (const m of enrichedMeds) {
+        if (m.unit_price === 0) {
+          const priceStr = window.prompt(`Enter unit price (in ₹) for ${m.name} (Qty: ${m.quantity}):`, "10");
+          if (priceStr === null) return; // User cancelled
+          m.unit_price = Number(priceStr) || 0;
+        }
+      }
+
       await apiFetch(`/api/pharmacy/prescriptions/${presc.id}/fulfill`, {
         method: "POST",
         body: JSON.stringify({ medicines: enrichedMeds }),

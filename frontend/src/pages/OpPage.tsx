@@ -693,7 +693,7 @@ export default function OpPage({ setNotice, canEdit }: Props) {
               ))
             )}
           </Table>
-        </section>
+        </div>
       </div>
       
       {uploadPrescriptionPatient && (
@@ -704,6 +704,6 @@ export default function OpPage({ setNotice, canEdit }: Props) {
           onClose={() => setUploadPrescriptionPatient(null)}
         />
       )}
-    </div>
+    </section>
   );
 }

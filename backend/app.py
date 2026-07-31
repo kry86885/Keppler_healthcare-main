@@ -722,6 +722,9 @@ app.register_blueprint(ocr_portal_bp)
 from modules.whatsapp.routes import whatsapp_bp
 app.register_blueprint(whatsapp_bp)
 
+from modules.emr.routes import emr_bp
+app.register_blueprint(emr_bp)
+
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "5001"))

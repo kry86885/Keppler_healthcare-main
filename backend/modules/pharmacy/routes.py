@@ -186,7 +186,7 @@ def pharmacy_summary():
 # ---- Prescriptions via OCR ----
 
 @pharmacy_bp.post("/api/pharmacy/prescriptions")
-@require_permissions("pharmacy.write")
+@require_permissions("patients.write")
 def create_prescription():
     payload = request.get_json(force=True)
     patient_id = payload.get("patient_id")

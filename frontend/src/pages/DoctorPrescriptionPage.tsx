@@ -6,7 +6,7 @@ import { updateAppointmentStatus } from "../lib/appointments";
 import type { Appointment, Notice } from "../types";
 import PrescriptionUploadModal from "../components/PrescriptionUploadModal";
 import Button from "../components/ui/Button";
-import PatientJourneySteps from "../components/PatientJourneySteps";
+
 import AppointmentQueueCard from "../components/AppointmentQueueCard";
 
 type Props = {
@@ -57,7 +57,7 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate }: Props)
 
   return (
     <section className="module-page">
-      <PatientJourneySteps current="doctor-prescription" onNavigate={onNavigate} />
+      
       <div className="panel">
         <div className="module-panel-head">
           <h3>Patients In Consultation</h3>
