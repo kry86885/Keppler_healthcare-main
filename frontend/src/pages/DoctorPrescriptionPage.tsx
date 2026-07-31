@@ -581,16 +581,14 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
                                 </Btn>
                               ) : (
                                 <>
-                                  <Btn
-                                    variant="primary"
-                                    size="lg"
-                                    style={{ width: "100%", justifyContent: "center" }}
-                                    onClick={() => setUploadTarget({ id: String(appt.patient_id), name: appt.patient_name, doctorName: appt.doctor_name ?? undefined })}
-                                  >
-                                    <FiUploadCloud size={18} /> Upload / Scan Prescription (OCR)
-                                  </Btn>
-
-                                  <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "0.8rem" }}>
+                                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.8rem" }}>
+                                    <Btn
+                                      variant="primary"
+                                      style={{ justifyContent: "center" }}
+                                      onClick={() => setUploadTarget({ id: String(appt.patient_id), name: appt.patient_name, doctorName: appt.doctor_name ?? undefined })}
+                                    >
+                                      <FiUploadCloud size={14} /> Scan Prescription
+                                    </Btn>
                                     <Btn variant="secondary" style={{ justifyContent: "center" }} onClick={() => { setTab("notes"); }}>
                                       <FiEdit3 size={14} /> Write Clinical Note
                                     </Btn>
