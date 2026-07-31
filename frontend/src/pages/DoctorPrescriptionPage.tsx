@@ -100,7 +100,7 @@ function SectionHdr({ icon, title, sub }: { icon: React.ReactNode; title: string
 
 function CardWrap({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ background: C.surface, borderRadius: "16px", border: `1px solid ${C.border}`, boxShadow: "0 2px 12px rgba(15,23,42,0.06)", overflow: "hidden", ...style }}>
+    <div style={{ background: C.surface, borderRadius: "18px", border: `1px solid rgba(0,0,0,0.04)`, boxShadow: "0 6px 24px rgba(15,23,42,0.04)", overflow: "hidden", ...style }}>
       {children}
     </div>
   );
@@ -108,7 +108,7 @@ function CardWrap({ children, style }: { children: React.ReactNode; style?: Reac
 
 function CardHead({ left, right }: { left: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <div style={{ padding: "1rem 1.4rem", borderBottom: `1px solid ${C.borderLight}`, display: "flex", alignItems: "center", justifyContent: "space-between", background: "linear-gradient(135deg,#f8faff,#fff)" }}>
+    <div style={{ padding: "1rem 1.5rem", borderBottom: `1px solid rgba(0,0,0,0.03)`, display: "flex", alignItems: "center", justifyContent: "space-between", background: "linear-gradient(135deg,#fafbfc,#fff)" }}>
       {left}
       {right && <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>{right}</div>}
     </div>
@@ -160,10 +160,12 @@ function EmptyState({ emoji, title, hint, action }: { emoji: string; title: stri
 
 function VitalBox({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string; color: string }) {
   return (
-    <div style={{ background: "#f8faff", borderRadius: "10px", padding: "0.85rem 0.7rem", border: `1px solid ${C.border}`, textAlign: "center" }}>
-      <div style={{ color, marginBottom: "0.35rem" }}>{icon}</div>
-      <div style={{ fontSize: "1rem", fontWeight: 700, color: C.text, lineHeight: 1.1 }}>{value}</div>
-      <div style={{ fontSize: "0.65rem", color: C.textFaint, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginTop: "0.2rem" }}>{label}</div>
+    <div style={{ background: "#ffffff", borderRadius: "14px", padding: "1rem 0.85rem", border: `1px solid rgba(0,0,0,0.04)`, boxShadow: "0 2px 12px rgba(0,0,0,0.02)", textAlign: "left", display: "flex", alignItems: "center", gap: "0.85rem" }}>
+      <div style={{ color, width: 34, height: 34, borderRadius: "10px", background: `${color}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</div>
+      <div>
+        <div style={{ fontSize: "1.05rem", fontWeight: 800, color: C.text, lineHeight: 1.1 }}>{value}</div>
+        <div style={{ fontSize: "0.65rem", color: C.textFaint, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginTop: "0.2rem" }}>{label}</div>
+      </div>
     </div>
   );
 }
@@ -343,8 +345,9 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
   const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: "0.55rem 1.25rem", borderRadius: "9px", border: "none", cursor: "pointer",
     fontSize: "0.87rem", fontWeight: active ? 700 : 500, fontFamily: "inherit",
-    background: active ? C.primary : "transparent",
-    color: active ? "#fff" : C.textMuted,
+    background: active ? "#ffffff" : "transparent",
+    color: active ? C.primary : C.textMuted,
+    boxShadow: active ? "0 2px 10px rgba(0,0,0,0.06)" : "none",
     display: "flex", alignItems: "center", gap: "0.45rem", transition: "all 0.17s",
   });
 
@@ -389,8 +392,8 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
           { icon: <FiCheckCircle size={17} color={C.green} />, label: "Seen Today", val: seenToday, bg: C.greenLight, border: C.greenMid },
           { icon: <FiAlertCircle size={17} color={C.red} />, label: "No-Shows", val: noShows, bg: C.redLight, border: C.redMid },
         ].map(s => (
-          <div key={s.label} style={{ background: C.surface, borderRadius: "14px", border: `1px solid ${s.border}`, padding: "1.1rem 1.25rem", display: "flex", alignItems: "center", gap: "1rem", boxShadow: "0 1px 6px rgba(15,23,42,0.05)" }}>
-            <div style={{ width: 42, height: 42, borderRadius: "11px", background: s.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <div key={s.label} style={{ background: C.surface, borderRadius: "18px", border: `1px solid rgba(0,0,0,0.03)`, padding: "1.1rem 1.4rem", display: "flex", alignItems: "center", gap: "1rem", boxShadow: "0 4px 20px rgba(15,23,42,0.03)" }}>
+            <div style={{ width: 44, height: 44, borderRadius: "12px", background: s.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               {s.icon}
             </div>
             <div>
@@ -402,7 +405,7 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
       </div>
 
       {/* ── TAB BAR ── */}
-      <div style={{ display: "flex", gap: "0.35rem", background: "#eef1f8", borderRadius: "12px", padding: "0.35rem", marginBottom: "1.35rem", width: "fit-content" }}>
+      <div style={{ display: "flex", gap: "0.35rem", background: "rgba(15,23,42,0.04)", borderRadius: "12px", padding: "0.35rem", marginBottom: "1.35rem", width: "fit-content" }}>
         {([
           { id: "queue"    as Tab, icon: <FiUsers size={13} />,    label: "Queue & Consultation" },
           { id: "notes"    as Tab, icon: <FiEdit3 size={13} />,    label: "Clinical Notes" },
@@ -504,38 +507,38 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
                             {/* Patient identity banner */}
                             <div style={{
                               background: "#ffffff",
-                              borderRadius: "14px", padding: "1.4rem 1.5rem", color: C.text,
-                              border: `1px solid ${C.borderLight}`,
-                              boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
+                              borderRadius: "16px", padding: "1.4rem 1.75rem", color: C.text,
+                              border: `1px solid rgba(0,0,0,0.04)`,
+                              boxShadow: "0 8px 30px rgba(0,0,0,0.03)",
                               position: "relative", overflow: "hidden",
                             }}>
-                              {isPreview && <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: "4px", background: C.purple }} />}
-                              {!isPreview && <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: "4px", background: C.primary }} />}
+                              {isPreview && <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: "5px", background: C.purple }} />}
+                              {!isPreview && <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: "5px", background: C.primary }} />}
                               
-                              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap", paddingLeft: "4px" }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap", paddingLeft: "4px" }}>
                                 <div>
-                                  <div style={{ fontSize: "0.75rem", fontWeight: 700, color: isPreview ? C.purple : C.primary, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.4rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                                    <span style={{ background: isPreview ? C.purpleLight : C.primaryLight, padding: "0.2rem 0.6rem", borderRadius: "20px" }}>Token #{appt.token_no}</span> 
+                                  <div style={{ fontSize: "0.75rem", fontWeight: 700, color: isPreview ? C.purple : C.primary, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.6rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                    <span style={{ background: isPreview ? C.purpleLight : C.primaryLight, padding: "0.3rem 0.75rem", borderRadius: "20px" }}>Token #{appt.token_no}</span> 
                                     <span style={{ color: C.textFaint }}>·</span>
                                     <span style={{ color: C.textMuted }}>{appt.visit_type} {isPreview && " (PREVIEW)"}</span>
                                   </div>
-                                  <h3 style={{ margin: "0 0 0.6rem", fontSize: "1.45rem", fontWeight: 800, letterSpacing: "-0.01em", textTransform: "capitalize", color: C.text }}>
+                                  <h3 style={{ margin: "0 0 0.5rem", fontSize: "1.85rem", fontWeight: 800, letterSpacing: "-0.02em", textTransform: "capitalize", color: C.text }}>
                                     {appt.patient_name}
                                   </h3>
-                                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.8rem" }}>
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
                                     {appt.doctor_name && (
-                                      <span style={{ fontSize: "0.85rem", color: C.textMuted, display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                                        <FiUser size={14} color={C.textFaint} /> {appt.doctor_name}
+                                      <span style={{ fontSize: "0.88rem", color: C.textMuted, display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 500 }}>
+                                        <FiUser size={15} color={C.textFaint} /> {appt.doctor_name}
                                       </span>
                                     )}
-                                    <span style={{ fontSize: "0.85rem", color: C.textMuted, display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                                      <FiClock size={14} color={C.textFaint} /> {formatDateTime(appt.appointment_date)}
+                                    <span style={{ fontSize: "0.88rem", color: C.textMuted, display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 500 }}>
+                                      <FiClock size={15} color={C.textFaint} /> {formatDateTime(appt.appointment_date)}
                                     </span>
                                   </div>
                                 </div>
-                                <div style={{ background: isPreview ? C.purpleLight : C.primaryLight, borderRadius: "12px", padding: "0.6rem 1.25rem", textAlign: "center", border: `1px solid ${isPreview ? C.purpleMid : C.primaryMid}`, minWidth: 72 }}>
-                                  <div style={{ fontSize: "1.8rem", fontWeight: 900, lineHeight: 1, color: isPreview ? C.purple : C.primary }}>#{appt.token_no}</div>
-                                  <div style={{ fontSize: "0.6rem", color: isPreview ? C.purple : C.primary, fontWeight: 700, marginTop: 4, letterSpacing: "0.08em", opacity: 0.8 }}>TOKEN</div>
+                                <div style={{ background: isPreview ? "rgba(124, 58, 237, 0.05)" : "rgba(37, 99, 235, 0.05)", borderRadius: "16px", padding: "0.85rem 1.6rem", textAlign: "center", minWidth: 85 }}>
+                                  <div style={{ fontSize: "2.4rem", fontWeight: 900, lineHeight: 1, color: isPreview ? C.purple : C.primary, letterSpacing: "-0.03em" }}>#{appt.token_no}</div>
+                                  <div style={{ fontSize: "0.65rem", color: isPreview ? C.purple : C.primary, fontWeight: 700, marginTop: 6, letterSpacing: "0.1em", opacity: 0.8 }}>TOKEN</div>
                                 </div>
                               </div>
                             </div>
@@ -734,13 +737,13 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
                   );
                   return (
                     <>
-                      <div style={{ background: "#f8faff", color: C.text, padding: "1.25rem", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", borderBottom: `1px solid ${C.borderLight}` }}>
+                      <div style={{ background: "#ffffff", color: C.text, padding: "1.5rem 1.75rem", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", borderBottom: `1px solid rgba(0,0,0,0.03)` }}>
                         <div>
-                          <div style={{ fontSize: "0.65rem", fontWeight: 700, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "0.4rem" }}>Patient History</div>
-                          <h3 style={{ margin: "0 0 0.5rem", fontSize: "1.25rem", fontWeight: 800, letterSpacing: "-0.01em", textTransform: "capitalize" }}>
+                          <div style={{ fontSize: "0.7rem", fontWeight: 700, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "0.5rem" }}>Patient History</div>
+                          <h3 style={{ margin: "0 0 0.5rem", fontSize: "1.45rem", fontWeight: 800, letterSpacing: "-0.02em", textTransform: "capitalize" }}>
                             {chartData?.patient?.name ?? targetAppt.patient_name}
                           </h3>
-                          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", fontSize: "0.75rem" }}>
+                          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", fontSize: "0.8rem", fontWeight: 500 }}>
                             {chartData?.patient?.age && <span style={{ color: C.textMuted }}>{chartData.patient.age} yrs</span>}
                             {chartData?.patient?.gender && <span style={{ color: C.textMuted }}>· {chartData.patient.gender}</span>}
                             {chartData?.patient?.blood_group && <span style={{ color: C.textMuted }}>· Blood: {chartData.patient.blood_group}</span>}
