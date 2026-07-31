@@ -5,62 +5,78 @@
 $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
 $LogDir = Join-Path $Root ".devrun"
-if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
-
-$VenvPythonw = Join-Path $Root "backend\.venv\Scripts\pythonw.exe"
-if (-not (Test-Path $VenvPythonw)) {
-    $VenvPythonw = "pythonw.exe"
-}
-
-function Test-PortListening($port) {
-    $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-    return $null -ne $conn
-}
-
-function Start-DetachedProcess($cmdLine, $workDir) {
-    Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-        CommandLine = $cmdLine
-        CurrentDirectory = $workDir
-    } | Out-Null
-}
+if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir | Out-Null }
 
 Write-Host "=== Starting HospAI on Alternate Ports ===" -ForegroundColor Cyan
-Write-Host "Python Executable: $VenvPythonw" -ForegroundColor Gray
-Write-Host "Backend API:       http://localhost:6001" -ForegroundColor Green
-Write-Host "Symptom Backend:   http://localhost:6002" -ForegroundColor Green
-Write-Host "Frontend App:      http://localhost:6173" -ForegroundColor Green
 
-# 1. Start Backend on Port 6001
-Write-Host "`n[1/3] Checking Main Backend on port 6001..." -ForegroundColor Yellow
-if (Test-PortListening 6001) {
-    Write-Host "  -> Port 6001 is already listening!" -ForegroundColor Green
-} else {
-    Write-Host "  -> Launching Main Backend on port 6001 via Win32_Process..." -ForegroundColor Cyan
-    $cmd = "cmd.exe /c `"set PORT=6001&& set FLASK_ENV=development&& `"$VenvPythonw`" app.py > `"$LogDir\backend-6001.log`" 2>&1`""
-    Start-DetachedProcess -cmdLine $cmd -workDir "$Root\backend"
+# Find Python executable
+$VenvDir = Join-Path $Root "backend\.venv"
+$PyExe = Join-Path $VenvDir "Scripts\pythonw.exe"
+if (-not (Test-Path $PyExe)) {
+    $PyExe = Join-Path $VenvDir "Scripts\python.exe"
+}
+Write-Host "Python Executable: $PyExe"
+
+function Start-ServiceIfDown($name, $port, $workDir, $envVars, $exe, $args, $logFile) {
+    Write-Host "Checking $name on port $port..."
+    $connection = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
+    if ($connection) {
+        Write-Host "  -> Port $port is already listening!" -ForegroundColor Green
+        return
+    }
+
+    Write-Host "  -> Launching $name on port $port..." -ForegroundColor Yellow
+    
+    # Set environment variables for the child process
+    foreach ($key in $envVars.Keys) {
+        [Environment]::SetEnvironmentVariable($key, $envVars[$key], "Process")
+    }
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $exe
+    $psi.Arguments = $args
+    $psi.WorkingDirectory = $workDir
+    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Minimized
+    $psi.UseShellExecute = $true
+    
+    # We redirect output manually in the args for python, but for npm it's easier to just let it have a minimized window
+    [System.Diagnostics.Process]::Start($psi) | Out-Null
 }
 
-# 2. Start Symptom Backend on Port 6002
-Write-Host "[2/3] Checking Symptom AI Backend on port 6002..." -ForegroundColor Yellow
-if (Test-PortListening 6002) {
-    Write-Host "  -> Port 6002 is already listening!" -ForegroundColor Green
-} else {
-    Write-Host "  -> Launching Symptom AI Backend on port 6002 via Win32_Process..." -ForegroundColor Cyan
-    $cmd = "cmd.exe /c `"set PORT=6002&& set FLASK_ENV=development&& `"$VenvPythonw`" app.py > `"$LogDir\symptom-6002.log`" 2>&1`""
-    Start-DetachedProcess -cmdLine $cmd -workDir "$Root\symptom_backend"
+# 1. Main Backend
+$backendEnv = @{
+    "PORT" = "6001"
+    "DB_ENGINE" = "sqlite"
+    "DB_PATH" = "$Root\healthcare.db"
+    "FLASK_ENV" = "development"
+    "SESSION_COOKIE_SECURE" = "false"
+    "OCR_BACKEND_URL" = "http://localhost:7621"
 }
+Start-ServiceIfDown -name "Main Backend" -port 6001 -workDir "$Root\backend" -envVars $backendEnv -exe $PyExe -args "app.py" -logFile "$LogDir\backend-6001.log"
 
-# 3. Start Frontend (Vite Dev Server) on Port 6173
-Write-Host "[3/3] Checking Frontend Dev Server on port 6173..." -ForegroundColor Yellow
-if (Test-PortListening 6173) {
-    Write-Host "  -> Port 6173 is already listening!" -ForegroundColor Green
-} else {
-    Write-Host "  -> Launching Frontend Dev Server on port 6173 via Win32_Process..." -ForegroundColor Cyan
-    $cmd = "cmd.exe /c `"set PORT=6173&& set VITE_API_BASE=http://localhost:6001&& set VITE_API_URL=http://localhost:6001&& set VITE_SYMPTOM_API_BASE=http://localhost:6002&& set VITE_DEV_SERVER_URL=http://localhost:6173&& npm run dev:alt > `"$LogDir\frontend-6173.log`" 2>&1`""
-    Start-DetachedProcess -cmdLine $cmd -workDir "$Root\frontend"
+# 2. Symptom Backend
+$symptomEnv = @{
+    "PORT" = "6002"
+    "FLASK_ENV" = "development"
 }
+Start-ServiceIfDown -name "Symptom AI Backend" -port 6002 -workDir "$Root\symptom_backend" -envVars $symptomEnv -exe $PyExe -args "app.py" -logFile "$LogDir\symptom-6002.log"
 
-Write-Host "`nAll services launched on alternate ports!" -ForegroundColor Cyan
-Write-Host "To open the Desktop Electron Application connected to these ports, run:" -ForegroundColor White
-Write-Host "  cd `"$Root\frontend`"" -ForegroundColor Gray
+# 3. Frontend
+$frontendEnv = @{
+    "PORT" = "6173"
+    "VITE_API_BASE" = "http://localhost:6001"
+    "VITE_API_URL" = "http://localhost:6001"
+    "VITE_SYMPTOM_API_BASE" = "http://localhost:6002"
+    "VITE_DEV_SERVER_URL" = "http://localhost:6173"
+    "CHOKIDAR_USEPOLLING" = "true"
+    "WATCHPACK_POLLING" = "true"
+}
+# Find npm.cmd
+$npmExe = "npm.cmd"
+Start-ServiceIfDown -name "Frontend Dev Server" -port 6173 -workDir "$Root\frontend" -envVars $frontendEnv -exe $npmExe -args "run dev:alt" -logFile "$LogDir\frontend-6173.log"
+
+Write-Host ""
+Write-Host "All services launched on alternate ports!" -ForegroundColor Green
+Write-Host "To open the Desktop Electron Application connected to these ports, run:"
+Write-Host "  cd `"$Root\frontend`""
 Write-Host "  `$env:VITE_API_BASE='http://localhost:6001'; `$env:VITE_SYMPTOM_API_BASE='http://localhost:6002'; npm run electron:dev:alt" -ForegroundColor Gray

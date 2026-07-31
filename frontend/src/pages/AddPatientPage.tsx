@@ -173,6 +173,22 @@ export default function AddPatientPage({ onCreate, setNotice, onNavigate }: Prop
               <option>Other</option>
             </Select>
           </Label>
+          <Label>
+            Blood Group
+            <Input value={form.blood_group} onChange={handleChange("blood_group")} />
+          </Label>
+          <Label>
+            Emergency Contact
+            <Input value={form.emergency_contact} onChange={handleChange("emergency_contact")} />
+          </Label>
+          <Label>
+            Aadhar Number
+            <Input value={form.aadhar_number} onChange={handleChange("aadhar_number")} />
+          </Label>
+          <Label style={{ gridColumn: "1 / -1" }}>
+            Address
+            <Textarea value={form.address} onChange={handleChange("address")} />
+          </Label>
           <Label className="checkbox">
             <Checkbox checked={form.pregnant} onChange={handleChange("pregnant")} />
             Pregnant

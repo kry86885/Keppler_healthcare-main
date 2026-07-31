@@ -561,6 +561,7 @@ def init_database():
             )
 
         ensure_hospital_columns(conn)
+        ensure_patient_columns(conn)
         ensure_user_columns(conn)
         ensure_document_columns(conn)
         ensure_hospai_module_tables(conn)
@@ -915,6 +916,13 @@ def ensure_department_master_scope(conn):
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_department_master_hospital_name ON department_master(hospital_id, department_name)"
     )
 
+
+def ensure_patient_columns(conn):
+    cursor = conn.cursor()
+    _ensure_column(cursor, "patients", "address", "TEXT", "TEXT")
+    _ensure_column(cursor, "patients", "blood_group", "TEXT", "TEXT")
+    _ensure_column(cursor, "patients", "emergency_contact", "TEXT", "TEXT")
+    _ensure_column(cursor, "patients", "aadhar_number", "TEXT", "TEXT")
 
 def ensure_user_columns(conn):
     """Add any missing columns to users table for older databases."""
@@ -2367,15 +2375,27 @@ def query_bulk_patients(hospital_id, where_clause, params, page=1, page_size=150
 
 def generate_patient_id(hospital_id=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
-    date_str = current_ist_datetime().strftime("%Y%m%d")
     with get_connection() as conn:
         cursor = conn.cursor()
+        # Find the highest continuous sequence id. Using a professional MRN-like sequence starting at 100001
         cursor.execute(
-            "SELECT COUNT(*) FROM patients WHERE hospital_id = ? AND patient_id LIKE ?",
-            (scoped_hospital_id, f"PAT-{date_str}-%"),
+            "SELECT patient_id FROM patients WHERE hospital_id = ? AND patient_id LIKE ?",
+            (scoped_hospital_id, 'PAT-1%')
         )
-        count = cursor.fetchone()[0]
-    return f"PAT-{date_str}-{count + 1:04d}"
+        ids = [row[0] for row in cursor.fetchall()]
+        
+        max_num = 100000
+        for pid in ids:
+            try:
+                # Expecting format PAT-100001
+                num = int(pid.split('-')[1])
+                if num > max_num:
+                    max_num = num
+            except (IndexError, ValueError):
+                continue
+                
+    return f"PAT-{max_num + 1}"
+
 
 
 def check_duplicate_patient(name, last_name, dob, phone, hospital_id=None):
@@ -2399,8 +2419,8 @@ def add_patient(data, hospital_id=None):
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO patients (hospital_id, patient_id, name, middle_name, last_name, dob, age, weight, height, gender, pregnant, allergies, symptoms, phone)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO patients (hospital_id, patient_id, name, middle_name, last_name, dob, age, weight, height, gender, pregnant, allergies, symptoms, phone, address, blood_group, emergency_contact, aadhar_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 scoped_hospital_id,
@@ -2417,6 +2437,10 @@ def add_patient(data, hospital_id=None):
                 data.get("allergies", ""),
                 data.get("symptoms", ""),
                 data.get("phone", ""),
+                data.get("address", ""),
+                data.get("blood_group", ""),
+                data.get("emergency_contact", ""),
+                data.get("aadhar_number", ""),
             ),
         )
         conn.commit()
@@ -2457,12 +2481,12 @@ def search_patients(query, hospital_id=None):
             SELECT * FROM patients WHERE
             hospital_id = ? AND deleted_at IS NULL AND (
             LOWER(name) LIKE ? OR LOWER(last_name) LIKE ? OR LOWER(middle_name) LIKE ?
-            OR LOWER(phone) LIKE ? OR LOWER(patient_id) LIKE ?
+            OR LOWER(phone) LIKE ? OR LOWER(patient_id) LIKE ? OR LOWER(aadhar_number) LIKE ?
             OR LOWER(TRIM(name || ' ' || COALESCE(middle_name, '') || ' ' || last_name)) LIKE ?
             OR LOWER(TRIM(last_name || ' ' || name)) LIKE ?)
             ORDER BY created_at DESC
         """,
-            (scoped_hospital_id, search, search, search, search, search, search, search),
+            (scoped_hospital_id, search, search, search, search, search, search, search, search),
         )
         return cursor.fetchall()
 
@@ -2473,7 +2497,7 @@ def update_patient(patient_id, data):
         cursor.execute(
             """
             UPDATE patients SET name=?, middle_name=?, last_name=?, dob=?, age=?, weight=?, height=?,
-            gender=?, pregnant=?, allergies=?, symptoms=?, phone=?, updated_at=CURRENT_TIMESTAMP
+            gender=?, pregnant=?, allergies=?, symptoms=?, phone=?, address=?, blood_group=?, emergency_contact=?, aadhar_number=?, updated_at=CURRENT_TIMESTAMP
             WHERE patient_id=?
         """,
             (
@@ -2489,6 +2513,10 @@ def update_patient(patient_id, data):
                 data.get("allergies", ""),
                 data.get("symptoms", ""),
                 data.get("phone", ""),
+                data.get("address", ""),
+                data.get("blood_group", ""),
+                data.get("emergency_contact", ""),
+                data.get("aadhar_number", ""),
                 patient_id,
             ),
         )
@@ -2941,7 +2969,8 @@ def generate_employee_id(hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT employee_id FROM users WHERE employee_id LIKE 'EMP-%'",
+            "SELECT employee_id FROM users WHERE employee_id LIKE ?",
+            ('EMP-%',)
         )
         ids = [row[0] for row in cursor.fetchall()]
         
@@ -3245,7 +3274,7 @@ def list_appointments(appointment_date=None, status=None, visit_type=None, docto
             params.append(patient_id)
         where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         cursor.execute(
-            f"SELECT a.*, p.phone as patient_phone FROM appointments a LEFT JOIN patients p ON a.patient_id = p.patient_id AND a.hospital_id = p.hospital_id{where_clause} ORDER BY a.appointment_date ASC, a.token_no ASC",
+            f"SELECT a.*, p.phone as patient_phone, p.symptoms as patient_symptoms FROM appointments a LEFT JOIN patients p ON a.patient_id = p.patient_id AND a.hospital_id = p.hospital_id{where_clause} ORDER BY a.appointment_date ASC, a.token_no ASC",
             tuple(params),
         )
         return cursor.fetchall()

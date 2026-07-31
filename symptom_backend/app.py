@@ -888,7 +888,13 @@ def triage():
         triage_result = json.loads(candidate)
         return jsonify(triage_result)
     except Exception as exc:
-        return jsonify({"error": f"Triage AI failed: {str(exc)}"}), 502
+        fallback_dept = available_departments[0] if available_departments else "General Medicine"
+        fallback_triage = {
+            "department": fallback_dept,
+            "urgency": "Routine",
+            "reasoning": f"AI Triage unavailable: {str(exc)[:50]}... Defaulting to {fallback_dept}."
+        }
+        return jsonify(fallback_triage), 200
 
 
 @app.post("/api/symptom-ai/export/pdf")

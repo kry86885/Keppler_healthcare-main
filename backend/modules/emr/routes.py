@@ -69,6 +69,14 @@ def get_emr(patient_id):
         cursor.execute("SELECT * FROM medical_history WHERE patient_id = ?", (patient_id,))
         medical_history = cursor.fetchone()
 
+        # Documents (OCR Prescriptions, etc.)
+        cursor.execute("SELECT id, patient_id, doc_type, file_name, created_at, ocr_text FROM documents WHERE patient_id = ?", (patient_id,))
+        documents = [dict(r) for r in cursor.fetchall()]
+
+        # Pharmacy Sales (Purchase History)
+        cursor.execute("SELECT * FROM pharmacy_sales WHERE patient_id = ? AND hospital_id = ?", (patient_id, hospital_id))
+        pharmacy_sales = [dict(r) for r in cursor.fetchall()]
+
         return jsonify({
             "patient": dict(patient),
             "medical_history": dict(medical_history) if medical_history else None,
@@ -77,7 +85,9 @@ def get_emr(patient_id):
             "vitals": vitals,
             "diagnoses": diagnoses,
             "prescriptions": prescriptions,
-            "labs": labs
+            "labs": labs,
+            "documents": documents,
+            "pharmacy_sales": pharmacy_sales
         })
 
 @emr_bp.route("/api/emr/<patient_id>/ai-summary", methods=["POST"])

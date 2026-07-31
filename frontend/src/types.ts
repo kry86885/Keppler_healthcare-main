@@ -108,6 +108,10 @@ export interface Patient {
   allergies?: string;
   symptoms?: string;
   phone?: string;
+  address?: string;
+  blood_group?: string;
+  emergency_contact?: string;
+  aadhar_number?: string;
   created_at?: string;
 }
 
@@ -227,6 +231,7 @@ export interface Appointment {
   patient_id?: string | null;
   patient_name: string;
   patient_phone?: string | null;
+  patient_symptoms?: string | null;
   visit_type: string;
   department?: string | null;
   doctor_name?: string | null;
@@ -400,6 +405,10 @@ export interface PatientForm {
   allergy3: string;
   symptoms: string;
   phone: string;
+  address: string;
+  blood_group: string;
+  emergency_contact: string;
+  aadhar_number: string;
 }
 
 export interface NavItem {
