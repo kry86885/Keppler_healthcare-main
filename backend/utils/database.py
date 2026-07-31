@@ -922,6 +922,7 @@ def ensure_patient_columns(conn):
     _ensure_column(cursor, "patients", "address", "TEXT", "TEXT")
     _ensure_column(cursor, "patients", "blood_group", "TEXT", "TEXT")
     _ensure_column(cursor, "patients", "emergency_contact", "TEXT", "TEXT")
+    _ensure_column(cursor, "patients", "aadhar_number", "TEXT", "TEXT")
 
 def ensure_user_columns(conn):
     """Add any missing columns to users table for older databases."""
@@ -2378,8 +2379,8 @@ def generate_patient_id(hospital_id=None):
         cursor = conn.cursor()
         # Find the highest continuous sequence id. Using a professional MRN-like sequence starting at 100001
         cursor.execute(
-            "SELECT patient_id FROM patients WHERE hospital_id = ? AND patient_id LIKE 'PAT-1%'",
-            (scoped_hospital_id,)
+            "SELECT patient_id FROM patients WHERE hospital_id = ? AND patient_id LIKE ?",
+            (scoped_hospital_id, 'PAT-1%')
         )
         ids = [row[0] for row in cursor.fetchall()]
         
@@ -2968,7 +2969,8 @@ def generate_employee_id(hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT employee_id FROM users WHERE employee_id LIKE 'EMP-%'",
+            "SELECT employee_id FROM users WHERE employee_id LIKE ?",
+            ('EMP-%',)
         )
         ids = [row[0] for row in cursor.fetchall()]
         
@@ -3223,7 +3225,7 @@ def create_appointment(data, hospital_id=None):
                 patient_id, patient_name, visit_type, department, doctor_name,
                 appointment_date, token_no, status, notes, appointment_kind, follow_up_for,
                 reminder_sent_at, no_show_marked, hospital_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.get("patient_id"),
@@ -3272,7 +3274,7 @@ def list_appointments(appointment_date=None, status=None, visit_type=None, docto
             params.append(patient_id)
         where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         cursor.execute(
-            f"SELECT a.*, p.phone as patient_phone FROM appointments a LEFT JOIN patients p ON a.patient_id = p.patient_id AND a.hospital_id = p.hospital_id{where_clause} ORDER BY a.appointment_date ASC, a.token_no ASC",
+            f"SELECT a.*, p.phone as patient_phone, p.symptoms as patient_symptoms FROM appointments a LEFT JOIN patients p ON a.patient_id = p.patient_id AND a.hospital_id = p.hospital_id{where_clause} ORDER BY a.appointment_date ASC, a.token_no ASC",
             tuple(params),
         )
         return cursor.fetchall()
@@ -5550,7 +5552,7 @@ def create_diagnostic_record(data, hospital_id=None):
             INSERT INTO diagnostics (
                 invoice_no, patient_id, vendor_id, doctor_name, test_name, amount, paid_amount, due_amount, status,
                 sample_barcode, order_status, collected_at, reported_at, hospital_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data.get("invoice_no"),

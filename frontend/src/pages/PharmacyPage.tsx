@@ -181,6 +181,7 @@ export default function PharmacyPage({ setNotice }: Props) {
   const [savingSupplier, setSavingSupplier] = useState(false);
   const [savingPurchase, setSavingPurchase] = useState(false);
   const [deletingItem, setDeletingItem] = useState<InventoryItem | null>(null);
+  const [pendingPrescriptionsSearch, setPendingPrescriptionsSearch] = useState("");
 
   const visibleItems = useMemo(() => {
     const search = filters.search.trim().toLowerCase();
@@ -210,6 +211,18 @@ export default function PharmacyPage({ setNotice }: Props) {
       return quantity <= reorderLevel;
     });
   }, [sales, items, filters]);
+
+  const visiblePendingPrescriptions = useMemo(() => {
+    const search = pendingPrescriptionsSearch.trim().toLowerCase();
+    if (!search) return pendingPrescriptions;
+    return pendingPrescriptions.filter(p => {
+      return (
+        p.patient_name.toLowerCase().includes(search) ||
+        (p.patient_last_name || "").toLowerCase().includes(search) ||
+        p.patient_id.toLowerCase().includes(search)
+      );
+    });
+  }, [pendingPrescriptions, pendingPrescriptionsSearch]);
 
   const loadPharmacy = async () => {
     setLoading(true);
@@ -628,8 +641,14 @@ export default function PharmacyPage({ setNotice }: Props) {
       </div>
 
       <div className="pharmacy-section-glass">
-        <div className="pharmacy-section-header">
+        <div className="pharmacy-section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <h3>Pending Prescriptions (OCR)</h3>
+          <Input 
+            placeholder="Search by Patient Name or ID..." 
+            value={pendingPrescriptionsSearch}
+            onChange={(e) => setPendingPrescriptionsSearch(e.target.value)}
+            style={{ maxWidth: '300px' }}
+          />
         </div>
         <div className="table-responsive">
           <Table className="pharmacy-table-modern">
@@ -640,12 +659,14 @@ export default function PharmacyPage({ setNotice }: Props) {
               <TableCell>Medicines</TableCell>
               <TableCell>Actions</TableCell>
             </TableHead>
-            {pendingPrescriptions.length === 0 ? (
+            {visiblePendingPrescriptions.length === 0 ? (
               <TableRow>
-                <TableCell style={{ textAlign: "center", padding: "2rem" }}>No pending prescriptions</TableCell>
+                <TableCell style={{ textAlign: "center", padding: "2rem" }}>
+                  {pendingPrescriptions.length === 0 ? "No pending prescriptions" : "No prescriptions match your search."}
+                </TableCell>
               </TableRow>
             ) : (
-              pendingPrescriptions.map(p => {
+              visiblePendingPrescriptions.map(p => {
                 let meds = [];
                 try { meds = JSON.parse(p.medicines_json); } catch(e) {}
                 return (

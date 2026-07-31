@@ -91,9 +91,13 @@ export default function QueuePage({ setNotice, onNavigate, isReceptionist }: Pro
     setStatusFilter("");
   };
 
-  const handleStatusChange = async (appointmentId: number, status: string) => {
+  const handleStatusChange = async (appointment: Appointment, status: string) => {
+    // If completing, immediately trigger WhatsApp for next patient to bypass popup blockers
+    if (status === "completed") {
+      handleCallNext(appointment, true);
+    }
     try {
-      await updateAppointmentStatus(appointmentId, status);
+      await updateAppointmentStatus(appointment.id, status);
       await loadAppointments();
       setNotice({ type: "success", message: `Token status updated to ${status.replace("_", " ")}.` });
       // Check-in and cancellation keep the patient in this desk's queue; consultation
@@ -108,20 +112,26 @@ export default function QueuePage({ setNotice, onNavigate, isReceptionist }: Pro
     }
   };
 
-  const handleCallNext = (currentAppt: Appointment) => {
+  const handleCallNext = (currentAppt: Appointment, silent = false) => {
     const nextAppt = appointments.find(
       (a) => a.status === "checked_in" && a.doctor_name === currentAppt.doctor_name
     );
     if (!nextAppt) {
-      setNotice({ type: "warning", message: "No more patients waiting in queue for this doctor." });
+      if (!silent) setNotice({ type: "warning", message: "No more patients waiting in queue for this doctor." });
       return;
     }
     if (!nextAppt.patient_phone) {
-      setNotice({ type: "error", message: `Next patient (${nextAppt.patient_name}) does not have a registered phone number.` });
+      setNotice({ type: "info", message: `Next patient (${nextAppt.patient_name}) does not have a registered phone number. The receptionist can send them in and update their status.` });
       return;
     }
     const phone = nextAppt.patient_phone.replace(/\D/g, "");
-    const msg = `Hello ${nextAppt.patient_name}, the doctor is ready for your consultation. Please proceed to the consultation room.`;
+    const docName = nextAppt.doctor_name ? `Dr. ${nextAppt.doctor_name.replace(/^Dr\.?\s*/i, "")}` : "The Doctor";
+    const deptInfo = nextAppt.department ? `${nextAppt.department}` : "General Consultation";
+    const timeStr = nextAppt.appointment_date 
+      ? new Date(nextAppt.appointment_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : "Now";
+
+    const msg = `🏥 *Keppler Healthcare*\n\nDear *${nextAppt.patient_name}*,\n\nThe doctor is ready to see you now. Please proceed to the consultation room.\n\n👨‍⚕️ *Doctor:* ${docName}\n🩺 *Department:* ${deptInfo}\n⏰ *Time:* ${timeStr}\n\n_Thank you for your patience!_`;
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
@@ -221,27 +231,31 @@ export default function QueuePage({ setNotice, onNavigate, isReceptionist }: Pro
                 actions={
                   <>
                     {appointment.status === "scheduled" ? (
-                      <Button type="button" size="sm" onClick={() => void handleStatusChange(appointment.id, "checked_in")}>
+                      <Button type="button" size="sm" onClick={() => void handleStatusChange(appointment, "checked_in")}>
                         Check In
                       </Button>
                     ) : null}
                     {appointment.status === "checked_in" ? (
-                      <Button type="button" size="sm" onClick={() => void handleStatusChange(appointment.id, "in_consultation")}>
+                      <Button type="button" size="sm" onClick={() => void handleStatusChange(appointment, "in_consultation")}>
                         Start Consultation
                       </Button>
                     ) : null}
-                    {!isReceptionist && appointment.status === "in_consultation" ? (
+                    {!isReceptionist && (appointment.status === "in_consultation" || appointment.status === "completed") ? (
                       <div style={{ display: "flex", gap: "0.5rem" }}>
-                        <Button type="button" size="sm" variant="secondary" onClick={() => void handleStatusChange(appointment.id, "completed")}>
-                          Complete
-                        </Button>
-                        <Button type="button" size="sm" variant="secondary" style={{ borderColor: "#25D366", color: "#25D366" }} onClick={() => handleCallNext(appointment)}>
-                          Call Next (WhatsApp)
-                        </Button>
+                        {appointment.status === "in_consultation" && (
+                          <Button type="button" size="sm" variant="secondary" onClick={() => void handleStatusChange(appointment, "completed")}>
+                            Complete
+                          </Button>
+                        )}
+                        {appointment.status === "completed" && (
+                          <Button type="button" size="sm" variant="secondary" style={{ borderColor: "#25D366", color: "#25D366" }} onClick={() => handleCallNext(appointment)}>
+                            Call Next (WhatsApp)
+                          </Button>
+                        )}
                       </div>
                     ) : null}
                     {!isReceptionist && appointment.status !== "completed" && appointment.status !== "cancelled" ? (
-                      <Button type="button" size="sm" variant="ghost" onClick={() => void handleStatusChange(appointment.id, "cancelled")}>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => void handleStatusChange(appointment, "cancelled")}>
                         Cancel
                       </Button>
                     ) : null}

@@ -111,24 +111,24 @@ echo "Starting backend..."
   export CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}"
   export SESSION_COOKIE_SECURE=false
   export OCR_BACKEND_URL="${OCR_BACKEND_URL:-http://localhost:7621}"
-  "${BACKEND_VENV}/bin/python" app.py \
+  nohup "${BACKEND_VENV}/bin/python" app.py \
     > >(tee -a "${BACKEND_LOG}") \
-    2> >(tee -a "${BACKEND_LOG}" >&2)
-) &
-BACKEND_PID=$!
-echo "${BACKEND_PID}" > "${BACKEND_PID_FILE}"
+    2> >(tee -a "${BACKEND_LOG}" >&2) &
+  BACKEND_PID=$!
+  echo "${BACKEND_PID}" > "${BACKEND_PID_FILE}"
+)
 
 echo "Starting symptom backend..."
 (
   cd "${ROOT_DIR}/symptom_backend"
   export PORT=5002
   export FLASK_ENV=development
-  "${BACKEND_VENV}/bin/python" app.py \
+  nohup "${BACKEND_VENV}/bin/python" app.py \
     > >(tee -a "${SYMPTOM_LOG}") \
-    2> >(tee -a "${SYMPTOM_LOG}" >&2)
-) &
-SYMPTOM_PID=$!
-echo "${SYMPTOM_PID}" > "${SYMPTOM_PID_FILE}"
+    2> >(tee -a "${SYMPTOM_LOG}" >&2) &
+  SYMPTOM_PID=$!
+  echo "${SYMPTOM_PID}" > "${SYMPTOM_PID_FILE}"
+)
 
 echo "Starting frontend..."
 (
@@ -138,12 +138,12 @@ echo "Starting frontend..."
   export VITE_SYMPTOM_API_BASE="${VITE_SYMPTOM_API_BASE:-http://localhost:5002}"
   export CHOKIDAR_USEPOLLING=true
   export WATCHPACK_POLLING=true
-  npm run dev -- --host \
+  nohup npm run dev -- --host \
     > >(tee -a "${FRONTEND_LOG}") \
-    2> >(tee -a "${FRONTEND_LOG}" >&2)
-) &
-FRONTEND_PID=$!
-echo "${FRONTEND_PID}" > "${FRONTEND_PID_FILE}"
+    2> >(tee -a "${FRONTEND_LOG}" >&2) &
+  FRONTEND_PID=$!
+  echo "${FRONTEND_PID}" > "${FRONTEND_PID_FILE}"
+)
 
 echo
 echo "Dev services started:"

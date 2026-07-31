@@ -44,7 +44,7 @@ import AmbulancePage from "./pages/AmbulancePage";
 import NurseStationPage from "./pages/NurseStationPage";
 import RegistrationDeskPage from "./pages/RegistrationDeskPage";
 import BulkPatientAiPage from "./pages/BulkPatientAiPage";
-import { API_BASE, EMPTY_STATS, NAV_ITEMS } from "./lib/constants";
+import { API_BASE, EMPTY_STATS, NAV_ITEMS, EMPTY_PATIENT_FORM } from "./lib/constants";
 import { apiFetch, getHospitalCode, reportError, setHospitalCode } from "./lib/api";
 import { resolvePermissions } from "./lib/format";
 import type { DashboardAnalytics, HospitalSummary, Notice, Patient, Stats, User } from "./types";
@@ -699,22 +699,7 @@ function App() {
       });
       setDuplicateInfo?.(null);
       setNotice({ type: "success", message: `Patient ${data.patient_id} registered.` });
-      setForm({
-        name: "",
-        middle_name: "",
-        last_name: "",
-        dob: "",
-        age: "",
-        weight: "",
-        height: "",
-        gender: "Female",
-        pregnant: false,
-        allergy1: "",
-        allergy2: "",
-        allergy3: "",
-        symptoms: "",
-        phone: "",
-      });
+      setForm(EMPTY_PATIENT_FORM);
       await refreshPatientId?.();
       return data;
     } catch (error) {

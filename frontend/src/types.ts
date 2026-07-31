@@ -231,6 +231,7 @@ export interface Appointment {
   patient_id?: string | null;
   patient_name: string;
   patient_phone?: string | null;
+  patient_symptoms?: string | null;
   visit_type: string;
   department?: string | null;
   doctor_name?: string | null;
