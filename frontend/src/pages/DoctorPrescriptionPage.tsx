@@ -251,13 +251,19 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
 
   useEffect(() => { if (tab === "schedule") void loadSchedule(); }, [tab, loadSchedule]);
 
-  /* pull chart whenever active consultation changes */
+  /* pull chart whenever active consultation OR preview changes */
   useEffect(() => {
-    if (activeAppts.length > 0 && activeAppts[0].patient_id) {
-      setChartPatientId(activeAppts[0].patient_id);
-      void loadPatientChart(activeAppts[0].patient_id);
-    }
-  }, [activeAppts, loadPatientChart]);
+    const targetAppt = viewMode === "preview" ? previewAppt : (activeAppts.length > 0 ? activeAppts[0] : null);
+    const targetPatientId = targetAppt ? targetAppt.patient_id : null;
+    
+    setChartPatientId(prev => {
+       if (prev !== targetPatientId) {
+          if (targetPatientId) void loadPatientChart(targetPatientId);
+          return targetPatientId;
+       }
+       return prev;
+    });
+  }, [activeAppts, previewAppt, viewMode, loadPatientChart]);
 
   /* ── appointment actions ── */
   const doStatus = async (id: number, status: Appointment["status"]) => {
@@ -399,7 +405,6 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
       <div style={{ display: "flex", gap: "0.35rem", background: "#eef1f8", borderRadius: "12px", padding: "0.35rem", marginBottom: "1.35rem", width: "fit-content" }}>
         {([
           { id: "queue"    as Tab, icon: <FiUsers size={13} />,    label: "Queue & Consultation" },
-          { id: "chart"    as Tab, icon: <FiFileText size={13} />, label: "Patient Chart" },
           { id: "notes"    as Tab, icon: <FiEdit3 size={13} />,    label: "Clinical Notes" },
           { id: "schedule" as Tab, icon: <FiCalendar size={13} />, label: "Today's Schedule" },
         ]).map(t => (
@@ -585,12 +590,9 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
                                     <FiUploadCloud size={18} /> Upload / Scan Prescription (OCR)
                                   </Btn>
 
-                                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.8rem" }}>
+                                  <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "0.8rem" }}>
                                     <Btn variant="secondary" style={{ justifyContent: "center" }} onClick={() => { setTab("notes"); }}>
                                       <FiEdit3 size={14} /> Write Clinical Note
-                                    </Btn>
-                                    <Btn variant="secondary" style={{ justifyContent: "center", background: C.tealLight, borderColor: C.teal, color: C.teal }} onClick={() => { setTab("chart"); }}>
-                                      <FiFileText size={14} /> View Patient Chart
                                     </Btn>
                                   </div>
 
@@ -688,178 +690,171 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
               </div>
             </CardWrap>
 
-            {/* Quick-links card */}
-            <CardWrap>
-              <CardHead left={<div style={{ fontWeight: 700, fontSize: "0.88rem", color: C.text, display: "flex", alignItems: "center", gap: "0.5rem" }}><FiZap color={C.amber} size={14} /> Quick Links</div>} />
-              <div style={{ padding: "0.85rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {[
-                  { label: "Patient Chart", sub: "View history for active patient", icon: <FiFileText size={14} color={C.teal} />, onClick: () => setTab("chart") },
-                  { label: "Write Clinical Note", sub: "Add consultation note", icon: <FiEdit3 size={14} color={C.primary} />, onClick: () => setTab("notes") },
-                  { label: "Today's Schedule", sub: "All appointments for today", icon: <FiCalendar size={14} color={C.purple} />, onClick: () => setTab("schedule") },
-                ].map(ql => (
-                  <button
-                    key={ql.label}
-                    onClick={ql.onClick}
-                    style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 0.9rem", borderRadius: "9px", border: `1px solid ${C.border}`, background: "#fafbff", cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "background 0.15s" }}
-                    onMouseEnter={e => (e.currentTarget.style.background = C.primaryLight)}
-                    onMouseLeave={e => (e.currentTarget.style.background = "#fafbff")}
-                  >
-                    <span style={{ width: 32, height: 32, borderRadius: "8px", background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{ql.icon}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: "0.85rem", color: C.text }}>{ql.label}</div>
-                      <div style={{ fontSize: "0.75rem", color: C.textFaint }}>{ql.sub}</div>
-                    </div>
-                    <FiChevronRight size={13} color={C.textFaint} />
-                  </button>
-                ))}
-              </div>
-            </CardWrap>
-          </div>
-        </div>
-      )}
-
-      {/* ════════════════════════════════════════════════════════
-          TAB — PATIENT CHART  (read-only, current patient only)
-      ════════════════════════════════════════════════════════ */}
-      {tab === "chart" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-          {!activeAppt ? (
-            <CardWrap>
-              <EmptyState emoji="👤" title="No active patient" hint="A patient must be in consultation to view their chart. Switch to the Queue tab and call one in." action={<Btn variant="secondary" onClick={() => setTab("queue")}><FiArrowRightCircle size={14} /> Go to Queue</Btn>} />
-            </CardWrap>
-          ) : chartLoading ? (
-            <CardWrap>
-              <div style={{ textAlign: "center", padding: "4rem", color: C.textFaint }}>
-                <FiRefreshCw size={24} style={{ animation: "spin 1s linear infinite", display: "block", margin: "0 auto 0.75rem" }} />
-                Loading patient chart…
-              </div>
-            </CardWrap>
-          ) : (
-            <>
-              {/* Patient identity card */}
-              <CardWrap style={{ background: "linear-gradient(135deg,#312e81,#4f46e5)", color: "#fff" }}>
-                <div style={{ padding: "1.5rem", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
-                  <div>
-                    <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "#c7d2fe", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "0.5rem" }}>Patient Record · Chart View</div>
-                    <h3 style={{ margin: "0 0 0.75rem", fontSize: "1.4rem", fontWeight: 800, letterSpacing: "-0.02em", textTransform: "capitalize" }}>
-                      {chartData?.patient?.name ?? activeAppt.patient_name}
-                    </h3>
-                    <div style={{ display: "flex", gap: "0.7rem", flexWrap: "wrap" }}>
-                      {chartData?.patient?.age && <Pill bg="rgba(255,255,255,0.15)" color="#e0e7ff">{chartData.patient.age} yrs</Pill>}
-                      {chartData?.patient?.gender && <Pill bg="rgba(255,255,255,0.15)" color="#e0e7ff">{chartData.patient.gender}</Pill>}
-                      {chartData?.patient?.blood_group && <Pill bg="rgba(255,255,255,0.15)" color="#e0e7ff">Blood: {chartData.patient.blood_group}</Pill>}
-                      {chartData?.patient?.allergies && <Pill bg="#fef3c7" color="#92400e">⚠ Allergy: {chartData.patient.allergies}</Pill>}
-                    </div>
-                  </div>
-                  <Btn variant="secondary" size="sm" style={{ alignSelf: "flex-start" }}>
-                    <FiPrinter size={13} /> Print
-                  </Btn>
-                </div>
-              </CardWrap>
-
-              {/* Chart sub-tabs */}
+            {viewMode === "queue_list" ? (
               <CardWrap>
-                <div style={{ padding: "0.85rem 1.25rem", borderBottom: `1px solid ${C.borderLight}`, display: "flex", gap: "0.35rem" }}>
-                  {(["history", "prescriptions", "labs"] as const).map(t => (
+                <CardHead left={<div style={{ fontWeight: 700, fontSize: "0.88rem", color: C.text, display: "flex", alignItems: "center", gap: "0.5rem" }}><FiZap color={C.amber} size={14} /> Quick Links</div>} />
+                <div style={{ padding: "0.85rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  {[
+                    { label: "Write Clinical Note", sub: "Add consultation note", icon: <FiEdit3 size={14} color={C.primary} />, onClick: () => setTab("notes") },
+                    { label: "Today's Schedule", sub: "All appointments for today", icon: <FiCalendar size={14} color={C.purple} />, onClick: () => setTab("schedule") },
+                  ].map(ql => (
                     <button
-                      key={t}
-                      onClick={() => setChartTab(t)}
-                      style={tabStyle(chartTab === t)}
+                      key={ql.label}
+                      onClick={ql.onClick}
+                      style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 0.9rem", borderRadius: "9px", border: `1px solid ${C.border}`, background: "#fafbff", cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "background 0.15s" }}
+                      onMouseEnter={e => (e.currentTarget.style.background = C.primaryLight)}
+                      onMouseLeave={e => (e.currentTarget.style.background = "#fafbff")}
                     >
-                      {t === "history" ? "Visit History" : t === "prescriptions" ? "Prescriptions" : "Lab Results"}
+                      <span style={{ width: 32, height: 32, borderRadius: "8px", background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{ql.icon}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: "0.85rem", color: C.text }}>{ql.label}</div>
+                        <div style={{ fontSize: "0.75rem", color: C.textFaint }}>{ql.sub}</div>
+                      </div>
+                      <FiChevronRight size={13} color={C.textFaint} />
                     </button>
                   ))}
                 </div>
-
-                <div style={{ padding: "1.25rem" }}>
-                  {chartTab === "history" && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.7rem" }}>
-                      {(chartData?.appointments ?? []).length === 0
-                        ? <EmptyState emoji="📅" title="No visit history" hint="First visit or records not found." />
-                        : (chartData?.appointments ?? []).slice(0, 12).map(a => (
-                          <div key={a.id} style={{ display: "flex", gap: "1rem", padding: "0.9rem 1rem", background: "#f8faff", borderRadius: "10px", border: `1px solid ${C.border}` }}>
-                            <div style={{ width: 36, height: 36, borderRadius: "9px", background: C.primaryLight, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                              <FiCalendar color={C.primary} size={15} />
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
-                                <span style={{ fontWeight: 700, fontSize: "0.88rem", color: C.text }}>{a.visit_type ?? "Visit"}</span>
-                                <span style={{ fontSize: "0.75rem", color: C.textFaint }}>{formatDateTime(a.appointment_date)}</span>
-                              </div>
-                              {a.doctor_name && <div style={{ fontSize: "0.78rem", color: C.textMuted }}>Dr. {a.doctor_name}</div>}
-                              {a.notes && <div style={{ fontSize: "0.82rem", color: "#475569", marginTop: "0.3rem", lineHeight: 1.5 }}>{a.notes}</div>}
-                              <div style={{ marginTop: "0.35rem" }}>
-                                <Pill bg={a.status === "completed" ? C.greenLight : C.amberLight} color={a.status === "completed" ? C.green : C.amber}>{a.status}</Pill>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      }
-                    </div>
-                  )}
-
-                  {chartTab === "prescriptions" && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
-                      {activeAppt && (
-                        <Btn variant="primary" size="sm" style={{ alignSelf: "flex-start" }} onClick={() => setUploadTarget({ id: String(activeAppt.patient_id), name: activeAppt.patient_name, doctorName: activeAppt.doctor_name ?? undefined })}>
-                          <FiPlus size={13} /> Upload New Prescription
-                        </Btn>
-                      )}
-                      {(chartData?.prescriptions ?? []).length === 0
-                        ? <EmptyState emoji="💊" title="No prescriptions on file" hint="Upload one using the button above." />
-                        : (chartData?.prescriptions ?? []).map(p => (
-                          <div key={p.id} style={{ background: "#f8faff", borderRadius: "10px", padding: "1rem", border: `1px solid ${C.border}` }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
-                              <span style={{ fontWeight: 700, fontSize: "0.88rem", color: C.text }}>Prescription #{p.id}</span>
-                              <span style={{ fontSize: "0.75rem", color: C.textFaint }}>{p.uploaded_at ? formatDateTime(p.uploaded_at) : "—"}</span>
-                            </div>
-                            {p.extracted_text && (
-                              <pre style={{ margin: 0, fontSize: "0.8rem", color: "#475569", whiteSpace: "pre-wrap", fontFamily: "inherit", lineHeight: 1.6, maxHeight: 140, overflowY: "auto", background: C.surface, padding: "0.7rem", borderRadius: "7px", border: `1px solid ${C.border}` }}>
-                                {p.extracted_text.slice(0, 500)}{p.extracted_text.length > 500 ? "…" : ""}
-                              </pre>
-                            )}
-                          </div>
-                        ))
-                      }
-                    </div>
-                  )}
-
-                  {chartTab === "labs" && (
-                    <>
-                      {(chartData?.lab_results ?? []).length === 0
-                        ? <EmptyState emoji="🔬" title="No lab results" hint="Lab results for this patient will appear here." />
-                        : (
-                          <div style={{ overflowX: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                              <thead>
-                                <tr style={{ background: "#f8faff", borderBottom: `1px solid ${C.border}` }}>
-                                  {["Test Name", "Result", "Status", "Date"].map(h => (
-                                    <th key={h} style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.69rem", fontWeight: 700, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.07em" }}>{h}</th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(chartData?.lab_results ?? []).map(lr => (
-                                  <tr key={lr.id} style={{ borderBottom: `1px solid ${C.borderLight}` }}>
-                                    <td style={{ padding: "0.8rem 1rem", fontWeight: 600, fontSize: "0.87rem", color: C.text }}>{lr.test_name ?? "—"}</td>
-                                    <td style={{ padding: "0.8rem 1rem", fontSize: "0.87rem", color: "#334155" }}>{lr.result_value ?? "—"}</td>
-                                    <td style={{ padding: "0.8rem 1rem" }}>
-                                      <Pill bg={lr.status === "completed" ? C.greenLight : C.amberLight} color={lr.status === "completed" ? C.green : C.amber}>{lr.status ?? "—"}</Pill>
-                                    </td>
-                                    <td style={{ padding: "0.8rem 1rem", fontSize: "0.78rem", color: C.textFaint }}>{lr.created_at ? formatDateTime(lr.created_at) : "—"}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )
-                      }
-                    </>
-                  )}
-                </div>
               </CardWrap>
-            </>
-          )}
+            ) : (
+              <CardWrap style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                {(() => {
+                  const targetAppt = viewMode === "preview" ? previewAppt : activeAppt;
+                  if (!targetAppt) return (
+                    <EmptyState emoji="👤" title="No patient selected" hint="Select a patient to view history." />
+                  );
+                  if (chartLoading) return (
+                    <div style={{ textAlign: "center", padding: "4rem", color: C.textFaint }}>
+                      <FiRefreshCw size={24} style={{ animation: "spin 1s linear infinite", display: "block", margin: "0 auto 0.75rem" }} />
+                      Loading history…
+                    </div>
+                  );
+                  return (
+                    <>
+                      <div style={{ background: "linear-gradient(135deg,#312e81,#4f46e5)", color: "#fff", padding: "1.25rem", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+                        <div>
+                          <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#c7d2fe", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "0.4rem" }}>Patient History</div>
+                          <h3 style={{ margin: "0 0 0.5rem", fontSize: "1.25rem", fontWeight: 800, letterSpacing: "-0.01em", textTransform: "capitalize" }}>
+                            {chartData?.patient?.name ?? targetAppt.patient_name}
+                          </h3>
+                          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", fontSize: "0.75rem" }}>
+                            {chartData?.patient?.age && <span style={{ color: "#e0e7ff" }}>{chartData.patient.age} yrs</span>}
+                            {chartData?.patient?.gender && <span style={{ color: "#e0e7ff" }}>· {chartData.patient.gender}</span>}
+                            {chartData?.patient?.blood_group && <span style={{ color: "#e0e7ff" }}>· Blood: {chartData.patient.blood_group}</span>}
+                          </div>
+                        </div>
+                        <Btn variant="secondary" size="sm" style={{ padding: "0.3rem 0.6rem", fontSize: "0.7rem", height: "fit-content" }}>
+                          <FiPrinter size={12} /> Print
+                        </Btn>
+                      </div>
+
+                      <div style={{ padding: "0.7rem 1rem", borderBottom: `1px solid ${C.borderLight}`, display: "flex", gap: "0.35rem" }}>
+                        {(["history", "prescriptions", "labs"] as const).map(t => (
+                          <button
+                            key={t}
+                            onClick={() => setChartTab(t)}
+                            style={{
+                                ...tabStyle(chartTab === t),
+                                padding: "0.4rem 0.7rem",
+                                fontSize: "0.78rem"
+                            }}
+                          >
+                            {t === "history" ? "Visit History" : t === "prescriptions" ? "Prescriptions" : "Lab Results"}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div style={{ padding: "1rem", overflowY: "auto", flex: 1, maxHeight: 600 }}>
+                        {chartTab === "history" && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.7rem" }}>
+                            {(chartData?.appointments ?? []).length === 0
+                              ? <EmptyState emoji="📅" title="No visit history" hint="First visit or records not found." />
+                              : (chartData?.appointments ?? []).slice(0, 12).map(a => (
+                                <div key={a.id} style={{ display: "flex", gap: "1rem", padding: "0.8rem 1rem", background: "#f8faff", borderRadius: "10px", border: `1px solid ${C.border}` }}>
+                                  <div style={{ width: 32, height: 32, borderRadius: "9px", background: C.primaryLight, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                    <FiCalendar color={C.primary} size={14} />
+                                  </div>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
+                                      <span style={{ fontWeight: 700, fontSize: "0.85rem", color: C.text }}>{a.visit_type ?? "Visit"}</span>
+                                      <span style={{ fontSize: "0.7rem", color: C.textFaint }}>{formatDateTime(a.appointment_date)}</span>
+                                    </div>
+                                    {a.doctor_name && <div style={{ fontSize: "0.75rem", color: C.textMuted }}>Dr. {a.doctor_name}</div>}
+                                    {a.notes && <div style={{ fontSize: "0.78rem", color: "#475569", marginTop: "0.3rem", lineHeight: 1.4 }}>{a.notes}</div>}
+                                    <div style={{ marginTop: "0.35rem" }}>
+                                      <Pill bg={a.status === "completed" ? C.greenLight : C.amberLight} color={a.status === "completed" ? C.green : C.amber}>{a.status}</Pill>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))
+                            }
+                          </div>
+                        )}
+
+                        {chartTab === "prescriptions" && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
+                            {activeAppt && (
+                              <Btn variant="primary" size="sm" style={{ alignSelf: "flex-start" }} onClick={() => setUploadTarget({ id: String(activeAppt.patient_id), name: activeAppt.patient_name, doctorName: activeAppt.doctor_name ?? undefined })}>
+                                <FiPlus size={13} /> Upload New Prescription
+                              </Btn>
+                            )}
+                            {(chartData?.prescriptions ?? []).length === 0
+                              ? <EmptyState emoji="💊" title="No prescriptions on file" hint="Upload one using the button above." />
+                              : (chartData?.prescriptions ?? []).map(p => (
+                                <div key={p.id} style={{ background: "#f8faff", borderRadius: "10px", padding: "0.9rem", border: `1px solid ${C.border}` }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                                    <span style={{ fontWeight: 700, fontSize: "0.85rem", color: C.text }}>Prescription #{p.id}</span>
+                                    <span style={{ fontSize: "0.7rem", color: C.textFaint }}>{p.uploaded_at ? formatDateTime(p.uploaded_at) : "—"}</span>
+                                  </div>
+                                  {p.extracted_text && (
+                                    <pre style={{ margin: 0, fontSize: "0.75rem", color: "#475569", whiteSpace: "pre-wrap", fontFamily: "inherit", lineHeight: 1.5, maxHeight: 120, overflowY: "auto", background: C.surface, padding: "0.6rem", borderRadius: "7px", border: `1px solid ${C.border}` }}>
+                                      {p.extracted_text.slice(0, 500)}{p.extracted_text.length > 500 ? "…" : ""}
+                                    </pre>
+                                  )}
+                                </div>
+                              ))
+                            }
+                          </div>
+                        )}
+
+                        {chartTab === "labs" && (
+                          <>
+                            {(chartData?.lab_results ?? []).length === 0
+                              ? <EmptyState emoji="🔬" title="No lab results" hint="Lab results for this patient will appear here." />
+                              : (
+                                <div style={{ overflowX: "auto" }}>
+                                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                    <thead>
+                                      <tr style={{ background: "#f8faff", borderBottom: `1px solid ${C.border}` }}>
+                                        {["Test Name", "Result", "Status", "Date"].map(h => (
+                                          <th key={h} style={{ padding: "0.6rem 0.8rem", textAlign: "left", fontSize: "0.65rem", fontWeight: 700, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.07em" }}>{h}</th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {(chartData?.lab_results ?? []).map(lr => (
+                                        <tr key={lr.id} style={{ borderBottom: `1px solid ${C.borderLight}` }}>
+                                          <td style={{ padding: "0.7rem 0.8rem", fontWeight: 600, fontSize: "0.82rem", color: C.text }}>{lr.test_name ?? "—"}</td>
+                                          <td style={{ padding: "0.7rem 0.8rem", fontSize: "0.82rem", color: "#334155" }}>{lr.result_value ?? "—"}</td>
+                                          <td style={{ padding: "0.7rem 0.8rem" }}>
+                                            <Pill bg={lr.status === "completed" ? C.greenLight : C.amberLight} color={lr.status === "completed" ? C.green : C.amber}>{lr.status ?? "—"}</Pill>
+                                          </td>
+                                          <td style={{ padding: "0.7rem 0.8rem", fontSize: "0.75rem", color: C.textFaint }}>{lr.created_at ? formatDateTime(lr.created_at) : "—"}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )
+                            }
+                          </>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+              </CardWrap>
+            )}
+          </div>
         </div>
       )}
 
