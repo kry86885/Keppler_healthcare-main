@@ -38,7 +38,7 @@ import BedManagementPage from "./pages/BedManagementPage";
 import IcuPage from "./pages/IcuPage";
 import QueuePage from "./pages/QueuePage";
 import DoctorPrescriptionPage from "./pages/DoctorPrescriptionPage";
-import PatientJourneyPage from "./pages/PatientJourneyPage";
+import EmrPage from "./pages/EmrPage";
 import EmergencyPage from "./pages/EmergencyPage";
 import AmbulancePage from "./pages/AmbulancePage";
 import NurseStationPage from "./pages/NurseStationPage";
@@ -288,6 +288,9 @@ function App() {
   const isAdmin = hasPermission("admin.use");
   const canAccessNavItem = (itemId: string, permission?: string) => {
     if (itemId === "employees") return isAdmin;
+    if (user?.access_role === "clinician") {
+      return ["queue", "doctor-prescription", "patients"].includes(itemId);
+    }
     return hasPermission(permission);
   };
   const sidebarNavItems = useMemo(
@@ -298,7 +301,7 @@ function App() {
     const groups: Array<{ key: string; label: string; items: typeof sidebarNavItems }> = [
       { key: "overview", label: "Overview", items: [] },
       { key: "ai", label: "AI", items: [] },
-      { key: "registration", label: "Registration Desk", items: [] },
+      { key: "registration", label: "OP Management", items: [] },
       { key: "operations", label: "Operations", items: [] },
       { key: "finance", label: "Finance", items: [] },
       { key: "admin", label: "Administration", items: [] },
@@ -320,6 +323,9 @@ function App() {
   }, [sidebarGroups]);
 
   const getDefaultPage = (currentUser: User | null) => {
+    if (currentUser?.access_role === "clinician") {
+      return "queue";
+    }
     const currentPermissions = resolvePermissions(currentUser);
     const candidatePages = [
       "dashboard",
@@ -998,7 +1004,7 @@ function App() {
           <QueuePage setNotice={setNotice} onNavigate={navigateToPage} isReceptionist={user?.access_role === "receptionist"} />
         )}
         {page === "doctor-prescription" && hasPermission("patients.read") && <DoctorPrescriptionPage setNotice={setNotice} onNavigate={navigateToPage} />}
-        {page === "patient-journey" && hasPermission("patients.read") && <PatientJourneyPage setNotice={setNotice} />}
+        {page === "emr" && hasPermission("patients.read") && <EmrPage setNotice={setNotice} />}
 
         {page === "consent-desk" && hasPermission("patients.write") && (
           <RegistrationDeskPage mode="consent" selectedPatient={selectedPatient} setNotice={setNotice} />

@@ -147,6 +147,14 @@ class _CompatCursor:
 
     @property
     def lastrowid(self):
+        if self._postgres:
+            try:
+                self._cursor.execute("SELECT lastval()")
+                val = self._cursor.fetchone()
+                return val[0] if val else None
+            except Exception:
+                # If lastval() fails (e.g. no sequence was touched), safely ignore
+                pass
         return getattr(self._cursor, "lastrowid", None)
 
     @property
@@ -562,6 +570,7 @@ def init_database():
         ensure_symptom_ai_tables(conn)
         ensure_ocr_portal_tables(conn)
         ensure_pharmacy_prescriptions_tables(conn)
+        ensure_emr_tables(conn)
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_hospitals_code ON hospitals(code)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_patient_id ON patients(patient_id)")
@@ -3045,26 +3054,26 @@ def list_appointments(appointment_date=None, status=None, visit_type=None, docto
         clauses = []
         params = []
         if hospital_id:
-            clauses.append("hospital_id = ?")
+            clauses.append("a.hospital_id = ?")
             params.append(hospital_id)
         if appointment_date:
-            clauses.append("DATE(appointment_date) = DATE(?)")
+            clauses.append("DATE(a.appointment_date) = DATE(?)")
             params.append(appointment_date)
         if status:
-            clauses.append("status = ?")
+            clauses.append("a.status = ?")
             params.append(status)
         if visit_type:
-            clauses.append("visit_type = ?")
+            clauses.append("a.visit_type = ?")
             params.append(visit_type)
         if doctor_name:
-            clauses.append("doctor_name = ?")
+            clauses.append("a.doctor_name = ?")
             params.append(doctor_name)
         if patient_id:
-            clauses.append("patient_id = ?")
+            clauses.append("a.patient_id = ?")
             params.append(patient_id)
         where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         cursor.execute(
-            f"SELECT * FROM appointments{where_clause} ORDER BY appointment_date ASC, token_no ASC",
+            f"SELECT a.*, p.phone as patient_phone FROM appointments a LEFT JOIN patients p ON a.patient_id = p.patient_id AND a.hospital_id = p.hospital_id{where_clause} ORDER BY a.appointment_date ASC, a.token_no ASC",
             tuple(params),
         )
         return cursor.fetchall()
@@ -6010,3 +6019,154 @@ def fulfill_pharmacy_prescription(hospital_id, prescription_id):
             (prescription_id, hospital_id)
         )
         conn.commit()
+
+
+def ensure_emr_tables(conn):
+    cursor = conn.cursor()
+    
+    if IS_POSTGRES:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS medical_history (
+                id SERIAL PRIMARY KEY,
+                patient_id TEXT NOT NULL,
+                allergies TEXT,
+                existing_diseases TEXT,
+                chronic_conditions TEXT,
+                previous_surgeries TEXT,
+                family_history TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS clinical_notes (
+                id SERIAL PRIMARY KEY,
+                encounter_id INTEGER,
+                patient_id TEXT NOT NULL,
+                chief_complaint TEXT,
+                notes TEXT,
+                follow_up TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+                FOREIGN KEY (encounter_id) REFERENCES encounters(id)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS patient_vitals (
+                id SERIAL PRIMARY KEY,
+                encounter_id INTEGER,
+                patient_id TEXT NOT NULL,
+                bp TEXT,
+                pulse TEXT,
+                temperature TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+                FOREIGN KEY (encounter_id) REFERENCES encounters(id)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS diagnosis_records (
+                id SERIAL PRIMARY KEY,
+                encounter_id INTEGER,
+                patient_id TEXT NOT NULL,
+                diagnosis_name TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+                FOREIGN KEY (encounter_id) REFERENCES encounters(id)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS emr_access_logs (
+                id SERIAL PRIMARY KEY,
+                patient_id TEXT NOT NULL,
+                doctor_id INTEGER NOT NULL,
+                action TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+                FOREIGN KEY (doctor_id) REFERENCES users(id)
+            )
+            """
+        )
+    else:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS medical_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                patient_id TEXT NOT NULL,
+                allergies TEXT,
+                existing_diseases TEXT,
+                chronic_conditions TEXT,
+                previous_surgeries TEXT,
+                family_history TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS clinical_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                encounter_id INTEGER,
+                patient_id TEXT NOT NULL,
+                chief_complaint TEXT,
+                notes TEXT,
+                follow_up TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+                FOREIGN KEY (encounter_id) REFERENCES encounters(id)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS patient_vitals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                encounter_id INTEGER,
+                patient_id TEXT NOT NULL,
+                bp TEXT,
+                pulse TEXT,
+                temperature TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+                FOREIGN KEY (encounter_id) REFERENCES encounters(id)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS diagnosis_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                encounter_id INTEGER,
+                patient_id TEXT NOT NULL,
+                diagnosis_name TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+                FOREIGN KEY (encounter_id) REFERENCES encounters(id)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS emr_access_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                patient_id TEXT NOT NULL,
+                doctor_id INTEGER NOT NULL,
+                action TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+                FOREIGN KEY (doctor_id) REFERENCES users(id)
+            )
+            """
+        )

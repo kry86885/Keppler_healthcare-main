@@ -226,6 +226,7 @@ export interface Appointment {
   id: number;
   patient_id?: string | null;
   patient_name: string;
+  patient_phone?: string | null;
   visit_type: string;
   department?: string | null;
   doctor_name?: string | null;

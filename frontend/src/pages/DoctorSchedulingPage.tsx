@@ -281,12 +281,12 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell component="th">DOCTOR</TableCell>
-                <TableCell component="th">DEPARTMENT</TableCell>
-                <TableCell component="th">CONSULT FEE</TableCell>
-                <TableCell component="th">REVIEW FEE</TableCell>
-                <TableCell component="th">STATUS</TableCell>
-                <TableCell component="th">ACTIONS</TableCell>
+                <TableCell>DOCTOR</TableCell>
+                <TableCell>DEPARTMENT</TableCell>
+                <TableCell>CONSULT FEE</TableCell>
+                <TableCell>REVIEW FEE</TableCell>
+                <TableCell>STATUS</TableCell>
+                <TableCell>ACTIONS</TableCell>
               </TableRow>
             </TableHead>
             <tbody>
@@ -300,10 +300,10 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
                   <TableCell>
                     {canEdit && (
                       <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handleEditDoctor(doc)}>
+                        <Button variant="secondary" size="sm" onClick={() => handleEditDoctor(doc)}>
                           Edit
                         </Button>
-                        <Button variant="danger" size="sm" onClick={() => void handleDeleteDoctor(doc.id)}>
+                        <Button variant="destructive" size="sm" onClick={() => void handleDeleteDoctor(doc.id)}>
                           Delete
                         </Button>
                       </div>
@@ -313,7 +313,7 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
               ))}
               {doctors.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-gray-500 py-4">
+                  <TableCell className="text-center text-gray-500 py-4">
                     No doctors added yet.
                   </TableCell>
                 </TableRow>

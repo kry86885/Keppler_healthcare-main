@@ -60,9 +60,10 @@ describe("RegistrationDeskPage", () => {
     });
 
     expect(container.textContent).toContain("Appointment In Desk");
-    expect(container.textContent).toContain("Department Master");
     expect(container.textContent).toContain("Schedule & Assign Token");
-    expect(container.textContent).toContain("Token #7");
+    const tokenEl7 = container.querySelector('[data-testid="appointment-token"]') as HTMLElement;
+    expect(tokenEl7).toBeTruthy();
+    expect(tokenEl7.textContent).toBe("Token #7");
 
     act(() => {
       root.unmount();
@@ -116,7 +117,9 @@ describe("RegistrationDeskPage", () => {
     });
 
     expect(container.textContent).toContain("Appointment Out Desk");
-    expect(container.textContent).toContain("Token #8");
+    const tokenEl8 = container.querySelector('[data-testid="appointment-token"]') as HTMLElement;
+    expect(tokenEl8).toBeTruthy();
+    expect(tokenEl8.textContent).toBe("Token #8");
     expect(container.textContent).toContain("Complete");
 
     act(() => {

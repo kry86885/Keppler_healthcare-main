@@ -6,7 +6,7 @@ import { apiFetch, reportError } from "../lib/api";
 import { updateAppointmentStatus } from "../lib/appointments";
 import { getAppointmentStatusMeta } from "../lib/appointmentStatus";
 import type { Appointment, Notice } from "../types";
-import PatientJourneySteps from "../components/PatientJourneySteps";
+
 import AppointmentQueueCard from "../components/AppointmentQueueCard";
 
 type Props = {
@@ -108,9 +108,26 @@ export default function QueuePage({ setNotice, onNavigate, isReceptionist }: Pro
     }
   };
 
+  const handleCallNext = (currentAppt: Appointment) => {
+    const nextAppt = appointments.find(
+      (a) => a.status === "checked_in" && a.doctor_name === currentAppt.doctor_name
+    );
+    if (!nextAppt) {
+      setNotice({ type: "warning", message: "No more patients waiting in queue for this doctor." });
+      return;
+    }
+    if (!nextAppt.patient_phone) {
+      setNotice({ type: "error", message: `Next patient (${nextAppt.patient_name}) does not have a registered phone number.` });
+      return;
+    }
+    const phone = nextAppt.patient_phone.replace(/\D/g, "");
+    const msg = `Hello ${nextAppt.patient_name}, the doctor is ready for your consultation. Please proceed to the consultation room.`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
   return (
     <section className="module-page">
-      <PatientJourneySteps current="queue" onNavigate={onNavigate} />
+      
 
       <div className="module-panel-head">
         <h3>Queue Management</h3>
@@ -208,15 +225,20 @@ export default function QueuePage({ setNotice, onNavigate, isReceptionist }: Pro
                         Check In
                       </Button>
                     ) : null}
-                    {!isReceptionist && appointment.status === "checked_in" ? (
+                    {appointment.status === "checked_in" ? (
                       <Button type="button" size="sm" onClick={() => void handleStatusChange(appointment.id, "in_consultation")}>
                         Start Consultation
                       </Button>
                     ) : null}
                     {!isReceptionist && appointment.status === "in_consultation" ? (
-                      <Button type="button" size="sm" variant="secondary" onClick={() => void handleStatusChange(appointment.id, "completed")}>
-                        Complete
-                      </Button>
+                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                        <Button type="button" size="sm" variant="secondary" onClick={() => void handleStatusChange(appointment.id, "completed")}>
+                          Complete
+                        </Button>
+                        <Button type="button" size="sm" variant="secondary" style={{ borderColor: "#25D366", color: "#25D366" }} onClick={() => handleCallNext(appointment)}>
+                          Call Next (WhatsApp)
+                        </Button>
+                      </div>
                     ) : null}
                     {!isReceptionist && appointment.status !== "completed" && appointment.status !== "cancelled" ? (
                       <Button type="button" size="sm" variant="ghost" onClick={() => void handleStatusChange(appointment.id, "cancelled")}>
