@@ -147,6 +147,14 @@ class _CompatCursor:
 
     @property
     def lastrowid(self):
+        if self._postgres:
+            try:
+                self._cursor.execute("SELECT lastval()")
+                val = self._cursor.fetchone()
+                return val[0] if val else None
+            except Exception:
+                # If lastval() fails (e.g. no sequence was touched), safely ignore
+                pass
         return getattr(self._cursor, "lastrowid", None)
 
     @property
