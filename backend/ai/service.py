@@ -91,6 +91,75 @@ Relevant excerpts from this patient's records:
 """
 
 
+_PATIENT_FILTER_PROMPT = """You are translating a hospital staff member's free-text search into a
+structured filter over a patient list.
+
+Available fields (only these may be used): {fields}
+
+Return ONLY valid JSON (no code fences, no commentary) with this exact shape:
+{{
+  "conditions": [{{"field": "<one of the available fields>", "op": "eq|contains|gt|lt|gte|lte|in", "value": <string, number, or list of strings for "in">}}],
+  "logic": "AND" or "OR"
+}}
+
+If the prompt doesn't map to any available field, return {{"conditions": [], "logic": "AND"}}.
+
+Prompt: {prompt}
+"""
+
+
+def translate_patient_filter_prompt(prompt: str, available_fields):
+    """Convert a free-text search prompt into a structured filter (field/op/value
+    conditions) via a single LLM call. Returns None if the LLM provider isn't
+    configured or the response wasn't parseable JSON -- callers must treat that as
+    "no filter could be derived", never fall back to interpreting the raw prompt
+    as SQL themselves."""
+    if not prompt or not llm_provider.is_configured():
+        return None
+    rendered = _PATIENT_FILTER_PROMPT.format(fields=", ".join(available_fields), prompt=prompt)
+    raw_response = llm_provider.generate(rendered)
+    if not raw_response:
+        return None
+    return _parse_json_response(raw_response)
+
+
+_DOCUMENT_PROMPT_TEMPLATE = """You are extracting information from an uploaded hospital document (a PDF or
+Word file, already OCR'd/converted to plain text below) based on a staff member's request.
+
+Return ONLY valid JSON (no code fences, no commentary) with this exact shape:
+{{
+  "entries": [{{"name": "<full name, or empty if unknown>", "phone": "<phone number, or empty if none in the document>", "area": "<area/city, or empty>", "medical_condition": "<condition/diagnosis, or empty>", "age": <number or null>, "gender": "<or empty>"}}],
+  "answer": "<a short natural-language summary of what you found, or a direct answer if the request isn't about a list of people>"
+}}
+
+Only include an entry in "entries" if the document actually names a specific person -- never invent
+people or details that aren't in the text. If the request doesn't relate to a list of people, return
+an empty "entries" array and just answer in "answer".
+
+Staff request: {prompt}
+
+Document text:
+\"\"\"
+{document_text}
+\"\"\"
+"""
+
+
+def answer_bulk_document_prompt(prompt: str, document_text: str):
+    """Answer a free-text question against an uploaded PDF/DOCX's extracted text, optionally
+    pulling out a list of named people (for the AI Mode bulk-upload document flow). Returns
+    None if the LLM provider isn't configured or the response wasn't parseable JSON -- callers
+    must treat that as "couldn't answer that", never fall back to interpreting the document
+    themselves."""
+    if not prompt or not document_text or not llm_provider.is_configured():
+        return None
+    rendered = _DOCUMENT_PROMPT_TEMPLATE.format(prompt=prompt, document_text=document_text)
+    raw_response = llm_provider.generate(rendered)
+    if not raw_response:
+        return None
+    return _parse_json_response(raw_response)
+
+
 def patient_history_search(query: str, hospital_id, patient_id=None, k: int = 5):
     """Retrieval-augmented answer over a patient's (or hospital's) stored clinical documents.
 

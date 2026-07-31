@@ -30,6 +30,12 @@ services:
       # the same file `startdev` already uses at the repo root keeps data
       # identical and persistent across both dev paths.
       - ./healthcare.db:/data/healthcare.db
+      # core/storage.py's local (non-S3) fallback resolves to /app/uploads --
+      # one level *above* the /app/backend WORKDIR -- since the bulk-import
+      # backend and celery-worker are separate containers, that path must be a
+      # shared volume or the worker can never read a file the backend just
+      # saved (confirmed via `docker exec ... print(ObjectStorage().local_base)`).
+      - dev_uploads:/app/uploads
     depends_on:
       - redis
       - ocr-api
@@ -51,6 +57,7 @@ services:
     volumes:
       - ./backend:/app/backend
       - ./healthcare.db:/data/healthcare.db
+      - dev_uploads:/app/uploads
     depends_on:
       - redis
       - backend
@@ -200,3 +207,4 @@ volumes:
   ocr_postgres_data:
   ocr_qdrant_data:
   ocr_uploads:
+  dev_uploads:

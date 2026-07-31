@@ -203,6 +203,9 @@ STORAGE = ObjectStorage()
 from core.celery_app import celery_init_app
 
 app = Flask(__name__)
+# Bulk patient-list uploads (AI Mode) can legitimately be up to 200MB; without this,
+# Werkzeug happily buffers unbounded request bodies before any route code runs.
+app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
 limiter.init_app(app)
 celery = celery_init_app(app)
 default_allowed_origins = {
@@ -724,6 +727,14 @@ app.register_blueprint(whatsapp_bp)
 
 from modules.emr.routes import emr_bp
 app.register_blueprint(emr_bp)
+
+from modules.bulk_import.routes import bulk_import_bp
+app.register_blueprint(bulk_import_bp)
+
+
+@app.errorhandler(413)
+def _handle_payload_too_large(exc):
+    return jsonify({"error": "File is too large (200MB limit)."}), 413
 
 
 if __name__ == "__main__":
