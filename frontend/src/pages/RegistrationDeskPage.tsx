@@ -784,9 +784,9 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
                   {triageLoading ? "Analyzing..." : "🪄 AI Triage"}
                 </Button>
                 {triageResult && (
-                  <div style={{ padding: "8px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "4px", fontSize: "0.9rem" }}>
-                    <strong style={{color: "#166534"}}>Urgency:</strong> <span style={{color: "#166534"}}>{triageResult.urgency}</span><br/>
-                    <strong style={{color: "#166534"}}>Reasoning:</strong> <span style={{color: "#166534"}}>{triageResult.reasoning}</span>
+                  <div className="notice success">
+                    <strong>Urgency:</strong> {triageResult.urgency}<br />
+                    <strong>Reasoning:</strong> {triageResult.reasoning}
                   </div>
                 )}
               </div>

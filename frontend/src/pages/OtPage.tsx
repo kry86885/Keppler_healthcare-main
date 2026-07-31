@@ -311,12 +311,11 @@ export default function OtPage({ setNotice }: Props) {
         )}
       </div>
 
-      <div className="split">
-        <div className="panel">
-          <div className="module-panel-head">
-            <h3>Manage Theatres</h3>
-          </div>
-          <form className="module-form-grid" onSubmit={handleTheatreSubmit}>
+      <div className="panel">
+        <div className="module-panel-head">
+          <h3>Manage Theatres</h3>
+        </div>
+        <form className="module-form-grid" onSubmit={handleTheatreSubmit}>
             <Input
               value={theatreForm.theatre_code}
               onChange={(event) => setTheatreForm((current) => ({ ...current, theatre_code: event.target.value }))}
@@ -348,86 +347,85 @@ export default function OtPage({ setNotice }: Props) {
               aria-label="OT theatre equipment notes"
               rows={3}
             />
-          </form>
-        </div>
+        </form>
+      </div>
 
-        <div className="panel">
-          <div className="module-panel-head">
-            <h3>Schedule Surgery</h3>
-          </div>
-          <form className="module-form-grid module-sales-grid" onSubmit={handleSurgerySubmit}>
-            <Select
-              value={surgeryForm.theatre_id}
-              onChange={(event) => setSurgeryForm((current) => ({ ...current, theatre_id: event.target.value }))}
-              aria-label="OT surgery theatre"
-            >
-              <option value="">Select theatre</option>
-              {theatres.map((theatre) => (
-                <option key={theatre.id} value={theatre.id}>
-                  {theatre.theatre_code} - {theatre.theatre_name}
-                </option>
-              ))}
-            </Select>
-            <Input
-              value={surgeryForm.patient_id}
-              onChange={(event) => setSurgeryForm((current) => ({ ...current, patient_id: event.target.value }))}
-              placeholder="Patient ID (optional)"
-              aria-label="OT patient id"
-            />
-            <Input
-              value={surgeryForm.procedure_name}
-              onChange={(event) => setSurgeryForm((current) => ({ ...current, procedure_name: event.target.value }))}
-              placeholder="Procedure"
-              aria-label="OT procedure"
-            />
-            <Input
-              value={surgeryForm.surgeon_name}
-              onChange={(event) => setSurgeryForm((current) => ({ ...current, surgeon_name: event.target.value }))}
-              placeholder="Surgeon"
-              aria-label="OT surgeon"
-            />
-            <Input
-              type="datetime-local"
-              value={surgeryForm.scheduled_start}
-              onChange={(event) => setSurgeryForm((current) => ({ ...current, scheduled_start: event.target.value }))}
-              aria-label="OT scheduled start"
-            />
-            <Input
-              type="number"
-              min={0.5}
-              step={0.5}
-              value={surgeryForm.estimated_duration_hours}
-              onChange={(event) => setSurgeryForm((current) => ({ ...current, estimated_duration_hours: event.target.value }))}
-              placeholder="Duration (hours)"
-              aria-label="OT duration"
-            />
-            <Select
-              value={surgeryForm.status}
-              onChange={(event) => setSurgeryForm((current) => ({ ...current, status: event.target.value }))}
-              aria-label="OT surgery status"
-            >
-              <option value="scheduled">Scheduled</option>
-              <option value="in_progress">In Progress</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
-            </Select>
-            <Input
-              value={surgeryForm.equipment_required}
-              onChange={(event) => setSurgeryForm((current) => ({ ...current, equipment_required: event.target.value }))}
-              placeholder="Equipment required"
-              aria-label="OT equipment required"
-            />
-            <Input
-              value={surgeryForm.notes}
-              onChange={(event) => setSurgeryForm((current) => ({ ...current, notes: event.target.value }))}
-              placeholder="Notes"
-              aria-label="OT surgery notes"
-            />
-            <Button type="submit" variant="primary" disabled={savingSurgery}>
-              {savingSurgery ? "Saving..." : surgeryForm.id ? "Update Surgery" : "Schedule"}
-            </Button>
-          </form>
+      <div className="panel">
+        <div className="module-panel-head">
+          <h3>Schedule Surgery</h3>
         </div>
+        <form className="module-form-grid module-sales-grid" onSubmit={handleSurgerySubmit}>
+          <Select
+            value={surgeryForm.theatre_id}
+            onChange={(event) => setSurgeryForm((current) => ({ ...current, theatre_id: event.target.value }))}
+            aria-label="OT surgery theatre"
+          >
+            <option value="">Select theatre</option>
+            {theatres.map((theatre) => (
+              <option key={theatre.id} value={theatre.id}>
+                {theatre.theatre_code} - {theatre.theatre_name}
+              </option>
+            ))}
+          </Select>
+          <Input
+            value={surgeryForm.patient_id}
+            onChange={(event) => setSurgeryForm((current) => ({ ...current, patient_id: event.target.value }))}
+            placeholder="Patient ID (optional)"
+            aria-label="OT patient id"
+          />
+          <Input
+            value={surgeryForm.procedure_name}
+            onChange={(event) => setSurgeryForm((current) => ({ ...current, procedure_name: event.target.value }))}
+            placeholder="Procedure"
+            aria-label="OT procedure"
+          />
+          <Input
+            value={surgeryForm.surgeon_name}
+            onChange={(event) => setSurgeryForm((current) => ({ ...current, surgeon_name: event.target.value }))}
+            placeholder="Surgeon"
+            aria-label="OT surgeon"
+          />
+          <Input
+            type="datetime-local"
+            value={surgeryForm.scheduled_start}
+            onChange={(event) => setSurgeryForm((current) => ({ ...current, scheduled_start: event.target.value }))}
+            aria-label="OT scheduled start"
+          />
+          <Input
+            type="number"
+            min={0.5}
+            step={0.5}
+            value={surgeryForm.estimated_duration_hours}
+            onChange={(event) => setSurgeryForm((current) => ({ ...current, estimated_duration_hours: event.target.value }))}
+            placeholder="Duration (hours)"
+            aria-label="OT duration"
+          />
+          <Select
+            value={surgeryForm.status}
+            onChange={(event) => setSurgeryForm((current) => ({ ...current, status: event.target.value }))}
+            aria-label="OT surgery status"
+          >
+            <option value="scheduled">Scheduled</option>
+            <option value="in_progress">In Progress</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </Select>
+          <Input
+            value={surgeryForm.equipment_required}
+            onChange={(event) => setSurgeryForm((current) => ({ ...current, equipment_required: event.target.value }))}
+            placeholder="Equipment required"
+            aria-label="OT equipment required"
+          />
+          <Input
+            value={surgeryForm.notes}
+            onChange={(event) => setSurgeryForm((current) => ({ ...current, notes: event.target.value }))}
+            placeholder="Notes"
+            aria-label="OT surgery notes"
+          />
+          <Button type="submit" variant="primary" disabled={savingSurgery}>
+            {savingSurgery ? "Saving..." : surgeryForm.id ? "Update Surgery" : "Schedule"}
+          </Button>
+        </form>
       </div>
 
       <div className="panel">

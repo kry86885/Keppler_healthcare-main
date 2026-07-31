@@ -572,6 +572,8 @@ def init_database():
         ensure_ocr_portal_tables(conn)
         ensure_pharmacy_prescriptions_tables(conn)
         ensure_emr_tables(conn)
+        ensure_patient_bulk_columns(conn)
+        ensure_bulk_import_jobs_table(conn)
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_hospitals_code ON hospitals(code)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_patient_id ON patients(patient_id)")
@@ -2196,6 +2198,176 @@ def search_similar_documents(query_text, hospital_id=None, patient_id=None, k=5)
         )
     scored.sort(key=lambda item: item["similarity"], reverse=True)
     return scored[:k]
+
+
+# ==================== Bulk AI patient import ====================
+
+def ensure_patient_bulk_columns(conn):
+    """Adds the columns a bulk Excel/CSV import needs on top of the core patients
+    schema (area/medical_condition aren't collected by the normal registration
+    flow), plus a partial-unique index on (hospital_id, phone) scoped to
+    source='bulk_import' rows only -- so bulk import can upsert its own
+    previously-imported patients on re-upload without colliding, while normal
+    registration (source='registration') keeps allowing multiple patients to
+    share one phone number (e.g. a family registered under one guardian's
+    number), exactly as it does today."""
+    cursor = conn.cursor()
+    _ensure_column(cursor, "patients", "area", "TEXT", "TEXT")
+    _ensure_column(cursor, "patients", "medical_condition", "TEXT", "TEXT")
+    _ensure_column(cursor, "patients", "source", "TEXT DEFAULT 'registration'", "TEXT DEFAULT 'registration'")
+    cursor.execute("UPDATE patients SET source = 'registration' WHERE source IS NULL")
+    cursor.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_patients_bulk_import_phone "
+        "ON patients(hospital_id, phone) WHERE phone IS NOT NULL AND phone <> '' AND source = 'bulk_import'"
+    )
+    conn.commit()
+
+
+def ensure_bulk_import_jobs_table(conn):
+    cursor = conn.cursor()
+    id_column = "SERIAL PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS bulk_import_jobs (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            created_by TEXT,
+            original_filename TEXT,
+            storage_path TEXT,
+            status TEXT NOT NULL DEFAULT 'PENDING_MAPPING',
+            detected_columns TEXT,
+            suggested_mapping TEXT,
+            confirmed_mapping TEXT,
+            total_rows INTEGER DEFAULT 0,
+            processed_rows INTEGER DEFAULT 0,
+            imported_count INTEGER DEFAULT 0,
+            updated_count INTEGER DEFAULT 0,
+            skipped_count INTEGER DEFAULT 0,
+            error TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_bulk_import_jobs_hospital ON bulk_import_jobs(hospital_id)"
+    )
+    # PDF/DOCX uploads skip column mapping entirely -- their extracted text is stored
+    # here and answered against directly via /ask, never turned into patient rows.
+    _ensure_column(cursor, "bulk_import_jobs", "extracted_text", "TEXT", "TEXT")
+    conn.commit()
+
+
+def create_bulk_import_job(hospital_id, created_by, original_filename, storage_path):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO bulk_import_jobs (hospital_id, created_by, original_filename, storage_path) "
+            "VALUES (?, ?, ?, ?)",
+            (hospital_id, created_by, original_filename, storage_path),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_bulk_import_job(job_id, hospital_id):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM bulk_import_jobs WHERE id = ? AND hospital_id = ?",
+            (job_id, hospital_id),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def update_bulk_import_job(job_id, **fields):
+    if not fields:
+        return
+    columns = list(fields.keys())
+    set_clause = ", ".join(f"{col} = ?" for col in columns)
+    values = [fields[col] for col in columns]
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE bulk_import_jobs SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (*values, job_id),
+        )
+        conn.commit()
+
+
+def get_bulk_import_job_internal(job_id):
+    """Unscoped lookup for use by the Celery worker, which has no per-request
+    tenant context to check against -- the job's own hospital_id (set once at
+    creation, from the authenticated upload request) is what tasks pass on to
+    every subsequent DB write."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM bulk_import_jobs WHERE id = ?", (job_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+BULK_IMPORT_PATIENT_FIELDS = ["name", "last_name", "age", "gender", "area", "medical_condition"]
+
+
+def upsert_bulk_import_patients_batch(hospital_id, rows):
+    """Batch insert/update patients keyed on (hospital_id, phone) via one
+    executemany call -- opening a connection per row would be far too slow at
+    100k-300k rows. Each item in `rows` is (patient_id, phone, fields) where
+    fields is a dict with exactly the keys in BULK_IMPORT_PATIENT_FIELDS
+    (missing ones as None). The ON CONFLICT target's WHERE clause must match
+    idx_patients_bulk_import_phone's predicate exactly (both Postgres and
+    SQLite require this to infer a partial unique index) -- this scopes the
+    upsert to only collide with other bulk-imported rows, never with normal
+    registration data that may legitimately share a phone number."""
+    if not rows:
+        return
+    columns = ["hospital_id", "patient_id", "phone", "source"] + BULK_IMPORT_PATIENT_FIELDS
+    placeholders = ", ".join(["?"] * len(columns))
+    update_assignments = ", ".join(f"{col} = EXCLUDED.{col}" for col in BULK_IMPORT_PATIENT_FIELDS)
+    param_rows = [
+        (hospital_id, patient_id, phone, "bulk_import", *(fields.get(f) for f in BULK_IMPORT_PATIENT_FIELDS))
+        for patient_id, phone, fields in rows
+    ]
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.executemany(
+            f"""
+            INSERT INTO patients ({", ".join(columns)})
+            VALUES ({placeholders})
+            ON CONFLICT (hospital_id, phone) WHERE phone IS NOT NULL AND phone <> '' AND source = 'bulk_import'
+            DO UPDATE SET {update_assignments}, updated_at = CURRENT_TIMESTAMP
+            """,
+            param_rows,
+        )
+        conn.commit()
+
+
+def query_bulk_patients(hospital_id, where_clause, params, page=1, page_size=150):
+    offset = (page - 1) * page_size
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT patient_id, name, last_name, phone, age, gender, area, medical_condition, source
+            FROM patients
+            WHERE hospital_id = ? AND deleted_at IS NULL AND source = 'bulk_import' {where_clause}
+            ORDER BY id DESC
+            LIMIT ? OFFSET ?
+            """,
+            (hospital_id, *params, page_size, offset),
+        )
+        rows = [dict(row) for row in cursor.fetchall()]
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) FROM patients
+            WHERE hospital_id = ? AND deleted_at IS NULL AND source = 'bulk_import' {where_clause}
+            """,
+            (hospital_id, *params),
+        )
+        total = cursor.fetchone()[0]
+        return rows, total
 
 
 # ==================== Patient operations ====================

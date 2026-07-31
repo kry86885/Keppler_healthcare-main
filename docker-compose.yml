@@ -27,17 +27,52 @@ services:
       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
     expose:
       - "5001"
     volumes:
       - backend_data:/data
-      - backend_uploads:/app/backend/uploads
+      - backend_uploads:/app/uploads
+    depends_on:
+      - redis
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/api/health', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 5
       start_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DB_ENGINE: ${DB_ENGINE:-sqlite}
+      DB_PATH: ${DB_PATH:-/data/healthcare.db}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      BUCKET_URL: ${BUCKET_URL:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+    command: ["celery", "-A", "app.celery", "worker", "--loglevel=info"]
+    volumes:
+      - backend_data:/data
+      - backend_uploads:/app/uploads
+    depends_on:
+      - redis
     restart: unless-stopped
 
   symptom-backend:
@@ -102,3 +137,4 @@ services:
 volumes:
   backend_data:
   backend_uploads:
+  redis_data:

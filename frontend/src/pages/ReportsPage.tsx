@@ -97,6 +97,8 @@ export default function ReportsPage({ setNotice }: Props) {
         <StatCard label="ALOS" value={`${overview?.alos_summary.average_los_days || 0} days`} />
         <StatCard label="Monthly OP" value={overview?.hospital_summary.ip_op_counts.monthly_op || 0} />
         <StatCard label="Monthly IP" value={overview?.hospital_summary.ip_op_counts.monthly_ip || 0} />
+        <StatCard label="Advance Collected" value={formatCurrency(overview?.billing_summary.total_advance)} />
+        <StatCard label="Refunded" value={formatCurrency(overview?.billing_summary.total_refunded)} />
       </div>
 
       {loading ? <p className="muted">Loading reports...</p> : null}
@@ -109,23 +111,15 @@ export default function ReportsPage({ setNotice }: Props) {
           {collectionsByModule.length === 0 ? (
             <p className="muted">No collection records available.</p>
           ) : (
-            <Table className="module-table" aria-label="Collections by module table">
+            <Table className="module-table module-table-collections" aria-label="Collections by module table">
               <TableHead>
                 <TableCell>Module</TableCell>
                 <TableCell>Collected</TableCell>
-                <TableCell>Label</TableCell>
-                <TableCell>Value</TableCell>
-                <TableCell>Label</TableCell>
-                <TableCell>Value</TableCell>
               </TableHead>
               {collectionsByModule.map((row) => (
                 <TableRow key={row.label}>
                   <TableCell>{row.label}</TableCell>
                   <TableCell>{formatCurrency(row.count)}</TableCell>
-                  <TableCell>Advance</TableCell>
-                  <TableCell>{formatCurrency(overview?.billing_summary.total_advance)}</TableCell>
-                  <TableCell>Refunded</TableCell>
-                  <TableCell>{formatCurrency(overview?.billing_summary.total_refunded)}</TableCell>
                 </TableRow>
               ))}
             </Table>

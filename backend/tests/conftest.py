@@ -87,6 +87,7 @@ def clean_database():
         cursor.execute("DELETE FROM department_master")
         cursor.execute("DELETE FROM audit_logs")
         cursor.execute("DELETE FROM admissions")
+        cursor.execute("DELETE FROM bulk_import_jobs")
         cursor.execute("DELETE FROM patients")
         cursor.execute("DELETE FROM sessions")
         cursor.execute(

@@ -173,7 +173,7 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
       <div className="module-panel-head">
         <div>
           <h3>Doctor Scheduling</h3>
-          <p className="text-sm text-gray-500">Manage doctors and outpatient schedules.</p>
+          <p className="muted">Manage doctors and outpatient schedules.</p>
         </div>
       </div>
 
@@ -181,7 +181,7 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
         <div>
           <h3>OP Desk</h3>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="module-inline-actions">
           <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
           <Select value={selectedDoctor} onChange={(e) => setSelectedDoctor(e.target.value)}>
             <option value="">All doctors</option>
@@ -277,7 +277,7 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
           </div>
         </form>
 
-        <div className="table-container mt-6">
+        <div style={{ marginTop: "1.2rem" }}>
           <Table>
             <TableHead>
               <TableRow>
@@ -299,7 +299,7 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
                   <TableCell>{doc.status}</TableCell>
                   <TableCell>
                     {canEdit && (
-                      <div className="flex gap-2">
+                      <div className="module-inline-actions">
                         <Button variant="secondary" size="sm" onClick={() => handleEditDoctor(doc)}>
                           Edit
                         </Button>
@@ -313,9 +313,7 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
               ))}
               {doctors.length === 0 && (
                 <TableRow>
-                  <TableCell className="text-center text-gray-500 py-4">
-                    No doctors added yet.
-                  </TableCell>
+                  <TableCell className="muted">No doctors added yet.</TableCell>
                 </TableRow>
               )}
             </tbody>
