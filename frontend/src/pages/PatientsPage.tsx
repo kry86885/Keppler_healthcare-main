@@ -397,6 +397,10 @@ type PatientEditForm = {
   allergies: string;
   symptoms: string;
   phone: string;
+  address: string;
+  blood_group: string;
+  emergency_contact: string;
+  aadhar_number: string;
 };
 
 const toEditForm = (patient: Patient): PatientEditForm => ({
@@ -412,6 +416,10 @@ const toEditForm = (patient: Patient): PatientEditForm => ({
   allergies: patient.allergies || "",
   symptoms: patient.symptoms || "",
   phone: patient.phone || "",
+  address: patient.address || "",
+  blood_group: patient.blood_group || "",
+  emergency_contact: patient.emergency_contact || "",
+  aadhar_number: patient.aadhar_number || "",
 });
 
 function formatCurrency(amount?: number) {
@@ -632,6 +640,10 @@ function PatientDetail({
       allergies: editForm.allergies.trim(),
       symptoms: editForm.symptoms.trim(),
       phone: editForm.phone.trim(),
+      address: editForm.address.trim(),
+      blood_group: editForm.blood_group.trim(),
+      emergency_contact: editForm.emergency_contact.trim(),
+      aadhar_number: editForm.aadhar_number.trim(),
     };
 
     setSaving(true);
@@ -1120,6 +1132,14 @@ function PatientDetail({
               <Input value={editForm.height} onChange={(event) => setEditForm({ ...editForm, height: event.target.value })} />
               <p className="muted">Pregnant</p>
               <Checkbox checked={editForm.pregnant} onChange={(event) => setEditForm({ ...editForm, pregnant: event.target.checked })} />
+              <p className="muted">Blood Group</p>
+              <Input value={editForm.blood_group} onChange={(event) => setEditForm({ ...editForm, blood_group: event.target.value })} />
+              <p className="muted">Emergency Contact</p>
+              <Input value={editForm.emergency_contact} onChange={(event) => setEditForm({ ...editForm, emergency_contact: event.target.value })} />
+              <p className="muted">Aadhar Number</p>
+              <Input value={editForm.aadhar_number} onChange={(event) => setEditForm({ ...editForm, aadhar_number: event.target.value })} />
+              <p className="muted">Address</p>
+              <Textarea value={editForm.address} onChange={(event) => setEditForm({ ...editForm, address: event.target.value })} />
             </>
           ) : (
             <>
@@ -1127,6 +1147,10 @@ function PatientDetail({
               <p>Gender: {patient.gender || "-"}</p>
               <p>DOB: {formatDate(patient.dob)}</p>
               <p>Phone: {patient.phone || "-"}</p>
+              <p>Blood Group: {patient.blood_group || "-"}</p>
+              <p>Emergency Contact: {patient.emergency_contact || "-"}</p>
+              <p>Aadhar Number: {patient.aadhar_number || "-"}</p>
+              <p>Address: {patient.address || "-"}</p>
               <p>Weight: {patient.weight || "-"} kg</p>
               <p>Height: {patient.height || "-"} cm</p>
               <p>Pregnant: {patient.pregnant ? "Yes" : "No"}</p>

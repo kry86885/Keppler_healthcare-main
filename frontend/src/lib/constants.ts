@@ -155,6 +155,10 @@ export const EMPTY_PATIENT_FORM: PatientForm = {
   allergy3: "",
   symptoms: "",
   phone: "",
+  address: "",
+  blood_group: "",
+  emergency_contact: "",
+  aadhar_number: "",
 };
 
 export const EMPTY_SIGNUP_FORM: SignupForm = {

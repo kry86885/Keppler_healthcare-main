@@ -108,6 +108,10 @@ export interface Patient {
   allergies?: string;
   symptoms?: string;
   phone?: string;
+  address?: string;
+  blood_group?: string;
+  emergency_contact?: string;
+  aadhar_number?: string;
   created_at?: string;
 }
 
@@ -400,6 +404,10 @@ export interface PatientForm {
   allergy3: string;
   symptoms: string;
   phone: string;
+  address: string;
+  blood_group: string;
+  emergency_contact: string;
+  aadhar_number: string;
 }
 
 export interface NavItem {
