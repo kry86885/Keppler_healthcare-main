@@ -5,7 +5,7 @@ import {
   FiUploadCloud, FiClock, FiFileText, FiInfo, FiUser,
   FiCalendar, FiRefreshCw, FiHeart, FiThermometer,
   FiZap, FiAlertCircle, FiChevronRight, FiEdit3,
-  FiPrinter, FiSearch, FiX, FiPlus,
+  FiPrinter, FiSearch, FiX, FiPlus, FiArrowLeft, FiList,
 } from "react-icons/fi";
 import { apiFetch, reportError } from "../lib/api";
 import { updateAppointmentStatus } from "../lib/appointments";
@@ -177,6 +177,10 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
   const [noShows, setNoShows]         = useState(0);
   const [loading, setLoading]         = useState(true);
   const [refreshing, setRefreshing]   = useState(false);
+
+  /* — view mode — */
+  const [viewMode, setViewMode] = useState<"active" | "queue_list" | "preview">("active");
+  const [previewAppt, setPreviewAppt] = useState<Appointment | null>(null);
 
   /* — patient chart — */
   const [chartPatientId, setChartPatientId] = useState<string | null>(null);
@@ -423,139 +427,197 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
           {/* ── ACTIVE CONSULTATION PANEL ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
             <CardWrap>
-              <CardHead
-                left={<SectionHdr icon={<FiActivity color={C.primary} size={16} />} title="Active Consultation" sub="Current patient in room" />}
-                right={activeAppt && <Pill bg={C.primaryLight} color={C.primary}><span style={{ width: 7, height: 7, borderRadius: "50%", background: C.primary, display: "inline-block" }} />Live</Pill>}
-              />
-              <div style={{ padding: "1.5rem" }}>
-                {loading && !activeAppt ? (
-                  <div style={{ textAlign: "center", padding: "3rem", color: C.textFaint, fontSize: "0.9rem" }}>
-                    <FiRefreshCw size={22} style={{ animation: "spin 1s linear infinite", display: "block", margin: "0 auto 0.75rem" }} />
-                    Loading…
-                  </div>
-                ) : !activeAppt ? (
-                  <EmptyState
-                    emoji="🩺"
-                    title="No patient in consultation"
-                    hint={queue.length > 0 ? `${queue.length} patient${queue.length > 1 ? "s" : ""} waiting — call one in.` : "Queue is clear. All caught up!"}
-                    action={queue.length > 0 ? (
-                      <Btn onClick={() => void doStatus(queue[0].id, "in_consultation")}>
-                        <FiArrowRightCircle size={16} /> Call In {queue[0].patient_name}
-                      </Btn>
-                    ) : undefined}
+              {viewMode === "queue_list" ? (
+                <>
+                  <CardHead
+                    left={<SectionHdr icon={<FiUsers color={C.purple} size={16} />} title="Next Patients" sub="Patients ready to consult" />}
+                    right={<Btn variant="secondary" size="sm" onClick={() => setViewMode("active")}><FiArrowLeft size={13} /> Back to Active</Btn>}
                   />
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "1.35rem" }}>
-                    {/* Patient identity banner */}
-                    <div style={{
-                      background: "linear-gradient(135deg,#1e3a5f 0%,#1d4ed8 100%)",
-                      borderRadius: "14px", padding: "1.4rem 1.5rem", color: "#fff",
-                      position: "relative", overflow: "hidden",
-                    }}>
-                      <div style={{ position: "absolute", top: -30, right: -30, width: 140, height: 140, borderRadius: "50%", background: "rgba(255,255,255,0.05)", pointerEvents: "none" }} />
-                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
-                        <div>
-                          <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "#93c5fd", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: "0.4rem" }}>
-                            Token #{activeAppt.token_no} · {activeAppt.visit_type}
+                  <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "0.85rem", maxHeight: 650, overflowY: "auto" }}>
+                    {queue.length === 0 ? (
+                      <EmptyState emoji="✅" title="Queue is clear" />
+                    ) : (
+                      queue.map((appt) => (
+                        <div key={appt.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "1rem 1.25rem", border: `1px solid ${C.border}`, borderRadius: "12px", background: "#f9fafc" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                            <div style={{ background: C.purpleLight, color: C.purple, width: 40, height: 40, borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "1.1rem" }}>
+                              #{appt.token_no}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: "1rem", color: C.text, textTransform: "capitalize", marginBottom: "0.1rem" }}>{appt.patient_name}</div>
+                              <div style={{ fontSize: "0.8rem", color: C.textMuted }}>{appt.visit_type} · {formatDateTime(appt.appointment_date)}</div>
+                            </div>
                           </div>
-                          <h3 style={{ margin: "0 0 0.6rem", fontSize: "1.45rem", fontWeight: 800, letterSpacing: "-0.02em", textTransform: "capitalize" }}>
-                            {activeAppt.patient_name}
-                          </h3>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.6rem" }}>
-                            {activeAppt.doctor_name && (
-                              <span style={{ fontSize: "0.8rem", color: "#bfdbfe", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                                <FiUser size={12} /> {activeAppt.doctor_name}
-                              </span>
-                            )}
-                            <span style={{ fontSize: "0.8rem", color: "#bfdbfe", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                              <FiClock size={12} /> {formatDateTime(activeAppt.appointment_date)}
-                            </span>
+                          <div style={{ display: "flex", gap: "0.75rem" }}>
+                            <Btn variant="secondary" onClick={() => { setPreviewAppt(appt); setViewMode("preview"); }}>
+                              <FiFileText size={14} /> View
+                            </Btn>
+                            <Btn variant="primary" onClick={() => { void doStatus(appt.id, "in_consultation"); setViewMode("active"); }}>
+                              Call In
+                            </Btn>
                           </div>
                         </div>
-                        <div style={{ background: "rgba(255,255,255,0.13)", backdropFilter: "blur(8px)", borderRadius: "12px", padding: "0.75rem 1.25rem", textAlign: "center", border: "1px solid rgba(255,255,255,0.2)", minWidth: 72 }}>
-                          <div style={{ fontSize: "2rem", fontWeight: 900, lineHeight: 1 }}>#{activeAppt.token_no}</div>
-                          <div style={{ fontSize: "0.6rem", color: "#93c5fd", fontWeight: 700, marginTop: 2, letterSpacing: "0.08em" }}>TOKEN</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Vitals row */}
-                    <div>
-                      <div style={{ fontSize: "0.7rem", fontWeight: 700, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: "0.6rem" }}>Vitals</div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "0.7rem" }}>
-                        <VitalBox icon={<FiHeart size={15} />}       label="Heart Rate"   value="— bpm"  color="#ef4444" />
-                        <VitalBox icon={<FiThermometer size={15} />}  label="Temperature"  value="—°F"    color="#f59e0b" />
-                        <VitalBox icon={<FiActivity size={15} />}     label="Blood Press." value="—/—"    color={C.primary} />
-                        <VitalBox icon={<FiZap size={15} />}          label="SpO₂"         value="— %"    color={C.purple} />
-                      </div>
-                    </div>
-
-                    {/* Symptoms + reception notes */}
-                    <div style={{ display: "grid", gridTemplateColumns: activeAppt.notes ? "1fr 1fr" : "1fr", gap: "0.85rem" }}>
-                      <div style={{ background: "#f8faff", borderRadius: "11px", padding: "1rem", border: `1px solid ${C.border}` }}>
-                        <div style={{ fontSize: "0.68rem", fontWeight: 700, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                          <FiFileText size={11} /> Reported Symptoms
-                        </div>
-                        <p style={{ margin: 0, fontSize: "0.88rem", lineHeight: 1.65, color: activeAppt.patient_symptoms ? "#334155" : C.textFaint, fontStyle: activeAppt.patient_symptoms ? "normal" : "italic" }}>
-                          {activeAppt.patient_symptoms || "No symptoms reported."}
-                        </p>
-                      </div>
-                      {activeAppt.notes && (
-                        <div style={{ background: "#fffcf0", borderRadius: "11px", padding: "1rem", border: "1px dashed #fbbf24" }}>
-                          <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#92400e", textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                            <FiInfo size={11} /> Reception Notes
-                          </div>
-                          <p style={{ margin: 0, fontSize: "0.88rem", lineHeight: 1.65, color: "#78350f" }}>{activeAppt.notes}</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Follow-up flag */}
-                    {activeAppt.appointment_kind === "follow_up" && (
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", background: C.purpleLight, border: `1px solid ${C.purpleMid}`, borderRadius: "9px", padding: "0.7rem 1rem" }}>
-                        <FiRefreshCw color={C.purple} size={14} />
-                        <span style={{ fontSize: "0.85rem", color: C.purple, fontWeight: 600 }}>Follow-up visit</span>
-                      </div>
+                      ))
                     )}
-
-                    {/* Action buttons */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
-                      <Btn
-                        variant="primary"
-                        size="lg"
-                        style={{ width: "100%", justifyContent: "center" }}
-                        onClick={() => setUploadTarget({ id: String(activeAppt.patient_id), name: activeAppt.patient_name, doctorName: activeAppt.doctor_name ?? undefined })}
-                      >
-                        <FiUploadCloud size={18} /> Upload / Scan Prescription (OCR)
-                      </Btn>
-
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.8rem" }}>
-                        <Btn variant="secondary" style={{ justifyContent: "center" }} onClick={() => { setTab("notes"); }}>
-                          <FiEdit3 size={14} /> Write Clinical Note
-                        </Btn>
-                        <Btn variant="secondary" style={{ justifyContent: "center", background: C.tealLight, borderColor: C.teal, color: C.teal }} onClick={() => { setTab("chart"); }}>
-                          <FiFileText size={14} /> View Patient Chart
-                        </Btn>
-                      </div>
-
-                      <div style={{ height: 1, background: C.borderLight }} />
-
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.8rem" }}>
-                        <Btn variant="secondary" style={{ justifyContent: "center" }} onClick={() => void doStatus(activeAppt.id, "completed")}>
-                          <FiCheckCircle size={14} /> Complete Only
-                        </Btn>
-                        <Btn variant="success" style={{ justifyContent: "center" }} onClick={() => void doCompleteAndNext(activeAppt.id)}>
-                          Complete & Call Next <FiArrowRightCircle size={15} />
-                        </Btn>
-                      </div>
-
-                      <Btn variant="danger" size="sm" style={{ alignSelf: "center", opacity: 0.8 }} onClick={() => void doStatus(activeAppt.id, "no_show")}>
-                        <FiX size={12} /> Mark No-Show
-                      </Btn>
-                    </div>
                   </div>
-                )}
-              </div>
+                </>
+              ) : (
+                (() => {
+                  const isPreview = viewMode === "preview";
+                  const appt = isPreview ? previewAppt : activeAppt;
+                  return (
+                    <>
+                      <CardHead
+                        left={<SectionHdr icon={<FiActivity color={isPreview ? C.purple : C.primary} size={16} />} title={isPreview ? "Previewing Patient" : "Active Consultation"} sub={isPreview ? "Patient in queue" : "Current patient in room"} />}
+                        right={
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                            {!isPreview && appt && <Pill bg={C.primaryLight} color={C.primary}><span style={{ width: 7, height: 7, borderRadius: "50%", background: C.primary, display: "inline-block" }} />Live</Pill>}
+                            {!isPreview && <Btn variant="secondary" size="sm" onClick={() => setViewMode("queue_list")}><FiList size={13} /> View Next Patients</Btn>}
+                            {isPreview && <Btn variant="secondary" size="sm" onClick={() => setViewMode("queue_list")}><FiArrowLeft size={13} /> Back to List</Btn>}
+                          </div>
+                        }
+                      />
+                      <div style={{ padding: "1.5rem" }}>
+                        {loading && !appt && !isPreview ? (
+                          <div style={{ textAlign: "center", padding: "3rem", color: C.textFaint, fontSize: "0.9rem" }}>
+                            <FiRefreshCw size={22} style={{ animation: "spin 1s linear infinite", display: "block", margin: "0 auto 0.75rem" }} />
+                            Loading…
+                          </div>
+                        ) : !appt ? (
+                          <EmptyState
+                            emoji="🩺"
+                            title="No patient in consultation"
+                            hint={queue.length > 0 ? `${queue.length} patient${queue.length > 1 ? "s" : ""} waiting — call one in.` : "Queue is clear. All caught up!"}
+                            action={queue.length > 0 ? (
+                              <Btn onClick={() => void doStatus(queue[0].id, "in_consultation")}>
+                                <FiArrowRightCircle size={16} /> Call In {queue[0].patient_name}
+                              </Btn>
+                            ) : undefined}
+                          />
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "1.35rem" }}>
+                            {/* Patient identity banner */}
+                            <div style={{
+                              background: isPreview ? "linear-gradient(135deg,#4c1d95 0%,#7c3aed 100%)" : "linear-gradient(135deg,#1e3a5f 0%,#1d4ed8 100%)",
+                              borderRadius: "14px", padding: "1.4rem 1.5rem", color: "#fff",
+                              position: "relative", overflow: "hidden",
+                            }}>
+                              <div style={{ position: "absolute", top: -30, right: -30, width: 140, height: 140, borderRadius: "50%", background: "rgba(255,255,255,0.05)", pointerEvents: "none" }} />
+                              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+                                <div>
+                                  <div style={{ fontSize: "0.7rem", fontWeight: 700, color: isPreview ? "#ddd6fe" : "#93c5fd", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: "0.4rem" }}>
+                                    Token #{appt.token_no} · {appt.visit_type} {isPreview && " (PREVIEW)"}
+                                  </div>
+                                  <h3 style={{ margin: "0 0 0.6rem", fontSize: "1.45rem", fontWeight: 800, letterSpacing: "-0.02em", textTransform: "capitalize" }}>
+                                    {appt.patient_name}
+                                  </h3>
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.6rem" }}>
+                                    {appt.doctor_name && (
+                                      <span style={{ fontSize: "0.8rem", color: isPreview ? "#c4b5fd" : "#bfdbfe", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                                        <FiUser size={12} /> {appt.doctor_name}
+                                      </span>
+                                    )}
+                                    <span style={{ fontSize: "0.8rem", color: isPreview ? "#c4b5fd" : "#bfdbfe", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                                      <FiClock size={12} /> {formatDateTime(appt.appointment_date)}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div style={{ background: "rgba(255,255,255,0.13)", backdropFilter: "blur(8px)", borderRadius: "12px", padding: "0.75rem 1.25rem", textAlign: "center", border: "1px solid rgba(255,255,255,0.2)", minWidth: 72 }}>
+                                  <div style={{ fontSize: "2rem", fontWeight: 900, lineHeight: 1 }}>#{appt.token_no}</div>
+                                  <div style={{ fontSize: "0.6rem", color: isPreview ? "#ddd6fe" : "#93c5fd", fontWeight: 700, marginTop: 2, letterSpacing: "0.08em" }}>TOKEN</div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Vitals row */}
+                            <div>
+                              <div style={{ fontSize: "0.7rem", fontWeight: 700, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: "0.6rem" }}>Vitals</div>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "0.7rem" }}>
+                                <VitalBox icon={<FiHeart size={15} />}       label="Heart Rate"   value="— bpm"  color="#ef4444" />
+                                <VitalBox icon={<FiThermometer size={15} />}  label="Temperature"  value="—°F"    color="#f59e0b" />
+                                <VitalBox icon={<FiActivity size={15} />}     label="Blood Press." value="—/—"    color={C.primary} />
+                                <VitalBox icon={<FiZap size={15} />}          label="SpO₂"         value="— %"    color={C.purple} />
+                              </div>
+                            </div>
+
+                            {/* Symptoms + reception notes */}
+                            <div style={{ display: "grid", gridTemplateColumns: appt.notes ? "1fr 1fr" : "1fr", gap: "0.85rem" }}>
+                              <div style={{ background: "#f8faff", borderRadius: "11px", padding: "1rem", border: `1px solid ${C.border}` }}>
+                                <div style={{ fontSize: "0.68rem", fontWeight: 700, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                                  <FiFileText size={11} /> Reported Symptoms
+                                </div>
+                                <p style={{ margin: 0, fontSize: "0.88rem", lineHeight: 1.65, color: appt.patient_symptoms ? "#334155" : C.textFaint, fontStyle: appt.patient_symptoms ? "normal" : "italic" }}>
+                                  {appt.patient_symptoms || "No symptoms reported."}
+                                </p>
+                              </div>
+                              {appt.notes && (
+                                <div style={{ background: "#fffcf0", borderRadius: "11px", padding: "1rem", border: "1px dashed #fbbf24" }}>
+                                  <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#92400e", textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                                    <FiInfo size={11} /> Reception Notes
+                                  </div>
+                                  <p style={{ margin: 0, fontSize: "0.88rem", lineHeight: 1.65, color: "#78350f" }}>{appt.notes}</p>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Follow-up flag */}
+                            {appt.appointment_kind === "follow_up" && (
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", background: C.purpleLight, border: `1px solid ${C.purpleMid}`, borderRadius: "9px", padding: "0.7rem 1rem" }}>
+                                <FiRefreshCw color={C.purple} size={14} />
+                                <span style={{ fontSize: "0.85rem", color: C.purple, fontWeight: 600 }}>Follow-up visit</span>
+                              </div>
+                            )}
+
+                            {/* Action buttons */}
+                            <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
+                              {isPreview ? (
+                                <Btn variant="success" size="lg" style={{ width: "100%", justifyContent: "center" }} onClick={() => { void doStatus(appt.id, "in_consultation"); setViewMode("active"); }}>
+                                  <FiArrowRightCircle size={18} /> Call In {appt.patient_name} Now
+                                </Btn>
+                              ) : (
+                                <>
+                                  <Btn
+                                    variant="primary"
+                                    size="lg"
+                                    style={{ width: "100%", justifyContent: "center" }}
+                                    onClick={() => setUploadTarget({ id: String(appt.patient_id), name: appt.patient_name, doctorName: appt.doctor_name ?? undefined })}
+                                  >
+                                    <FiUploadCloud size={18} /> Upload / Scan Prescription (OCR)
+                                  </Btn>
+
+                                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.8rem" }}>
+                                    <Btn variant="secondary" style={{ justifyContent: "center" }} onClick={() => { setTab("notes"); }}>
+                                      <FiEdit3 size={14} /> Write Clinical Note
+                                    </Btn>
+                                    <Btn variant="secondary" style={{ justifyContent: "center", background: C.tealLight, borderColor: C.teal, color: C.teal }} onClick={() => { setTab("chart"); }}>
+                                      <FiFileText size={14} /> View Patient Chart
+                                    </Btn>
+                                  </div>
+
+                                  <div style={{ height: 1, background: C.borderLight }} />
+
+                                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.8rem" }}>
+                                    <Btn variant="secondary" style={{ justifyContent: "center" }} onClick={() => void doStatus(appt.id, "completed")}>
+                                      <FiCheckCircle size={14} /> Complete Only
+                                    </Btn>
+                                    <Btn variant="success" style={{ justifyContent: "center" }} onClick={() => void doCompleteAndNext(appt.id)}>
+                                      Complete & Call Next <FiArrowRightCircle size={15} />
+                                    </Btn>
+                                  </div>
+
+                                  <Btn variant="danger" size="sm" style={{ alignSelf: "center", opacity: 0.8 }} onClick={() => void doStatus(appt.id, "no_show")}>
+                                    <FiX size={12} /> Mark No-Show
+                                  </Btn>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()
+              )}
             </CardWrap>
 
             {/* Recent session notes (if any) */}
