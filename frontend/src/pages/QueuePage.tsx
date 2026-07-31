@@ -235,7 +235,7 @@ export default function QueuePage({ setNotice, onNavigate, isReceptionist }: Pro
                         <Button type="button" size="sm" variant="secondary" onClick={() => void handleStatusChange(appointment.id, "completed")}>
                           Complete
                         </Button>
-                        <Button type="button" size="sm" variant="outline" style={{ borderColor: "#25D366", color: "#25D366" }} onClick={() => handleCallNext(appointment)}>
+                        <Button type="button" size="sm" variant="secondary" style={{ borderColor: "#25D366", color: "#25D366" }} onClick={() => handleCallNext(appointment)}>
                           Call Next (WhatsApp)
                         </Button>
                       </div>

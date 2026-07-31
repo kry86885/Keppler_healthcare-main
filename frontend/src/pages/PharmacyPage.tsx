@@ -642,7 +642,7 @@ export default function PharmacyPage({ setNotice }: Props) {
             </TableHead>
             {pendingPrescriptions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} style={{ textAlign: "center", padding: "2rem" }}>No pending prescriptions</TableCell>
+                <TableCell style={{ textAlign: "center", padding: "2rem" }}>No pending prescriptions</TableCell>
               </TableRow>
             ) : (
               pendingPrescriptions.map(p => {

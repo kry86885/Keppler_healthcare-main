@@ -86,12 +86,12 @@ export default function EmrPage({ setNotice }: { setNotice: (msg: any) => void }
           }
         `}</style>
         <div className="flex justify-between items-center mb-6 no-print">
-          <Button variant="outline" onClick={() => setSelectedPatient(null)}>Back to Search</Button>
+          <Button variant="secondary" onClick={() => setSelectedPatient(null)}>Back to Search</Button>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handlePrint}><Printer className="w-4 h-4 mr-2" /> Print EMR</Button>
-            <Button variant="outline" onClick={handleExportPdf}><FileText className="w-4 h-4 mr-2" /> Export PDF</Button>
+            <Button variant="secondary" onClick={handlePrint}><Printer className="w-4 h-4 mr-2" /> Print EMR</Button>
+            <Button variant="secondary" onClick={handleExportPdf}><FileText className="w-4 h-4 mr-2" /> Export PDF</Button>
             <Button variant="primary" onClick={handleShareWhatsApp}><Share2 className="w-4 h-4 mr-2" /> Share EMR</Button>
-            <Button variant="outline" onClick={handleShareEmail}>Email</Button>
+            <Button variant="secondary" onClick={handleShareEmail}>Email</Button>
           </div>
         </div>
 
@@ -128,7 +128,7 @@ export default function EmrPage({ setNotice }: { setNotice: (msg: any) => void }
         </Card>
 
         <div className="flex justify-between items-center mb-4 no-print">
-          <Button onClick={handleGenerateAiSummary} variant="outline" className="text-purple-600 border-purple-600 bg-purple-50">
+          <Button onClick={handleGenerateAiSummary} variant="secondary" className="text-purple-600 border-purple-600 bg-purple-50">
             <Zap className="w-4 h-4 mr-2" /> Generate AI Summary
           </Button>
         </div>
@@ -164,7 +164,7 @@ export default function EmrPage({ setNotice }: { setNotice: (msg: any) => void }
                     <div>
                       <strong className="text-blue-700">{new Date(enc.created_at).toLocaleDateString()}</strong> - <span className="font-medium">{enc.encounter_type || "OP Consultation"}</span>
                     </div>
-                    <Badge variant="success">{enc.status}</Badge>
+                    <Badge variant="default">{enc.status}</Badge>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
@@ -252,7 +252,7 @@ export default function EmrPage({ setNotice }: { setNotice: (msg: any) => void }
                       <td>{p.phone}</td>
                       <td>{p.age} / {p.gender}</td>
                       <td>
-                        <Button size="sm" onClick={() => handleSelectPatient(p.patient_id)} variant="outline">Open EMR</Button>
+                        <Button size="sm" onClick={() => handleSelectPatient(p.patient_id)} variant="secondary">Open EMR</Button>
                       </td>
                     </tr>
                   ))}
