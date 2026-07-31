@@ -121,7 +121,7 @@ export default function QueuePage({ setNotice, onNavigate, isReceptionist }: Pro
       return;
     }
     if (!nextAppt.patient_phone) {
-      setNotice({ type: "info", message: `Next patient (${nextAppt.patient_name}) does not have a registered phone number. The receptionist can send them in and update their status.` });
+      setNotice({ type: "warning", message: `Next patient (${nextAppt.patient_name}) does not have a registered phone number. The receptionist can send them in and update their status.` });
       return;
     }
     const phone = nextAppt.patient_phone.replace(/\D/g, "");
