@@ -14,9 +14,9 @@ export default function AppointmentQueueCard({ appointment, actions }: Props) {
 
   return (
     <article className={`queue-card queue-card-${statusMeta.tone}`}>
-      <div className="queue-card-token">
+      <div className="queue-card-token" data-testid="appointment-token">
+        <span className="queue-card-token-label">Token #</span>
         <span className="queue-card-token-num">{appointment.token_no}</span>
-        <span className="queue-card-token-label">Token</span>
       </div>
 
       <div className="queue-card-body">

@@ -56,11 +56,11 @@ describe("QueuePage", () => {
       await flush();
     });
 
-    const doctorSelect = container.querySelector('select[aria-label="Filter by doctor"]') as HTMLSelectElement;
+    const doctorSelect = container.querySelector('#queue-filter-doctor') as HTMLSelectElement;
     const doctorOptionValues = Array.from(doctorSelect.querySelectorAll("option")).map((option) => option.textContent);
     expect(doctorOptionValues).toEqual(["All Doctors", "Dr. Iyer", "Dr. Rao"]);
 
-    const departmentSelect = container.querySelector('select[aria-label="Filter by department"]') as HTMLSelectElement;
+    const departmentSelect = container.querySelector('#queue-filter-department') as HTMLSelectElement;
     const departmentOptionValues = Array.from(departmentSelect.querySelectorAll("option")).map((option) => option.textContent);
     expect(departmentOptionValues).toEqual(["All Departments", "Cardiology", "Orthopedics"]);
 

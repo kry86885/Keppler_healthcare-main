@@ -128,7 +128,7 @@ describe("App role-based UI", () => {
     expect(employeesTab.disabled).toBe(false);
     expect(appointmentInTab.disabled).toBe(false);
     expect(appointmentOutTab.disabled).toBe(false);
-    expect(container.textContent).toContain("Registration Desk");
+    expect(container.textContent).toContain("Patient Registration");
   });
 
   test("uses module_access to unlock finance billing pages and pick receivable aging by default", async () => {
