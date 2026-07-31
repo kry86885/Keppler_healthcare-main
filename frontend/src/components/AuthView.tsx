@@ -17,26 +17,36 @@ export default function AuthView({ onLogin, initialHospitalCode }: Props) {
         <div className="brand brand-logo-full">
           <img src="/logo.png" alt="HospAI - AI Driven Healthcare Optimization" />
         </div>
-        
-        <div className="flex bg-gray-100 rounded-lg p-1 mb-6">
-          <button 
-            className={`flex-1 py-2 text-sm font-medium rounded-md flex justify-center items-center gap-2 ${loginType === "staff" ? "bg-white shadow text-blue-600" : "text-gray-500 hover:text-gray-700"}`}
+
+        <div className="auth-toggle" role="tablist" aria-label="Login type">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={loginType === "staff"}
+            className={loginType === "staff" ? "auth-toggle-tab active" : "auth-toggle-tab"}
             onClick={() => setLoginType("staff")}
-            type="button"
           >
-            <User size={16} /> Staff Login
+            <User size={15} /> Staff Login
           </button>
-          <button 
-            className={`flex-1 py-2 text-sm font-medium rounded-md flex justify-center items-center gap-2 ${loginType === "doctor" ? "bg-white shadow text-blue-600" : "text-gray-500 hover:text-gray-700"}`}
-            onClick={() => setLoginType("doctor")}
+          <button
             type="button"
+            role="tab"
+            aria-selected={loginType === "doctor"}
+            className={loginType === "doctor" ? "auth-toggle-tab active" : "auth-toggle-tab"}
+            onClick={() => setLoginType("doctor")}
           >
-            <Activity size={16} /> Doctor Login
+            <Activity size={15} /> Doctor Login
           </button>
         </div>
 
-        <h1 className="text-xl mb-2">{loginType === "doctor" ? "Doctor Portal" : "Welcome back"}</h1>
-        <p className="muted mb-6">{loginType === "doctor" ? "Sign in to manage your consultations and queue." : "Sign in to manage patients, OCR documents, and admissions."}</p>
+        <div className="auth-heading">
+          <h1>{loginType === "doctor" ? "Doctor Portal" : "Welcome back"}</h1>
+          <p className="muted">
+            {loginType === "doctor"
+              ? "Sign in to manage your consultations and queue."
+              : "Sign in to manage patients, OCR documents, and admissions."}
+          </p>
+        </div>
 
         <form className="auth-form" onSubmit={onLogin}>
           <Label>
@@ -51,11 +61,11 @@ export default function AuthView({ onLogin, initialHospitalCode }: Props) {
             Password
             <Input name="password" type="password" placeholder="••••••" required />
           </Label>
-          <Button type="submit" variant="primary" className="w-full mt-4">
+          <Button type="submit" variant="primary" className="auth-submit">
             Login
           </Button>
         </form>
-        <div className="hint mt-4 text-center">Only hospital admins can access Employee Management.</div>
+        <div className="hint auth-hint">Only hospital admins can access Employee Management.</div>
       </div>
     </div>
   );

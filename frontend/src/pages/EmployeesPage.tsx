@@ -195,8 +195,10 @@ export default function EmployeesPage({ setNotice, canWriteEmployees }: Props) {
               {employees.map((emp) => (
                 <details key={emp.employee_id} className="doc-item">
                   <summary>
-                    <span className={`status-dot ${emp.status === "active" ? "success" : "danger"}`} />
-                    {emp.full_name || emp.username} · {emp.employee_id}
+                    <span className="doc-item-title">
+                      <span className={`status-dot ${emp.status === "active" ? "success" : "danger"}`} />
+                      {emp.full_name || emp.username} · {emp.employee_id}
+                    </span>
                   </summary>
                   <div className="detail-grid">
                     <div>

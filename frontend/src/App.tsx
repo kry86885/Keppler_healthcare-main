@@ -43,6 +43,7 @@ import EmergencyPage from "./pages/EmergencyPage";
 import AmbulancePage from "./pages/AmbulancePage";
 import NurseStationPage from "./pages/NurseStationPage";
 import RegistrationDeskPage from "./pages/RegistrationDeskPage";
+import BulkPatientAiPage from "./pages/BulkPatientAiPage";
 import { API_BASE, EMPTY_STATS, NAV_ITEMS } from "./lib/constants";
 import { apiFetch, getHospitalCode, reportError, setHospitalCode } from "./lib/api";
 import { resolvePermissions } from "./lib/format";
@@ -83,6 +84,7 @@ const NAV_ICON_MAP: Record<string, SidebarIconName> = {
   "accounts-doctor-payouts": "billing",
   reports: "dashboard",
   "symptom-ai": "symptom",
+  "bulk-ai": "symptom",
   employees: "employees",
   settings: "settings",
 };
@@ -247,14 +249,6 @@ function App() {
   const profileActionsRef = useRef<HTMLDivElement | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [hospitalCode, setHospitalCodeState] = useState(getHospitalCode());
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    return (localStorage.getItem("hospai-theme") as "light" | "dark") || "light";
-  });
-  useEffect(() => {
-    localStorage.setItem("hospai-theme", theme);
-    document.documentElement.setAttribute("data-theme", theme);
-  }, [theme]);
-  const [collapsedSidebarGroups, setCollapsedSidebarGroups] = useState<Record<string, boolean>>({});
   useEffect(() => {
     if (!notice) return;
     const timeoutId = window.setTimeout(() => setNotice(null), 4200);
@@ -298,11 +292,14 @@ function App() {
     [permissions]
   );
   const sidebarGroups = useMemo(() => {
+    // Ordered by how often day-to-day hospital work touches each area: the core patient
+    // journey (Overview -> OP Management -> Operations) comes before supporting AI tools,
+    // which comes before back-office Finance/Administration.
     const groups: Array<{ key: string; label: string; items: typeof sidebarNavItems }> = [
       { key: "overview", label: "Overview", items: [] },
-      { key: "ai", label: "AI", items: [] },
       { key: "registration", label: "OP Management", items: [] },
       { key: "operations", label: "Operations", items: [] },
+      { key: "ai", label: "AI", items: [] },
       { key: "finance", label: "Finance", items: [] },
       { key: "admin", label: "Administration", items: [] },
     ];
@@ -312,15 +309,14 @@ function App() {
     });
     return groups.filter((group) => group.items.length > 0);
   }, [sidebarNavItems]);
+  const groupKeyForPage = (pageId: string) => NAV_ITEMS.find((item) => item.id === pageId)?.group || "overview";
+  // Accordion behaviour: only the section containing the active page is expanded, so a
+  // 13-item "Finance" group and an 8-item "OP Management" group are never both open (and
+  // forcing a long scroll) at once -- this is the "sidebar should be systematic" fix.
+  const [openSidebarGroup, setOpenSidebarGroup] = useState<string>(groupKeyForPage(page));
   useEffect(() => {
-    setCollapsedSidebarGroups((current) => {
-      const next = { ...current };
-      sidebarGroups.forEach((group) => {
-        if (!(group.key in next)) next[group.key] = false;
-      });
-      return next;
-    });
-  }, [sidebarGroups]);
+    setOpenSidebarGroup(groupKeyForPage(page));
+  }, [page]);
 
   const getDefaultPage = (currentUser: User | null) => {
     if (currentUser?.access_role === "clinician") {
@@ -864,23 +860,29 @@ function App() {
         </div>
         <div className="sidebar-scroll-region">
           <nav>
-            {sidebarGroups.map((group) => (
+            {sidebarGroups.map((group) => {
+              const isOpen = openSidebarGroup === group.key;
+              return (
               <section key={group.key} className="sidebar-nav-group">
                 <button
                   type="button"
                   className="sidebar-nav-toggle"
-                  onClick={() => setCollapsedSidebarGroups((current) => ({ ...current, [group.key]: !current[group.key] }))}
-                  aria-expanded={!collapsedSidebarGroups[group.key]}
+                  onClick={() => setOpenSidebarGroup((current) => (current === group.key ? "" : group.key))}
+                  aria-expanded={isOpen}
                 >
                   <span className="sidebar-nav-heading">
                     <span className="sidebar-nav-title">{group.label}</span>
                     <span className="sidebar-nav-count">{group.items.length}</span>
                   </span>
-                  <span className={collapsedSidebarGroups[group.key] ? "sidebar-nav-chevron collapsed" : "sidebar-nav-chevron"} aria-hidden="true">
-                    <span className="sidebar-nav-chevron-chip">â–¾</span>
+                  <span className={isOpen ? "sidebar-nav-chevron" : "sidebar-nav-chevron collapsed"} aria-hidden="true">
+                    <span className="sidebar-nav-chevron-chip">
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M6 9l6 6 6-6" />
+                      </svg>
+                    </span>
                   </span>
                 </button>
-                {!collapsedSidebarGroups[group.key] && (
+                {isOpen && (
                   <div className="sidebar-nav-items">
                     {group.items.map((item) => {
                       const blocked = !!item.permission && !hasPermission(item.permission);
@@ -906,7 +908,8 @@ function App() {
                   </div>
                 )}
               </section>
-            ))}
+              );
+            })}
           </nav>
         </div>
         <div className="sidebar-bottom">
@@ -942,15 +945,6 @@ function App() {
                   }}
                 >
                   Settings
-                </Button>
-                <Button
-                  className="settings-footer-btn"
-                  variant="ghost"
-                  onClick={() => {
-                    setTheme((prev) => prev === "light" ? "dark" : "light");
-                  }}
-                >
-                  {theme === "light" ? "Dark Mode" : "Light Mode"}
                 </Button>
                 <Button
                   type="button"
@@ -1041,6 +1035,7 @@ function App() {
         )}
 
         {page === "symptom-ai" && <SymptomAiPage setNotice={setNotice} />}
+        {page === "bulk-ai" && hasPermission("patients.write") && <BulkPatientAiPage setNotice={setNotice} />}
 
         {page === "billing-aging" && hasPermission("billing.read") && <BillingAgingPage setNotice={setNotice} />}
         {page === "billing-reconciliation" && hasPermission("billing.read") && <BillingReconciliationPage setNotice={setNotice} />}
