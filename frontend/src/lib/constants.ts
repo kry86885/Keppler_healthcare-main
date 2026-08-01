@@ -123,6 +123,7 @@ export const NAV_ITEMS: NavItem[] = [
 
   // Administration: manage employees before managing their HR operations (attendance/payroll/leave).
   { id: "employees", label: "Employee Management", group: "admin", permission: "employees.read", deniedHint: "Requires admin access." },
+  { id: "patient-experience", label: "Patient Experience", group: "admin", permission: "admin.use", deniedHint: "Requires admin access." },
   { id: "hrms", label: "HRMS", group: "admin", permission: "hr.read", deniedHint: "Requires HRMS access.", module: "hrms" },
 
   { id: "settings", label: "Settings" },

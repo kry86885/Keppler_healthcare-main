@@ -733,12 +733,15 @@ from modules.bulk_import.routes import bulk_import_bp
 app.register_blueprint(bulk_import_bp)
 
 
+
 @app.errorhandler(413)
 def _handle_payload_too_large(exc):
     return jsonify({"error": "File is too large (200MB limit)."}), 413
 
 
 if __name__ == "__main__":
+    from utils.database import DATABASE_URL
+    print(f"=== STARTING BACKEND. USING DATABASE_URL: {DATABASE_URL} ===")
     port = int(os.getenv("PORT", "5001"))
     app.run(host="0.0.0.0", port=port, debug=True)
 

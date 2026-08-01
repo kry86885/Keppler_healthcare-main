@@ -280,6 +280,10 @@ def patients_create():
         "allergies": payload.get("allergies"),
         "symptoms": payload.get("symptoms"),
         "phone": payload.get("phone"),
+        "address": payload.get("address"),
+        "blood_group": payload.get("blood_group"),
+        "emergency_contact": payload.get("emergency_contact"),
+        "aadhar_number": payload.get("aadhar_number"),
     }
     add_patient(data)
     admission_id = add_admission(patient_id, "Initial registration")
@@ -319,6 +323,10 @@ def patients_update(patient_id):
         "allergies": payload.get("allergies"),
         "symptoms": payload.get("symptoms"),
         "phone": payload.get("phone"),
+        "address": payload.get("address"),
+        "blood_group": payload.get("blood_group"),
+        "emergency_contact": payload.get("emergency_contact"),
+        "aadhar_number": payload.get("aadhar_number"),
     }
     update_patient(patient_id, data)
     log_audit_event("update", "patients", patient_id, {"fields": list(data.keys())})
