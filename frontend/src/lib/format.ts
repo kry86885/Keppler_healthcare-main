@@ -61,7 +61,7 @@ export function formatDateTime(value?: string | null): string {
 export function formatDateTimeIST(value?: string | null): string {
   if (!value) return "-";
   const parsed = parseTimestamp(value);
-  if (!parsed) return "-";
+  if (!parsed) return value; // Return raw value as fallback if parsing fails
   const formatted = new Intl.DateTimeFormat("en-IN", {
     timeZone: IST_TIMEZONE,
     year: "numeric",

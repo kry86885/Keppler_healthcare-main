@@ -221,6 +221,9 @@ def normalize_module_access(raw_modules, user_type: Optional[str] = None, access
     if parsed:
         return parsed
 
+    if raw_modules is None:
+        return default_modules_for_legacy(access_role, legacy_role)
+
     # Default deny for normal users when module access is missing or invalid.
     return []
 

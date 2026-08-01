@@ -58,27 +58,27 @@ type PatientChart = {
 
 /* ───── Design tokens ─────────────────────────────────────── */
 const C = {
-  bg: "#f7f8fc",
+  bg: "#f8fafc",
   surface: "#ffffff",
-  border: "#e4e8f0",
-  borderLight: "#f0f3f9",
-  primary: "#1e40af",
-  primaryLight: "#eff6ff",
-  primaryMid: "#bfdbfe",
-  green: "#16a34a", greenLight: "#f0fdf4", greenMid: "#bbf7d0",
+  border: "#e2e8f0",
+  borderLight: "#f1f5f9",
+  primary: "#0f172a",
+  primaryLight: "#f1f5f9",
+  primaryMid: "#cbd5e1",
+  green: "#059669", greenLight: "#ecfdf5", greenMid: "#6ee7b7",
   amber: "#d97706", amberLight: "#fffbeb", amberMid: "#fde68a",
   red: "#dc2626",   redLight: "#fef2f2",   redMid: "#fecaca",
-  purple: "#7c3aed", purpleLight: "#f5f3ff", purpleMid: "#ddd6fe",
+  purple: "#6366f1", purpleLight: "#e0e7ff", purpleMid: "#c7d2fe",
   teal: "#0d9488",  tealLight: "#f0fdfa",
   text: "#0f172a",
-  textMuted: "#64748b",
+  textMuted: "#475569",
   textFaint: "#94a3b8",
 };
 
 /* ───── Shared micro-components ───────────────────────────── */
 function Pill({ bg, color, children }: { bg: string; color: string; children: React.ReactNode }) {
   return (
-    <span style={{ background: bg, color, fontSize: "0.72rem", fontWeight: 700, padding: "0.22rem 0.65rem", borderRadius: "999px", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+    <span style={{ background: bg, color, fontSize: "0.75rem", fontWeight: 600, padding: "0.25rem 0.6rem", borderRadius: "999px", display: "inline-flex", alignItems: "center", gap: "0.35rem", letterSpacing: "0.01em" }}>
       {children}
     </span>
   );
@@ -100,7 +100,7 @@ function SectionHdr({ icon, title, sub }: { icon: React.ReactNode; title: string
 
 function CardWrap({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ background: C.surface, borderRadius: "8px", border: `1px solid ${C.border}`, boxShadow: "0 1px 3px rgba(15,23,42,0.04)", overflow: "hidden", ...style }}>
+    <div style={{ background: C.surface, borderRadius: "12px", border: `1px solid ${C.border}`, boxShadow: "0 4px 6px -1px rgba(15,23,42,0.05), 0 2px 4px -2px rgba(15,23,42,0.03)", overflow: "hidden", transition: "box-shadow 0.2s ease", ...style }}>
       {children}
     </div>
   );
@@ -118,28 +118,30 @@ function CardHead({ left, right }: { left: React.ReactNode; right?: React.ReactN
 function Inp({ style, ...rest }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      style={{ padding: "0.6rem 0.95rem", borderRadius: "9px", border: `1px solid ${C.border}`, fontSize: "0.88rem", outline: "none", background: "#f9fafc", color: C.text, fontFamily: "inherit", boxSizing: "border-box", width: "100%", ...style }}
+      style={{ padding: "0.65rem 1rem", borderRadius: "8px", border: `1px solid ${C.border}`, fontSize: "0.875rem", outline: "none", background: C.surface, color: C.text, fontFamily: "inherit", boxSizing: "border-box", width: "100%", transition: "border-color 0.2s, box-shadow 0.2s", ...style }}
+      onFocus={e => { e.currentTarget.style.borderColor = C.primaryMid; e.currentTarget.style.boxShadow = `0 0 0 3px ${C.primaryLight}`; }}
+      onBlur={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.boxShadow = "none"; }}
       {...rest}
     />
   );
 }
 
 function Btn({ children, variant = "primary", size = "md", style, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger" | "success"; size?: "sm" | "md" | "lg" }) {
-  const base: React.CSSProperties = { border: "none", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, borderRadius: "10px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "0.4rem", transition: "opacity 0.15s, box-shadow 0.15s", ...style };
-  const pad = size === "sm" ? "0.45rem 0.95rem" : size === "lg" ? "1rem 2rem" : "0.65rem 1.3rem";
-  const fs = size === "sm" ? "0.8rem" : size === "lg" ? "1rem" : "0.88rem";
+  const base: React.CSSProperties = { border: "none", cursor: "pointer", fontFamily: "inherit", fontWeight: 500, borderRadius: "8px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", transition: "all 0.15s ease", ...style };
+  const pad = size === "sm" ? "0.4rem 0.8rem" : size === "lg" ? "0.85rem 1.8rem" : "0.55rem 1.1rem";
+  const fs = size === "sm" ? "0.8rem" : size === "lg" ? "1rem" : "0.875rem";
   const variants: Record<string, React.CSSProperties> = {
-    primary: { background: "linear-gradient(135deg,#1e3a8a,#1d4ed8)", color: "#fff", boxShadow: "0 4px 14px rgba(29,78,216,0.28)" },
-    secondary: { background: C.surface, color: C.text, border: `1px solid ${C.border}` },
+    primary: { background: C.primary, color: "#fff", boxShadow: "0 1px 2px rgba(15, 23, 42, 0.05)" },
+    secondary: { background: C.surface, color: C.text, border: `1px solid ${C.border}`, boxShadow: "0 1px 2px rgba(15, 23, 42, 0.05)" },
     ghost: { background: "transparent", color: C.textMuted },
-    danger: { background: C.redLight, color: C.red, border: `1px solid ${C.redMid}` },
-    success: { background: "linear-gradient(135deg,#065f46,#059669)", color: "#fff", boxShadow: "0 4px 12px rgba(5,150,105,0.28)" },
+    danger: { background: C.red, color: "#fff", boxShadow: "0 1px 2px rgba(220, 38, 38, 0.05)" },
+    success: { background: C.green, color: "#fff", boxShadow: "0 1px 2px rgba(5, 150, 105, 0.05)" },
   };
   return (
     <button
       style={{ ...base, ...variants[variant], padding: pad, fontSize: fs }}
-      onMouseEnter={e => { (e.currentTarget.style.opacity = "0.88"); (e.currentTarget.style.boxShadow = "0 6px 18px rgba(0,0,0,0.12)"); }}
-      onMouseLeave={e => { (e.currentTarget.style.opacity = "1"); (e.currentTarget.style.boxShadow = (variants[variant].boxShadow as string) ?? "none"); }}
+      onMouseEnter={e => { (e.currentTarget.style.opacity = "0.9"); (e.currentTarget.style.transform = "translateY(-1px)"); }}
+      onMouseLeave={e => { (e.currentTarget.style.opacity = "1"); (e.currentTarget.style.transform = "translateY(0)"); }}
       {...rest}
     >
       {children}

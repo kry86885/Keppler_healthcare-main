@@ -1,6 +1,6 @@
 import type { ModuleOption, ModuleId, NavItem, PatientForm, SignupForm, UserTypeOption } from "../types";
 
-export const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5011";
+export const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:5001";
 export const SYMPTOM_API_BASE = import.meta.env.VITE_SYMPTOM_API_BASE || "http://localhost:5002";
 
 export const USER_TYPE_OPTIONS: UserTypeOption[] = [

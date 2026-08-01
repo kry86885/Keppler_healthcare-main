@@ -113,6 +113,7 @@ export interface Patient {
   emergency_contact?: string;
   aadhar_number?: string;
   created_at?: string;
+  status?: string;
 }
 
 export interface Admission {
