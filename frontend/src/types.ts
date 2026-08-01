@@ -436,3 +436,19 @@ export interface Employee {
   module_access?: ModuleId[];
   date_joined?: string;
 }
+
+export interface PatientWallet {
+  patient_id: string;
+  balance: number;
+  updated_at?: string;
+}
+
+export interface Refund {
+  id: number;
+  invoice_id: number;
+  amount: number;
+  reason?: string;
+  status?: string;
+  created_at?: string;
+}
+

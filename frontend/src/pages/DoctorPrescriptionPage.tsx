@@ -273,12 +273,63 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
     });
   }, [activeAppts, previewAppt, viewMode, loadPatientChart]);
 
+  /* ── WhatsApp notification on Call In ── */
+  const sendWhatsAppCallIn = (appt: Appointment) => {
+    const phone = appt.patient_phone?.replace(/\D/g, "");
+    if (!phone) return; // no phone on record — skip silently
+
+    const doctorName = user?.full_name || appt.doctor_name || "your doctor";
+    const hospitalName = "HospAI Medical Centre";
+    const tokenNo = appt.token_no ?? "";
+    const patientName = appt.patient_name ?? "Patient";
+    const visitType = appt.visit_type === "IP" ? "In-Patient" : "Out-Patient";
+    const now = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+
+    const message = [
+      `🏥 *${hospitalName}*`,
+      ``,
+      `Dear *${patientName}*,`,
+      ``,
+      `Your turn has arrived! Please proceed to the consultation room immediately.`,
+      ``,
+      `📋 *Appointment Details*`,
+      `• Token No   : *#${tokenNo}*`,
+      `• Visit Type : ${visitType}`,
+      `• Doctor     : Dr. ${doctorName}`,
+      `• Called At  : ${now}`,
+      ``,
+      `Please carry your previous reports, prescriptions, and ID proof.`,
+      ``,
+      `Thank you for choosing ${hospitalName}.`,
+      `_This is an automated notification._`,
+    ].join("\n");
+
+    // Normalize phone — add country code if missing
+    const e164 = phone.startsWith("91") || phone.startsWith("+91")
+      ? phone.replace(/^\+/, "")
+      : `91${phone}`;
+
+    const url = `https://wa.me/${e164}?text=${encodeURIComponent(message)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   /* ── appointment actions ── */
   const doStatus = async (id: number, status: Appointment["status"]) => {
     try {
       await updateAppointmentStatus(id, status);
       await loadQueue(true);
-      setNotice({ type: "success", message: `Status → ${status.replace("_", " ")}` });
+      if (status === "in_consultation") {
+        // Find the appointment we just called in from both queue and active lists
+        const calledAppt =
+          [...activeAppts, ...queue].find((a) => a.id === id) ??
+          [...queue].find((a) => a.id === id);
+        if (calledAppt) {
+          sendWhatsAppCallIn(calledAppt);
+        }
+        setNotice({ type: "success", message: `Called in — WhatsApp message opened if phone is on record.` });
+      } else {
+        setNotice({ type: "success", message: `Status → ${status.replace("_", " ")}` });
+      }
     } catch (err) {
       reportError(setNotice, err as { message?: string; status?: number }, "Failed to update status.");
     }
@@ -612,7 +663,10 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
                                   <div style={{ height: 1, background: C.borderLight }} />
 
                                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.8rem" }}>
-                                    <Btn variant="secondary" style={{ justifyContent: "center" }} onClick={() => void doStatus(appt.id, "completed")}>
+                                    <Btn variant="secondary" style={{ justifyContent: "center" }} onClick={async () => {
+                                      await doStatus(appt.id, "completed");
+                                      onNavigate?.("pharmacy");
+                                    }}>
                                       <FiCheckCircle size={14} /> Complete Only
                                     </Btn>
                                     <Btn variant="success" style={{ justifyContent: "center" }} onClick={() => void doCompleteAndNext(appt.id)}>
