@@ -18,8 +18,7 @@ from utils.database import (
 
 def test_generate_patient_id_sequence():
     first_id = generate_patient_id()
-    date_str = datetime.now().strftime("%Y%m%d")
-    assert first_id.startswith(f"PAT-{date_str}-")
+    assert first_id == "PAT-100001"
 
     add_patient(
         {
@@ -40,7 +39,7 @@ def test_generate_patient_id_sequence():
     )
 
     second_id = generate_patient_id()
-    assert second_id.endswith("0002")
+    assert second_id == "PAT-100002"
 
 
 def test_search_patients_full_name_matching():

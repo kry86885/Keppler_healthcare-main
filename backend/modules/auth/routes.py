@@ -11,7 +11,7 @@ from core.limiter import limiter
 auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route("/api/auth/login", methods=["POST", "OPTIONS"])
-@limiter.limit("5 per minute")
+@limiter.limit("20 per minute")
 def login():
     if request.method == "OPTIONS":
         return ("", 204)

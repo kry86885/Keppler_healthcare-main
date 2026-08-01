@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, FormEvent, ReactNode, SetStateAction } from "react";
-import { FiSettings } from "react-icons/fi";
+import { FiSettings, FiMenu } from "react-icons/fi";
 import AuthView from "./components/AuthView";
 import SettingsModal from "./components/SettingsModal";
 import Toast from "./components/ui/Toast";
@@ -249,6 +249,7 @@ function App() {
   const profileActionsRef = useRef<HTMLDivElement | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [hospitalCode, setHospitalCodeState] = useState(getHospitalCode());
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   useEffect(() => {
     if (!notice) return;
     const timeoutId = window.setTimeout(() => setNotice(null), 4200);
@@ -536,7 +537,12 @@ function App() {
         void loadHospitalSummary();
       }
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number });
+      // Login failures must always be shown -- reportError's blanket 401 suppression exists
+      // for background auth checks (e.g. the session-check on page load, which 401s for every
+      // logged-out visitor and shouldn't toast an error), but a wrong-password attempt on the
+      // login form itself is exactly the case the user needs to see.
+      const typedError = error as { message?: string; status?: number };
+      setNotice({ type: "error", message: typedError.message || "Unable to sign in. Please try again." });
     }
   };
 
@@ -669,6 +675,7 @@ function App() {
     }
     syncUrlForPage(nextPage);
     setPage(nextPage);
+    setIsMobileMenuOpen(false);
   };
 
   const refreshPatients = async () => {
@@ -837,7 +844,8 @@ function App() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <div className={`sidebar-overlay ${isMobileMenuOpen ? "open" : ""}`} onClick={() => setIsMobileMenuOpen(false)}></div>
+      <aside className={`sidebar ${isMobileMenuOpen ? "open" : ""}`}>
         <div className="sidebar-top">
           <div className="brand brand-logo-full">
             <img src="/logo.png" alt="HospAI - AI Driven Healthcare Optimization" />
@@ -950,9 +958,14 @@ function App() {
       <main>
         <Container size="full">
         <header className="topbar">
-          <div>
-            <h2>{page === "admin" ? "Admin" : NAV_ITEMS.find((item) => item.id === page)?.label || "Dashboard"}</h2>
-            <p className="muted">Stay ahead with real-time care intelligence.</p>
+          <div className="topbar-header-content">
+            <button className="mobile-menu-btn" onClick={() => setIsMobileMenuOpen(true)} aria-label="Open menu">
+              <FiMenu size={24} />
+            </button>
+            <div>
+              <h2>{page === "admin" ? "Admin" : NAV_ITEMS.find((item) => item.id === page)?.label || "Dashboard"}</h2>
+              <p className="muted">Stay ahead with real-time care intelligence.</p>
+            </div>
           </div>
         </header>
 

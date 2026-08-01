@@ -11,6 +11,12 @@ def test_db_env():
 
 
 @pytest.fixture(autouse=True)
+def mock_load_dotenv(monkeypatch):
+    import dotenv
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *args, **kwargs: None)
+
+
+@pytest.fixture(autouse=True)
 def clean_database():
     # Override global DB cleanup fixture; this module doesn't use DB.
     yield

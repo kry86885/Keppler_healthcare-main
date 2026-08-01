@@ -75,7 +75,7 @@ describe("App role-based UI", () => {
       root.render(<App />);
       await flush();
     });
-    expect(container.textContent).toContain("Welcome back");
+    expect(container.textContent).toContain("Welcome Back");
     expect(container.textContent).toContain("Login");
   });
 
@@ -121,11 +121,34 @@ describe("App role-based UI", () => {
       await flush();
     });
 
+    // Expand Administration group
+    const adminToggle = Array.from(container.querySelectorAll("button")).find(
+      (el) => el.textContent?.includes("Administration")
+    );
+    if (adminToggle) {
+      await act(async () => {
+        adminToggle.click();
+        await flush();
+      });
+    }
+
     const employeesTab = Array.from(container.querySelectorAll("button")).find((el) => el.textContent?.trim() === "Employee Management") as HTMLButtonElement;
+    expect(employeesTab.disabled).toBe(false);
+
+    // Expand OP Management group (which collapses Administration)
+    const opMgmtToggle = Array.from(container.querySelectorAll("button")).find(
+      (el) => el.textContent?.includes("OP Management")
+    );
+    if (opMgmtToggle) {
+      await act(async () => {
+        opMgmtToggle.click();
+        await flush();
+      });
+    }
+
     const appointmentInTab = Array.from(container.querySelectorAll("button")).find((el) => el.textContent?.trim() === "Appointment In") as HTMLButtonElement;
     const appointmentOutTab = Array.from(container.querySelectorAll("button")).find((el) => el.textContent?.trim() === "Appointment Out") as HTMLButtonElement;
 
-    expect(employeesTab.disabled).toBe(false);
     expect(appointmentInTab.disabled).toBe(false);
     expect(appointmentOutTab.disabled).toBe(false);
     expect(container.textContent).toContain("Patient Registration");
@@ -241,7 +264,7 @@ describe("App role-based UI", () => {
       await flush();
     });
 
-    expect(container.textContent).toContain("Welcome back");
+    expect(container.textContent).toContain("Welcome Back");
     expect(container.textContent).toContain("Login");
     expect(container.textContent).not.toContain("Log out");
     expect(container.textContent).not.toContain("Authentication required");

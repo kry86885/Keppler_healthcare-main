@@ -5,8 +5,24 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       PORT: 5001
+      # gunicorn reads WEB_CONCURRENCY natively as its worker count (see
+      # backend/Dockerfile -- no -w flag is hardcoded there anymore).
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-50}
+      # Each gunicorn worker is a separate process with its own connection pool
+      # (see utils.database._get_pg_pool), so this is PER WORKER, not total --
+      # 50 workers x 4 = 200 max connections, safely under Neon's own
+      # max_connections (901 on this project's plan) with headroom for other
+      # things sharing that database (teammates' local dev, pgAdmin, etc).
+      # Raising WEB_CONCURRENCY without lowering this proportionally risks
+      # exhausting the database's connection limit.
+      PG_POOL_MAX: ${PG_POOL_MAX:-4}
       DB_ENGINE: ${DB_ENGINE:-sqlite}
-      DB_PATH: ${DB_PATH:-/data/healthcare.db}
+      # Deliberately no /data/healthcare.db default here (unlike DB_ENGINE) --
+      # database.py treats DB_PATH being set at all, to ANY value, as "force
+      # SQLite regardless of DATABASE_URL" (see IS_POSTGRES's `not DB_PATH_ENV`
+      # check). An always-on default would silently defeat DATABASE_URL.
+      DB_PATH: ${DB_PATH:-}
+      DATABASE_URL: ${DATABASE_URL:-}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://app.hospai.ai,https://staging-app.hospai.ai,http://localhost:5173,http://127.0.0.1:5173}
       SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-hospai_session}
       SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
@@ -55,8 +71,14 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     environment:
+      PG_POOL_MAX: ${PG_POOL_MAX:-4}
       DB_ENGINE: ${DB_ENGINE:-sqlite}
-      DB_PATH: ${DB_PATH:-/data/healthcare.db}
+      # Deliberately no /data/healthcare.db default here (unlike DB_ENGINE) --
+      # database.py treats DB_PATH being set at all, to ANY value, as "force
+      # SQLite regardless of DATABASE_URL" (see IS_POSTGRES's `not DB_PATH_ENV`
+      # check). An always-on default would silently defeat DATABASE_URL.
+      DB_PATH: ${DB_PATH:-}
+      DATABASE_URL: ${DATABASE_URL:-}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
