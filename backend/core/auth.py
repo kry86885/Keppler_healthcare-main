@@ -295,57 +295,18 @@ def create_default_users():
     hospital_id = resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "SELECT username FROM users WHERE username IN ('employee', 'staff') AND hospital_id = ?",
-                (hospital_id,),
-            )
-            existing_scoped = {row[0] for row in cursor.fetchall()}
-        except Exception:
-            existing_scoped = set()
-
-        cursor.execute("SELECT username FROM users WHERE username IN ('employee', 'staff')")
-        existing_any = {row[0] for row in cursor.fetchall()}
-
-        if "employee" in existing_any:
-            cursor.execute(
-                """
-                UPDATE users
-                SET role = 'employee',
-                    access_role = 'owner',
-                    user_type = 'admin',
-                    module_access = ?,
-                    status = 'active'
-                WHERE username = 'employee'
-                """,
-                (modules_to_storage(list(ASSIGNABLE_MODULES)),),
-            )
-
-        if "staff" in existing_any:
-            cursor.execute(
-                """
-                UPDATE users
-                SET role = 'staff',
-                    access_role = 'receptionist',
-                    user_type = 'normal',
-                    module_access = ?,
-                    status = 'active'
-                WHERE username = 'staff'
-                """,
-                (modules_to_storage(list(DEFAULT_NORMAL_MODULES)),),
-            )
 
         defaults = [
             {
                 "username": "employee",
+                "email": "admin@hospai.local",
                 "password_hash": hash_password("employee123"),
                 "role": "employee",
                 "access_role": "owner",
                 "user_type": "admin",
                 "module_access": list(ASSIGNABLE_MODULES),
-                "job_role": "Employee",
-                "full_name": "Default Employee",
-                "email": "employee@hospital.com",
+                "job_role": "Administrator",
+                "full_name": "System Administrator",
                 "phone": "+1-234-567-8900",
                 "department": "General",
                 "status": "active",
@@ -353,7 +314,24 @@ def create_default_users():
                 "emergency_contact": "",
             },
             {
+                "username": "admin",
+                "email": "admin@hospital.com",
+                "password_hash": hash_password("Admin@123"),
+                "role": "employee",
+                "access_role": "owner",
+                "user_type": "admin",
+                "module_access": list(ASSIGNABLE_MODULES),
+                "job_role": "Administrator",
+                "full_name": "Admin User",
+                "phone": "+1-234-567-8901",
+                "department": "Administration",
+                "status": "active",
+                "address": "",
+                "emergency_contact": "",
+            },
+            {
                 "username": "staff",
+                "email": "nurse@hospai.local",
                 "password_hash": hash_password("staff123"),
                 "role": "staff",
                 "access_role": "receptionist",
@@ -361,9 +339,24 @@ def create_default_users():
                 "module_access": list(DEFAULT_NORMAL_MODULES),
                 "job_role": "Staff",
                 "full_name": "Staff User",
-                "email": "",
-                "phone": "",
+                "phone": "+1-234-567-8902",
                 "department": "Ops",
+                "status": "active",
+                "address": "",
+                "emergency_contact": "",
+            },
+            {
+                "username": "doctor",
+                "email": "doctor@hospital.com",
+                "password_hash": hash_password("doctor123"),
+                "role": "employee",
+                "access_role": "clinician",
+                "user_type": "normal",
+                "module_access": ["dashboard", "patients", "symptom_ai", "lab", "reports"],
+                "job_role": "Doctor",
+                "full_name": "Dr. Clinician",
+                "phone": "+1-234-567-8903",
+                "department": "Medicine",
                 "status": "active",
                 "address": "",
                 "emergency_contact": "",
@@ -371,17 +364,38 @@ def create_default_users():
         ]
 
         for user in defaults:
-            if user["username"] in existing_any or user["username"] in existing_scoped:
-                continue
-            user["employee_id"] = generate_employee_id(hospital_id=hospital_id)
-            try:
-                add_employee(user, hospital_id=hospital_id)
-            except Exception as exc:
-                message = str(exc).lower()
-                if "unique constraint failed: users.username" in message or "duplicate key value violates unique constraint" in message:
-                    # Concurrent startup workers may race to seed default users.
-                    continue
-                raise
+            cursor.execute(
+                """
+                UPDATE users
+                SET password_hash = ?,
+                    role = ?,
+                    access_role = ?,
+                    user_type = ?,
+                    module_access = ?,
+                    email = ?,
+                    status = 'active'
+                WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)
+                """,
+                (
+                    user["password_hash"],
+                    user["role"],
+                    user["access_role"],
+                    user["user_type"],
+                    modules_to_storage(user["module_access"]),
+                    user["email"],
+                    user["username"],
+                    user["email"],
+                ),
+            )
+            if cursor.rowcount == 0:
+                user["employee_id"] = generate_employee_id(hospital_id=hospital_id)
+                try:
+                    add_employee(user, hospital_id=hospital_id)
+                except Exception as exc:
+                    message = str(exc).lower()
+                    if "unique constraint" in message or "duplicate key" in message:
+                        continue
+                    raise
 
 
 def authenticate(username: str, password: str, hospital_id: Optional[int] = None):
@@ -389,6 +403,7 @@ def authenticate(username: str, password: str, hospital_id: Optional[int] = None
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
+        clean_identifier = (username or "").strip()
         try:
             cursor.execute(
                 """
@@ -397,9 +412,9 @@ def authenticate(username: str, password: str, hospital_id: Optional[int] = None
                        h.code as hospital_code, h.status as hospital_status
                 FROM users u
                 LEFT JOIN hospitals h ON h.id = u.hospital_id
-                WHERE u.username = ? AND u.hospital_id = ?
+                WHERE (LOWER(u.username) = LOWER(?) OR LOWER(u.email) = LOWER(?)) AND u.hospital_id = ?
             """,
-                (username, scoped_hospital_id),
+                (clean_identifier, clean_identifier, scoped_hospital_id),
             )
         except Exception as exc:
             # Backward compatibility for stale/legacy schemas or stale runtime modules.
@@ -408,9 +423,9 @@ def authenticate(username: str, password: str, hospital_id: Optional[int] = None
                 cursor.execute(
                     """
                     SELECT id, password_hash, role, access_role, user_type, module_access, full_name, email, phone, employee_id, status
-                    FROM users WHERE username = ?
+                    FROM users WHERE (LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?))
                 """,
-                    (username,),
+                    (clean_identifier, clean_identifier),
                 )
             else:
                 raise

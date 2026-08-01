@@ -33,21 +33,31 @@ export default function QueuePage({ setNotice, onNavigate, isReceptionist }: Pro
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
-  const loadAppointments = async () => {
-    setLoading(true);
+  const loadAppointments = async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const data = await apiFetch<{ appointments?: Appointment[] }>(`/api/appointments?date=${today}`);
       setAppointments(data.appointments || []);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load the queue.");
+      if (!isBackground) {
+        reportError(setNotice, error as { message?: string; status?: number }, "Unable to load the queue.");
+      }
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
   useEffect(() => {
     void loadAppointments();
+    
+    // Auto-refresh the queue every 15 seconds
+    const interval = setInterval(() => {
+      void loadAppointments(true);
+    }, 15000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   const doctorOptions = useMemo(

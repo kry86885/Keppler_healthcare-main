@@ -6,7 +6,7 @@ RUN_DIR="${ROOT_DIR}/.devrun"
 BACKEND_PID_FILE="${RUN_DIR}/backend.pid"
 FRONTEND_PID_FILE="${RUN_DIR}/frontend.pid"
 SYMPTOM_PID_FILE="${RUN_DIR}/symptom-backend.pid"
-PORTS=("5001" "5002" "5173")
+PORTS=("5011" "5001" "5002" "5173" "5174" "5175" "5176" "5177")
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   echo "Usage: ./stopdev"
@@ -42,7 +42,7 @@ for port in "${PORTS[@]}"; do
   pids="$(lsof -tiTCP:${port} -sTCP:LISTEN 2>/dev/null || true)"
   if [[ -n "${pids}" ]]; then
     echo "Stopping process(es) listening on port ${port}: ${pids}"
-    kill ${pids} 2>/dev/null || true
+    kill -9 ${pids} 2>/dev/null || true
     stopped_any=true
   fi
 done

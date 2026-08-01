@@ -80,50 +80,50 @@ export const MODULE_PERMISSIONS: Record<ModuleId, string[]> = {
 
 export const NAV_ITEMS: NavItem[] = [
   // Overview: landing page, then the two most common patient lookups.
-  { id: "dashboard", label: "Dashboard", group: "overview", permission: "patients.read", deniedHint: "Requires patient access." },
-  { id: "patients", label: "Patients", group: "overview", permission: "patients.read", deniedHint: "Requires patient access." },
-  { id: "readmit", label: "Re-admit", group: "overview", permission: "patients.write", deniedHint: "Requires patient write access." },
+  { id: "dashboard", label: "Dashboard", group: "overview", permission: "patients.read", deniedHint: "Requires patient access.", module: "dashboard" },
+  { id: "patients", label: "Patients", group: "overview", permission: "patients.read", deniedHint: "Requires patient access.", module: "patients" },
+  { id: "readmit", label: "Re-admit", group: "overview", permission: "patients.write", deniedHint: "Requires patient write access.", module: "patients" },
 
   // OP Management: ordered to match the actual front-desk-to-discharge patient journey.
-  { id: "add", label: "Patient Registration", group: "registration", permission: "patients.write", deniedHint: "Requires patient write access." },
-  { id: "consent-desk", label: "Consent Desk", group: "registration", permission: "patients.write", deniedHint: "Requires patient write access." },
-  { id: "insurance-desk", label: "Insurance Desk", group: "registration", permission: "patients.write", deniedHint: "Requires patient write access." },
-  { id: "appointment-in", label: "Appointment In", group: "registration", permission: "patients.read", deniedHint: "Requires patient access." },
-  { id: "queue", label: "Queue Management", group: "registration", permission: "patients.read", deniedHint: "Requires patient access." },
-  { id: "doctor-prescription", label: "Doctor Prescription", group: "registration", permission: "patients.read", deniedHint: "Requires patient access." },
-  { id: "emr", label: "EMR", group: "registration", permission: "patients.read", deniedHint: "Requires patient access." },
-  { id: "appointment-out", label: "Appointment Out", group: "registration", permission: "patients.read", deniedHint: "Requires patient access." },
+  { id: "add", label: "Patient Registration", group: "registration", permission: "patients.write", deniedHint: "Requires patient write access.", module: "patients" },
+  { id: "consent-desk", label: "Consent Desk", group: "registration", permission: "patients.write", deniedHint: "Requires patient write access.", module: "patients" },
+  { id: "insurance-desk", label: "Insurance Desk", group: "registration", permission: "patients.write", deniedHint: "Requires patient write access.", module: "patients" },
+  { id: "appointment-in", label: "Appointment In", group: "registration", permission: "patients.read", deniedHint: "Requires patient access.", module: "patients" },
+  { id: "doctor-prescription", label: "Doctor Prescription", group: "registration", permission: "patients.read", deniedHint: "Requires patient access.", module: "patients" },
+  { id: "queue", label: "Queue Management", group: "registration", permission: "patients.read", deniedHint: "Requires patient access.", module: "patients" },
+  { id: "emr", label: "EMR", group: "registration", permission: "patients.read", deniedHint: "Requires patient access.", module: "patients" },
+  { id: "appointment-out", label: "Appointment Out", group: "registration", permission: "patients.read", deniedHint: "Requires patient access.", module: "patients" },
 
   // Operations: scheduling first, then the departments doctors refer patients to.
-  { id: "op-desk", label: "Doctor Scheduling", group: "operations", permission: "patients.read", deniedHint: "Requires patient access." },
-  { id: "pharmacy", label: "Pharmacy", group: "operations", permission: "pharmacy.read", deniedHint: "Requires pharmacy access." },
-  { id: "lab", label: "Lab & Diagnostics", group: "operations", permission: "lab.read", deniedHint: "Requires lab access." },
-  { id: "ot", label: "OT", group: "operations", permission: "ot.read", deniedHint: "Requires OT access." },
+  { id: "op-desk", label: "Doctor Scheduling", group: "operations", permission: "patients.read", deniedHint: "Requires patient access.", module: "patients" },
+  { id: "pharmacy", label: "Pharmacy", group: "operations", permission: "pharmacy.read", deniedHint: "Requires pharmacy access.", module: "pharmacy" },
+  { id: "lab", label: "Lab & Diagnostics", group: "operations", permission: "lab.read", deniedHint: "Requires lab access.", module: "lab" },
+  { id: "ot", label: "OT", group: "operations", permission: "ot.read", deniedHint: "Requires OT access.", module: "ot" },
 
   // AI: the flagship assistant first, then supporting document/bulk tools.
-  { id: "symptom-ai", label: "SymptoMap AI", group: "ai", permission: "symptom_ai.use", deniedHint: "Requires SymptoMap AI access." },
-  { id: "ocr", label: "OCR Scanner", group: "ai", permission: "patients.write", deniedHint: "Requires patient write access." },
-  { id: "bulk-ai", label: "AI Mode", group: "ai", permission: "patients.write", deniedHint: "Requires patient write access." },
+  { id: "symptom-ai", label: "SymptoMap AI", group: "ai", permission: "symptom_ai.use", deniedHint: "Requires SymptoMap AI access.", module: "symptom_ai" },
+  { id: "ocr", label: "OCR Scanner", group: "ai", permission: "patients.write", deniedHint: "Requires patient write access.", module: "symptom_ai" },
+  { id: "bulk-ai", label: "AI Mode", group: "ai", permission: "patients.write", deniedHint: "Requires patient write access.", module: "symptom_ai" },
 
   // Finance: overview first, then day-to-day billing actions, then reconciliation/analytics,
   // then accounts-payable (ledger/vendor/doctor payouts), then cross-module reports last.
-  { id: "accounts-overview", label: "Accounts Overview", group: "finance", permission: "accounts.read", deniedHint: "Requires accounts access." },
-  { id: "billing-create-invoice", label: "Create Invoice", group: "finance", permission: "billing.write", deniedHint: "Requires billing write access." },
-  { id: "billing-invoices", label: "Invoices", group: "finance", permission: "billing.read", deniedHint: "Requires billing access." },
-  { id: "billing-record-payment", label: "Record Payment", group: "finance", permission: "billing.write", deniedHint: "Requires billing write access." },
-  { id: "billing-reconciliation", label: "Payment Reconciliation", group: "finance", permission: "billing.read", deniedHint: "Requires billing access." },
-  { id: "billing-insurance-claims", label: "Insurance Claims", group: "finance", permission: "billing.write", deniedHint: "Requires billing write access." },
-  { id: "billing-mode-breakdown", label: "Payment Mode Breakdown", group: "finance", permission: "billing.read", deniedHint: "Requires billing access." },
-  { id: "billing-module-collections", label: "Collections by Module", group: "finance", permission: "billing.read", deniedHint: "Requires billing access." },
-  { id: "billing-aging", label: "Receivable Aging", group: "finance", permission: "billing.read", deniedHint: "Requires billing access." },
-  { id: "accounts-ledger", label: "Ledger Entries", group: "finance", permission: "accounts.read", deniedHint: "Requires accounts access." },
-  { id: "accounts-vendor-payments", label: "Vendor Payments", group: "finance", permission: "accounts.read", deniedHint: "Requires accounts access." },
-  { id: "accounts-doctor-payouts", label: "Doctor Payouts", group: "finance", permission: "accounts.read", deniedHint: "Requires accounts access." },
-  { id: "reports", label: "Reports", group: "finance", permission: "reports.read", deniedHint: "Requires reports access." },
+  { id: "accounts-overview", label: "Accounts Overview", group: "finance", permission: "accounts.read", deniedHint: "Requires accounts access.", module: "accounts" },
+  { id: "billing-create-invoice", label: "Create Invoice", group: "finance", permission: "billing.write", deniedHint: "Requires billing write access.", module: "billing" },
+  { id: "billing-invoices", label: "Invoices", group: "finance", permission: "billing.read", deniedHint: "Requires billing access.", module: "billing" },
+  { id: "billing-record-payment", label: "Record Payment", group: "finance", permission: "billing.write", deniedHint: "Requires billing write access.", module: "billing" },
+  { id: "billing-reconciliation", label: "Payment Reconciliation", group: "finance", permission: "billing.read", deniedHint: "Requires billing access.", module: "billing" },
+  { id: "billing-insurance-claims", label: "Insurance Claims", group: "finance", permission: "billing.write", deniedHint: "Requires billing write access.", module: "billing" },
+  { id: "billing-mode-breakdown", label: "Payment Mode Breakdown", group: "finance", permission: "billing.read", deniedHint: "Requires billing access.", module: "billing" },
+  { id: "billing-module-collections", label: "Collections by Module", group: "finance", permission: "billing.read", deniedHint: "Requires billing access.", module: "billing" },
+  { id: "billing-aging", label: "Receivable Aging", group: "finance", permission: "billing.read", deniedHint: "Requires billing access.", module: "billing" },
+  { id: "accounts-ledger", label: "Ledger Entries", group: "finance", permission: "accounts.read", deniedHint: "Requires accounts access.", module: "accounts" },
+  { id: "accounts-vendor-payments", label: "Vendor Payments", group: "finance", permission: "accounts.read", deniedHint: "Requires accounts access.", module: "accounts" },
+  { id: "accounts-doctor-payouts", label: "Doctor Payouts", group: "finance", permission: "accounts.read", deniedHint: "Requires accounts access.", module: "accounts" },
+  { id: "reports", label: "Reports", group: "finance", permission: "reports.read", deniedHint: "Requires reports access.", module: "reports" },
 
   // Administration: manage employees before managing their HR operations (attendance/payroll/leave).
   { id: "employees", label: "Employee Management", group: "admin", permission: "employees.read", deniedHint: "Requires admin access." },
-  { id: "hrms", label: "HRMS", group: "admin", permission: "hr.read", deniedHint: "Requires HRMS access." },
+  { id: "hrms", label: "HRMS", group: "admin", permission: "hr.read", deniedHint: "Requires HRMS access.", module: "hrms" },
 
   { id: "settings", label: "Settings" },
 ];

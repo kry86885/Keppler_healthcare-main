@@ -418,6 +418,7 @@ export interface NavItem {
   permission?: string;
   deniedHint?: string;
   group?: "overview" | "ai" | "registration" | "operations" | "finance" | "admin";
+  module?: ModuleId;
 }
 
 export interface Employee {

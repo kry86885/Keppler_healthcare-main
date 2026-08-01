@@ -101,10 +101,16 @@ def _notify_patient_prescription_ready(patient, ocr_text, doctor_name=None):
 def patients_list():
     query = (request.args.get("q") or "").strip()
     hospital_id = current_hospital_id()
+    
+    # Enforce isolation for clinicians
+    doctor_name = None
+    if getattr(g, "current_user", {}).get("access_role") == "clinician":
+        doctor_name = g.current_user.get("full_name") or g.current_user.get("username")
+        
     patients = (
-        search_patients(query, hospital_id=hospital_id)
+        search_patients(query, hospital_id=hospital_id, doctor_name=doctor_name)
         if query
-        else get_all_patients(hospital_id=hospital_id)
+        else get_all_patients(hospital_id=hospital_id, doctor_name=doctor_name)
     )
     return jsonify({"patients": rows_to_dicts(patients)})
 

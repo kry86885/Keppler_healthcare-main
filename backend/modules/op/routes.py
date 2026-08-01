@@ -26,7 +26,8 @@ from utils.database import (
     create_doctor,
     list_doctors,
     update_doctor,
-    delete_doctor
+    delete_doctor,
+    get_suggested_doctors
 )
 
 
@@ -142,3 +143,11 @@ def op_doctors_delete(doctor_id):
         return jsonify({"error": "Doctor not found"}), 404
     log_audit_event("delete", "doctors", str(doctor_id), {"doctor_id": doctor_id})
     return jsonify({"status": "ok"})
+
+@op_bp.get("/api/op/doctors/suggest")
+@require_permissions("patients.read")
+def op_doctors_suggest():
+    department = request.args.get("department")
+    region = request.args.get("region")
+    doctors = get_suggested_doctors(department=department, region=region)
+    return jsonify({"doctors": doctors, "suggested_department": department or region})

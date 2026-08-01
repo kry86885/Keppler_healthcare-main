@@ -886,13 +886,23 @@ def triage():
         candidate = (response.text or "").strip()
         import json
         triage_result = json.loads(candidate)
+        
+        # Enforce that the selected department is valid
+        dept = triage_result.get("department")
+        if available_departments and dept not in available_departments:
+            triage_result["department"] = "General Medicine"
+            triage_result["reasoning"] += f" (Note: Directed to General Medicine as {dept} was not available.)"
+            
         return jsonify(triage_result)
     except Exception as exc:
-        fallback_dept = available_departments[0] if available_departments else "General Medicine"
+        fallback_dept = "General Medicine"
+        if available_departments and fallback_dept not in available_departments:
+            fallback_dept = available_departments[0]
+            
         fallback_triage = {
             "department": fallback_dept,
             "urgency": "Routine",
-            "reasoning": f"AI Triage unavailable: {str(exc)[:50]}... Defaulting to {fallback_dept}."
+            "reasoning": f"AI Triage fallback due to error. Defaulting to {fallback_dept}."
         }
         return jsonify(fallback_triage), 200
 

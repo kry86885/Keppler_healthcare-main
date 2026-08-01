@@ -200,7 +200,7 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
 
   /* — today schedule — */
   const [todayAppts, setTodayAppts]   = useState<Appointment[]>([]);
-  const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().slice(0, 10));
+  const [scheduleDate, setScheduleDate] = useState(new Date().toLocaleDateString('en-CA'));
   const [schedLoading, setSchedLoading] = useState(false);
 
   /* — prescription upload — */
@@ -216,7 +216,7 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
   const loadQueue = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true); else setRefreshing(true);
     try {
-      const today = new Date().toISOString().split("T")[0];
+      const today = new Date().toLocaleDateString('en-CA');
       const data = await apiFetch<{ appointments?: Appointment[] }>(`/api/appointments?date=${today}`);
       const appts = data?.appointments ?? [];
       const inConsultation = appts.filter(a => a.status === "in_consultation");

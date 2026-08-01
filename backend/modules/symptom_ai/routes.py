@@ -130,7 +130,7 @@ The patient reports the following symptoms:
 Available departments: {', '.join(available_departments) if available_departments else 'Any'}
 
 Analyze the symptoms and provide a JSON response with:
-1. "department": The most appropriate department from the available list.
+1. "department": The most appropriate department from the EXACT list of Available departments. If the symptoms do not clearly match any of the available departments, or if no available departments are provided, you MUST output "General".
 2. "urgency": "Low", "Medium", "High", or "Critical".
 3. "reasoning": A brief explanation of your recommendation (1-2 sentences).
 
@@ -145,6 +145,11 @@ Your response MUST be valid JSON only. Do not include markdown formatting or bac
             response_text = response_text[::-1].replace("```", "", 1)[::-1]
         
         result = json.loads(response_text.strip())
+        
+        # Enforce fallback if the model hallucinates a department
+        if available_departments and result.get("department") not in available_departments:
+            result["department"] = "General"
+            
         return jsonify(result)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500

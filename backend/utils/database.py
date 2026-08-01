@@ -33,8 +33,10 @@ DB_PATH = DB_PATH_ENV or DEFAULT_DB_PATH
 DB_ENGINE = (os.getenv("DB_ENGINE") or "sqlite").strip().lower()
 IST_TIMEZONE = timezone(timedelta(hours=5, minutes=30))
 DEFAULT_HOSPITAL_CODE = (os.getenv("DEFAULT_HOSPITAL_CODE") or "hosp-default").strip().lower()
-IS_POSTGRES = not DB_PATH_ENV and (
-    DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")
+IS_POSTGRES = (
+    DB_ENGINE == "postgres" or
+    DATABASE_URL.startswith("postgres://") or
+    DATABASE_URL.startswith("postgresql://")
 )
 
 
@@ -147,7 +149,11 @@ def get_connection(autocommit: bool = False):
             )
 
     sqlite_path = _resolve_sqlite_db_path()
-    conn = sqlite3.connect(sqlite_path, check_same_thread=False)
+    conn = sqlite3.connect(sqlite_path, check_same_thread=False, timeout=30.0)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except Exception:
+        pass
     conn.row_factory = sqlite3.Row
     try:
         yield _CompatConnection(conn, postgres=False)
@@ -971,6 +977,27 @@ def ensure_department_master_scope(conn):
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_department_master_hospital_name ON department_master(hospital_id, department_name)"
     )
 
+    # Seed standard multi-specialty hospital departments
+    standard_departments = [
+        "Cardiology", "Neurology", "Orthopedics", "General Medicine", 
+        "Pediatrics", "Gynecology", "Dermatology", "Oncology", 
+        "ENT", "Ophthalmology", "Psychiatry", "Urology", 
+        "Gastroenterology", "Pulmonology", "Endocrinology", 
+        "Nephrology", "Rheumatology", "General Surgery"
+    ]
+    
+    insert_conflict = "ON CONFLICT DO NOTHING" if IS_POSTGRES else ""
+    insert_prefix = "INSERT INTO" if IS_POSTGRES else "INSERT OR IGNORE INTO"
+    
+    for dept in standard_departments:
+        cursor.execute(
+            f"""
+            {insert_prefix} department_master (hospital_id, department_name)
+            VALUES (?, ?) {insert_conflict}
+            """,
+            (default_hospital_id, dept)
+        )
+
 
 def ensure_patient_columns(conn):
     cursor = conn.cursor()
@@ -1664,6 +1691,27 @@ def ensure_hospai_module_tables(conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_accounts_ledger_type ON accounts_ledger(entry_type)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_vendor_payments_vendor ON vendor_payments(vendor_name)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_doctor_payouts_doctor ON doctor_payouts(doctor_name)")
+
+    cursor.execute("SELECT COUNT(*) FROM doctors")
+    doc_count = cursor.fetchone()[0]
+    if doc_count == 0:
+        default_docs = [
+            ("Dr. Robert Vance", "Cardiology", 150.0, 75.0, "available"),
+            ("Dr. Emily Chen", "Neurology", 160.0, 80.0, "available"),
+            ("Dr. Michael Ross", "General Medicine", 100.0, 50.0, "available"),
+            ("Dr. Sophia Martinez", "Orthopedics", 140.0, 70.0, "available"),
+            ("Dr. James Wilson", "Dermatology", 120.0, 60.0, "available"),
+            ("Dr. Anita Patel", "ENT", 110.0, 55.0, "available"),
+            ("Dr. David Kim", "Pediatrics", 115.0, 60.0, "available"),
+        ]
+        for name, dept, c_fee, r_fee, status in default_docs:
+            cursor.execute(
+                _to_sql_params("""
+                INSERT INTO doctors (doctor_name, department, consultation_fee, review_fee, status)
+                VALUES (?, ?, ?, ?, ?)
+                """),
+                (name, dept, c_fee, r_fee, status),
+            )
 
 
 # ==================== Schema hardening: uuid + audit/soft-delete columns ====================
@@ -2514,27 +2562,32 @@ def get_patient(patient_id, hospital_id=None):
         return cursor.fetchone()
 
 
-def get_all_patients(hospital_id=None):
+def get_all_patients(hospital_id=None, doctor_name=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """SELECT p.*, (SELECT status FROM appointments a WHERE a.patient_id = p.patient_id ORDER BY a.created_at DESC LIMIT 1) as status 
-            FROM patients p WHERE p.hospital_id = ? AND p.deleted_at IS NULL ORDER BY p.created_at DESC""",
-            (scoped_hospital_id,),
-        )
+        query = """SELECT p.*, (SELECT status FROM appointments a WHERE a.patient_id = p.patient_id ORDER BY a.created_at DESC LIMIT 1) as status 
+            FROM patients p WHERE p.hospital_id = ? AND p.deleted_at IS NULL"""
+        params = [scoped_hospital_id]
+        
+        if doctor_name:
+            query += " AND p.patient_id IN (SELECT patient_id FROM appointments WHERE doctor_name = ?)"
+            params.append(doctor_name)
+            
+        query += " ORDER BY p.created_at DESC"
+        cursor.execute(query, tuple(params))
         return cursor.fetchall()
 
 
-def search_patients(query, hospital_id=None):
+def search_patients(query, hospital_id=None, doctor_name=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         if not query:
             return []
         search = f"%{query.strip().lower()}%"
-        cursor.execute(
-            """
+        
+        sql = """
             SELECT p.*, (SELECT status FROM appointments a WHERE a.patient_id = p.patient_id ORDER BY a.created_at DESC LIMIT 1) as status
             FROM patients p WHERE
             p.hospital_id = ? AND p.deleted_at IS NULL AND (
@@ -2542,10 +2595,15 @@ def search_patients(query, hospital_id=None):
             OR LOWER(p.phone) LIKE ? OR LOWER(p.patient_id) LIKE ? OR LOWER(p.aadhar_number) LIKE ?
             OR LOWER(TRIM(p.name || ' ' || COALESCE(p.middle_name, '') || ' ' || p.last_name)) LIKE ?
             OR LOWER(TRIM(p.last_name || ' ' || p.name)) LIKE ?)
-            ORDER BY p.created_at DESC
-        """,
-            (scoped_hospital_id, search, search, search, search, search, search, search, search),
-        )
+        """
+        params = [scoped_hospital_id, search, search, search, search, search, search, search, search]
+        
+        if doctor_name:
+            sql += " AND p.patient_id IN (SELECT patient_id FROM appointments WHERE doctor_name = ?)"
+            params.append(doctor_name)
+            
+        sql += " ORDER BY p.created_at DESC"
+        cursor.execute(sql, tuple(params))
         return cursor.fetchall()
 
 
@@ -2815,7 +2873,7 @@ def get_patient_stats(hospital_id=None):
                 WHERE hospital_id = ?
                 GROUP BY patient_id
                 HAVING COUNT(*) > 1
-            )
+            ) AS readmitted_subquery
             """
             ,
             (scoped_hospital_id,),
@@ -3070,7 +3128,7 @@ def add_employee(data, hospital_id=None):
                     data.get("status", "active"),
                     data.get("address"),
                     data.get("emergency_contact"),
-                    data.get("access_role", "receptionist"),
+                    data.get("access_role") or ("clinician" if str(data.get("job_role", "")).lower() == "doctor" else "receptionist"),
                     data.get("user_type", "normal"),
                     json.dumps(data.get("module_access", []), separators=(",", ":")),
                 ),
@@ -3097,7 +3155,7 @@ def add_employee(data, hospital_id=None):
                     data.get("status", "active"),
                     data.get("address"),
                     data.get("emergency_contact"),
-                    data.get("access_role", "receptionist"),
+                    data.get("access_role") or ("clinician" if str(data.get("job_role", "")).lower() == "doctor" else "receptionist"),
                     data.get("user_type", "normal"),
                     json.dumps(data.get("module_access", []), separators=(",", ":")),
                 ),
@@ -3418,13 +3476,25 @@ def create_doctor(data):
         conn.commit()
         return doctor_id
 
-def list_doctors(department=None):
+def list_doctors(department=None, hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
+        query = """
+            SELECT 
+                u.id as id,
+                u.full_name as doctor_name,
+                u.department as department,
+                0.0 as consultation_fee,
+                0.0 as review_fee,
+                u.status as status
+            FROM users u
+            WHERE u.job_role = 'Doctor' AND u.hospital_id = ?
+        """
         if department:
-            cursor.execute(_to_sql_params("SELECT * FROM doctors WHERE department = ? ORDER BY doctor_name"), (department,))
+            cursor.execute(_to_sql_params(f"SELECT * FROM ({query}) AS combined WHERE department = ? ORDER BY doctor_name"), (scoped_hospital_id, department))
         else:
-            cursor.execute("SELECT * FROM doctors ORDER BY doctor_name")
+            cursor.execute(_to_sql_params(f"SELECT * FROM ({query}) AS combined ORDER BY doctor_name"), (scoped_hospital_id,))
         return [dict(row) for row in cursor.fetchall()]
 
 def update_doctor(doctor_id, data):
@@ -3453,6 +3523,58 @@ def delete_doctor(doctor_id):
         cursor.execute(_to_sql_params("DELETE FROM doctors WHERE id = ?"), (doctor_id,))
         conn.commit()
         return cursor.rowcount > 0
+
+def get_suggested_doctors(department=None, region=None):
+    region_dept_map = {
+        "chest": "Cardiology",
+        "head": "Neurology",
+        "neck": "ENT",
+        "abdomen": "General Medicine",
+        "hips": "Orthopedics",
+        "thighs": "Orthopedics",
+        "knees": "Orthopedics",
+        "feet": "Orthopedics",
+        "arms": "Orthopedics",
+        "skin": "Dermatology",
+        "full_body": "General Medicine",
+    }
+    target_dept = department
+    if not target_dept and region:
+        target_dept = region_dept_map.get(region.lower(), "General Medicine")
+    
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        query = """
+            SELECT 
+                COALESCE(d.id, u.id) as id,
+                COALESCE(u.full_name, d.doctor_name) as doctor_name,
+                COALESCE(u.department, d.department) as department,
+                COALESCE(d.consultation_fee, 0.0) as consultation_fee,
+                COALESCE(d.review_fee, 0.0) as review_fee,
+                COALESCE(d.status, u.status, 'available') as status
+            FROM users u
+            LEFT JOIN doctors d ON LOWER(u.full_name) = LOWER(d.doctor_name)
+            WHERE u.job_role = 'Doctor'
+            
+            UNION
+            
+            SELECT 
+                id, doctor_name, department, consultation_fee, review_fee, status
+            FROM doctors
+            WHERE NOT EXISTS (
+                SELECT 1 FROM users u WHERE LOWER(u.full_name) = LOWER(doctors.doctor_name) AND u.job_role = 'Doctor'
+            )
+        """
+        if target_dept:
+            cursor.execute(
+                _to_sql_params(f"SELECT * FROM ({query}) AS combined WHERE LOWER(department) LIKE LOWER(?) ORDER BY doctor_name"),
+                (f"%{target_dept}%",),
+            )
+            matched = [dict(row) for row in cursor.fetchall()]
+            if matched:
+                return matched
+        cursor.execute(f"SELECT * FROM ({query}) AS combined ORDER BY doctor_name")
+        return [dict(row) for row in cursor.fetchall()]
 
 
 def create_doctor_schedule(data):

@@ -36,9 +36,16 @@ if ! command -v npm >/dev/null 2>&1; then
 fi
 
 for port in "${PORTS[@]}"; do
-  if lsof -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "Error: port ${port} is already in use. Stop the conflicting service and retry."
-    exit 1
+  pids="$(lsof -t -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -n "${pids}" ]]; then
+    echo "Cleaning up process listening on port ${port}..."
+    kill -9 ${pids} 2>/dev/null || true
+    for _ in {1..10}; do
+      if ! lsof -t -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.3
+    done
   fi
 done
 

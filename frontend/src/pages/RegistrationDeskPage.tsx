@@ -17,7 +17,8 @@ type Props = {
   mode: RegistrationMode;
   selectedPatient: Patient | null;
   setNotice: Dispatch<SetStateAction<Notice | null>>;
-  onNavigate?: (page: string) => void;
+  onNavigate?: (page: string, extraData?: any) => void;
+  prefillData?: { doctorName?: string, department?: string } | null;
 };
 
 type Department = {
@@ -79,7 +80,7 @@ function patientFullName(patient: Patient | null) {
   return `${patient?.name || ""} ${patient?.middle_name || ""} ${patient?.last_name || ""}`.trim();
 }
 
-export default function RegistrationDeskPage({ mode, selectedPatient, setNotice, onNavigate }: Props) {
+export default function RegistrationDeskPage({ mode, selectedPatient, setNotice, onNavigate, prefillData }: Props) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [savingAppointment, setSavingAppointment] = useState(false);
@@ -103,6 +104,26 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
   const [consentForm, setConsentForm] = useState({ ...DEFAULT_CONSENT_FORM });
   const [insuranceForm, setInsuranceForm] = useState({ ...DEFAULT_INSURANCE_FORM });
 
+  useEffect(() => {
+    if (prefillData) {
+      setAppointmentForm(prev => {
+        let nextFee = prev.consultation_fee;
+        if (doctors.length > 0 && prefillData.doctorName) {
+          const doc = doctors.find(d => (d.doctor_name || "").toLowerCase() === (prefillData.doctorName || "").toLowerCase());
+          if (doc && doc.consultation_fee != null) {
+            nextFee = String(doc.consultation_fee);
+          }
+        }
+        return {
+          ...prev,
+          department: prefillData.department || prev.department,
+          doctor_name: prefillData.doctorName || prev.doctor_name,
+          consultation_fee: nextFee
+        };
+      });
+    }
+  }, [prefillData, doctors]);
+
   const [symptomsText, setSymptomsText] = useState("");
   const [triageLoading, setTriageLoading] = useState(false);
   const [triageResult, setTriageResult] = useState<{ urgency?: string; reasoning?: string } | null>(null);
@@ -110,7 +131,7 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
   const loadAppointments = async () => {
     setAppointmentsLoading(true);
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = new Date().toLocaleDateString('en-CA');
       const data = await apiFetch<{ appointments?: Appointment[] }>(`/api/appointments?date=${today}`);
       setAppointments(data.appointments || []);
     } catch (error) {
@@ -168,10 +189,21 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
             nextDoctor = targetDoc.doctor_name || "";
             nextFee = targetDoc.consultation_fee != null ? String(targetDoc.consultation_fee) : "0";
           }
+        } else if (inDeptDocs.length === 0 && dept !== "General") {
+          // If the AI returned a department that has no doctors, fallback to General
+          const generalDocs = doctors.filter(d => (d.department || "").toLowerCase() === "general");
+          if (generalDocs.length > 0) {
+            const availableDocs = generalDocs.filter(d => d.status === "available");
+            const targetDoc = availableDocs.length > 0 ? availableDocs[0] : generalDocs[0];
+            if (targetDoc) {
+              nextDoctor = targetDoc.doctor_name || "";
+              nextFee = targetDoc.consultation_fee != null ? String(targetDoc.consultation_fee) : "0";
+            }
+          }
         }
       }
 
-      return { ...prev, department: targetDeptName, doctor_name: nextDoctor, consultation_fee: nextFee };
+      return { ...prev, department: targetDeptName || "General", doctor_name: nextDoctor, consultation_fee: nextFee };
     });
   };
 
@@ -227,10 +259,9 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
     }
     setTriageLoading(true);
     try {
-      // Build unique list of departments combining department_master AND active doctors' departments
+      // Build list of departments that actually have registered doctors
       const availableDepartments = Array.from(
         new Set([
-          ...departments.map((d) => d.department_name),
           ...doctors.map((doc) => doc.department)
         ])
       ).filter(Boolean) as string[];
@@ -327,6 +358,7 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
           department: appointmentForm.department.trim() || undefined,
           doctor_name: appointmentForm.doctor_name.trim() || undefined,
           appointment_date: appointmentForm.appointment_date,
+          status: "checked_in",
           notes: appointmentForm.notes.trim() || undefined,
         }),
       });
@@ -581,6 +613,21 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
     [appointments]
   );
 
+  const allDepartments = useMemo(() => {
+    const map = new Map<string, string>();
+    departments.forEach(d => {
+      const name = (d.department_name || "").trim();
+      if (name) map.set(name.toLowerCase(), name);
+    });
+    doctors.forEach(d => {
+      const name = (d.department || "").trim();
+      if (name && !map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), name);
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+  }, [departments, doctors]);
+
   if (mode === "consent") {
     return (
       <section className="module-page">
@@ -805,15 +852,11 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
                 onChange={(event) => handleDepartmentChange(event.target.value)}
               >
                 <option value="">Select department</option>
-                {departments.map((department) => {
-                  const name = (department.department_name || "").trim();
-                  if (!name) return null;
-                  return (
-                    <option key={department.id} value={name}>
-                      {name}
-                    </option>
-                  );
-                })}
+                {allDepartments.map((deptName) => (
+                  <option key={deptName} value={deptName}>
+                    {deptName}
+                  </option>
+                ))}
               </Select>
             </Label>
             <Label>

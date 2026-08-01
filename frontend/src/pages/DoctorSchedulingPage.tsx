@@ -62,7 +62,7 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
   const [savingDoctor, setSavingDoctor] = useState(false);
   
   const [departmentInput, setDepartmentInput] = useState("");
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState(new Date().toLocaleDateString('en-CA'));
   const [selectedDoctor, setSelectedDoctor] = useState("");
   const [savingDepartment, setSavingDepartment] = useState(false);
 
@@ -201,119 +201,194 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
         <StatCard label="NO-SHOWS" value={summary.no_shows} />
       </div>
 
-      <div className="panel registration-desk-panel">
-        <h4>Manage Departments</h4>
-        <div className="module-inline-actions">
-          <Input
-            value={departmentInput}
-            onChange={(event) => setDepartmentInput(event.target.value)}
-            placeholder="Enter new department name"
-            aria-label="Department name"
-            disabled={!canEdit}
-          />
-          <Button type="button" onClick={() => void handleAddDepartment()} disabled={savingDepartment || !canEdit}>
-            {savingDepartment ? "Adding..." : "Add Department"}
-          </Button>
-        </div>
-      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "1.5rem", marginTop: "1.5rem" }}>
+        {/* Left Column: Add / Edit Doctor Form */}
+        <div className="panel" style={{ padding: "1.5rem", background: "#FFFFFF", borderRadius: "12px", border: "1px solid #E2E8F0", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+          <h4 style={{ margin: "0 0 0.5rem 0", fontSize: "1.15rem", color: "#0F172A", fontWeight: 600 }}>
+            {doctorForm.id ? "✏️ Edit Doctor Profile" : "➕ Add New Doctor"}
+          </h4>
+          <p className="muted" style={{ margin: "0 0 1.25rem 0", fontSize: "0.875rem" }}>
+            Add doctors to the administrative roster. They will automatically be available in Appointments & Symptom AI.
+          </p>
 
-      <div className="panel">
-        <form onSubmit={(e) => void handleDoctorSubmit(e)} style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: '0.75rem', alignItems: 'end' }}>
-          <Input
-            value={doctorForm.doctor_name}
-            onChange={(e) => setDoctorForm((prev) => ({ ...prev, doctor_name: e.target.value }))}
-            placeholder="Doctor name"
-            required
-            disabled={!canEdit}
-          />
-          <Select
-            value={doctorForm.department}
-            onChange={(e) => setDoctorForm((prev) => ({ ...prev, department: e.target.value }))}
-            required
-            disabled={!canEdit}
-          >
-            <option value="">Select department</option>
-            {departments.map((dept) => (
-              <option key={dept.id} value={dept.department_name}>
-                {dept.department_name}
-              </option>
-            ))}
-          </Select>
-          <Input
-            type="number"
-            min="0"
-            value={doctorForm.consultation_fee}
-            onChange={(e) => setDoctorForm((prev) => ({ ...prev, consultation_fee: e.target.value }))}
-            placeholder="Consultation fee"
-            required
-            disabled={!canEdit}
-          />
-          <Input
-            type="number"
-            min="0"
-            value={doctorForm.review_fee}
-            onChange={(e) => setDoctorForm((prev) => ({ ...prev, review_fee: e.target.value }))}
-            placeholder="Review fee"
-            required
-            disabled={!canEdit}
-          />
-          <Select
-            value={doctorForm.status}
-            onChange={(e) => setDoctorForm((prev) => ({ ...prev, status: e.target.value as "available" | "leave" }))}
-            disabled={!canEdit}
-          >
-            <option value="available">Available</option>
-            <option value="leave">On Leave</option>
-          </Select>
-          <div style={{ gridColumn: '1 / 2' }}>
-            <Button type="submit" disabled={savingDoctor || !canEdit} style={{ width: '100%' }}>
-              {savingDoctor ? "Saving..." : doctorForm.id ? "Update" : "Add"}
-            </Button>
-            {doctorForm.id && (
-              <Button type="button" variant="secondary" onClick={() => setDoctorForm(DEFAULT_DOCTOR_FORM)} style={{ width: '100%', marginTop: '0.5rem' }}>
-                Cancel Edit
+          <form onSubmit={(e) => void handleDoctorSubmit(e)} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div>
+              <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "#475569", marginBottom: "0.35rem" }}>
+                Full Name *
+              </label>
+              <Input
+                value={doctorForm.doctor_name}
+                onChange={(e) => setDoctorForm((prev) => ({ ...prev, doctor_name: e.target.value }))}
+                placeholder="e.g. Dr. Robert Vance"
+                required
+              />
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "#475569", marginBottom: "0.35rem" }}>
+                Department / Specialty *
+              </label>
+              <Select
+                value={doctorForm.department}
+                onChange={(e) => setDoctorForm((prev) => ({ ...prev, department: e.target.value }))}
+                required
+              >
+                <option value="">Select department...</option>
+                {departments.map((dept) => (
+                  <option key={dept.id} value={dept.department_name}>
+                    {dept.department_name}
+                  </option>
+                ))}
+                <option value="Cardiology">Cardiology</option>
+                <option value="Neurology">Neurology</option>
+                <option value="General Medicine">General Medicine</option>
+                <option value="Orthopedics">Orthopedics</option>
+                <option value="Dermatology">Dermatology</option>
+                <option value="ENT">ENT</option>
+                <option value="Pediatrics">Pediatrics</option>
+              </Select>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "#475569", marginBottom: "0.35rem" }}>
+                  Consult Fee ($)
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={doctorForm.consultation_fee}
+                  onChange={(e) => setDoctorForm((prev) => ({ ...prev, consultation_fee: e.target.value }))}
+                  placeholder="150"
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "#475569", marginBottom: "0.35rem" }}>
+                  Review Fee ($)
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={doctorForm.review_fee}
+                  onChange={(e) => setDoctorForm((prev) => ({ ...prev, review_fee: e.target.value }))}
+                  placeholder="75"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "#475569", marginBottom: "0.35rem" }}>
+                Status
+              </label>
+              <Select
+                value={doctorForm.status}
+                onChange={(e) => setDoctorForm((prev) => ({ ...prev, status: e.target.value as "available" | "leave" }))}
+              >
+                <option value="available">Available for Appointments</option>
+                <option value="leave">On Leave / Unavailable</option>
+              </Select>
+            </div>
+
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+              <Button type="submit" disabled={savingDoctor} style={{ flex: 1 }}>
+                {savingDoctor ? "Saving..." : doctorForm.id ? "Save Changes" : "Add Doctor to List"}
               </Button>
-            )}
-          </div>
-        </form>
+              {doctorForm.id && (
+                <Button type="button" variant="secondary" onClick={() => setDoctorForm(DEFAULT_DOCTOR_FORM)}>
+                  Cancel
+                </Button>
+              )}
+            </div>
+          </form>
 
-        <div style={{ marginTop: "1.2rem" }}>
+          <hr style={{ border: "none", borderTop: "1px solid #E2E8F0", margin: "1.5rem 0" }} />
+
+          {/* Quick Department Add */}
+          <div>
+            <h5 style={{ margin: "0 0 0.5rem 0", fontSize: "0.95rem", color: "#334155" }}>Add New Department</h5>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <Input
+                value={departmentInput}
+                onChange={(event) => setDepartmentInput(event.target.value)}
+                placeholder="Department name..."
+                aria-label="Department name"
+              />
+              <Button type="button" variant="secondary" onClick={() => void handleAddDepartment()} disabled={savingDepartment}>
+                {savingDepartment ? "Adding..." : "Add"}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Doctors List Table */}
+        <div className="panel" style={{ padding: "1.5rem", background: "#FFFFFF", borderRadius: "12px", border: "1px solid #E2E8F0", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+            <div>
+              <h4 style={{ margin: 0, fontSize: "1.15rem", color: "#0F172A", fontWeight: 600 }}>
+                📋 Doctors Roster ({doctors.length})
+              </h4>
+              <p className="muted" style={{ margin: "0.25rem 0 0 0", fontSize: "0.875rem" }}>
+                Active doctors added by the Administrative department.
+              </p>
+            </div>
+          </div>
+
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>DOCTOR</TableCell>
+                <TableCell>DOCTOR NAME</TableCell>
                 <TableCell>DEPARTMENT</TableCell>
                 <TableCell>CONSULT FEE</TableCell>
                 <TableCell>REVIEW FEE</TableCell>
                 <TableCell>STATUS</TableCell>
-                <TableCell>ACTIONS</TableCell>
+                <TableCell style={{ textAlign: "right" }}>ACTIONS</TableCell>
               </TableRow>
             </TableHead>
             <div>
               {doctors.map((doc) => (
-                <TableRow key={doc.id}>
-                  <TableCell>{doc.doctor_name}</TableCell>
-                  <TableCell>{doc.department || "-"}</TableCell>
-                  <TableCell>₹{doc.consultation_fee}</TableCell>
-                  <TableCell>₹{doc.review_fee}</TableCell>
-                  <TableCell>{doc.status}</TableCell>
+                <TableRow key={doc.id} style={{ transition: "background 0.15s" }}>
+                  <TableCell style={{ fontWeight: 600, color: "#1E293B" }}>{doc.doctor_name}</TableCell>
                   <TableCell>
-                    {canEdit && (
-                      <div className="module-inline-actions">
-                        <Button variant="secondary" size="sm" onClick={() => handleEditDoctor(doc)}>
-                          Edit
-                        </Button>
-                        <Button variant="destructive" size="sm" onClick={() => void handleDeleteDoctor(doc.id)}>
-                          Delete
-                        </Button>
-                      </div>
-                    )}
+                    <span style={{ padding: "0.2rem 0.6rem", background: "#F1F5F9", borderRadius: "4px", fontSize: "0.85rem", fontWeight: 500, color: "#334155" }}>
+                      {doc.department || "General"}
+                    </span>
+                  </TableCell>
+                  <TableCell style={{ fontWeight: 500, color: "#059669" }}>${doc.consultation_fee}</TableCell>
+                  <TableCell style={{ color: "#64748B" }}>${doc.review_fee}</TableCell>
+                  <TableCell>
+                    <span
+                      style={{
+                        padding: "0.2rem 0.5rem",
+                        borderRadius: "12px",
+                        fontSize: "0.8rem",
+                        fontWeight: 600,
+                        backgroundColor: doc.status === "available" ? "#DEF7EC" : "#FDE8E8",
+                        color: doc.status === "available" ? "#03543F" : "#9B1C1C",
+                      }}
+                    >
+                      {doc.status === "available" ? "● Available" : "○ On Leave"}
+                    </span>
+                  </TableCell>
+                  <TableCell style={{ textAlign: "right" }}>
+                    <div className="module-inline-actions" style={{ justifyContent: "flex-end", gap: "0.5rem" }}>
+                      <Button variant="secondary" size="sm" onClick={() => handleEditDoctor(doc)}>
+                        Edit
+                      </Button>
+                      <Button variant="destructive" size="sm" onClick={() => void handleDeleteDoctor(doc.id)}>
+                        Delete
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
               {doctors.length === 0 && (
                 <TableRow>
-                  <TableCell className="muted">No doctors added yet.</TableCell>
+                  <TableCell className="muted" style={{ padding: "2rem", textAlign: "center" }}>
+                    No doctors added yet. Use the form on the left to add doctors to the hospital roster.
+                  </TableCell>
                 </TableRow>
               )}
             </div>

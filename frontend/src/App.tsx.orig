@@ -250,7 +250,6 @@ function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [hospitalCode, setHospitalCodeState] = useState(getHospitalCode());
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [appointmentPrefill, setAppointmentPrefill] = useState<{ doctorName?: string, department?: string } | null>(null);
   useEffect(() => {
     if (!notice) return;
     const timeoutId = window.setTimeout(() => setNotice(null), 4200);
@@ -282,27 +281,15 @@ function App() {
   const permissions = useMemo(() => resolvePermissions(user), [user]);
   const hasPermission = (permission?: string) => !permission || permissions.includes(permission);
   const isAdmin = hasPermission("admin.use");
-  const canAccessNavItem = (item: typeof NAV_ITEMS[0], permission?: string) => {
-    if (item.id === "employees") return isAdmin;
-    
-    // Clinicians should only see a restricted set of pages, even if they have module access
+  const canAccessNavItem = (itemId: string, permission?: string) => {
+    if (itemId === "employees") return isAdmin;
     if (user?.access_role === "clinician") {
-      if (!["queue", "doctor-prescription", "patients", "emr", "dashboard", "symptom-ai"].includes(item.id)) {
-        return false;
-      }
+      return ["queue", "doctor-prescription", "patients"].includes(itemId);
     }
-    
-    // Normal users must explicitly have the module in their module_access array (if the nav item belongs to a module).
-    if (user?.user_type !== "admin") {
-      if (item.module && !(user?.module_access || []).includes(item.module)) {
-        return false;
-      }
-    }
-    
     return hasPermission(permission);
   };
   const sidebarNavItems = useMemo(
-    () => NAV_ITEMS.filter((item) => item.id !== "settings" && canAccessNavItem(item, item.permission)),
+    () => NAV_ITEMS.filter((item) => item.id !== "settings" && canAccessNavItem(item.id, item.permission)),
     [permissions]
   );
   const sidebarGroups = useMemo(() => {
@@ -321,27 +308,6 @@ function App() {
       const target = groups.find((group) => group.key === (item.group || "overview"));
       target?.items.push(item);
     });
-    
-    // Custom sort for doctors: Doctor Prescription before Queue Management
-    if (user?.access_role === "clinician") {
-      const opGroup = groups.find((g) => g.key === "registration");
-      if (opGroup) {
-        const order = ["doctor-prescription", "queue", "emr", "appointment-out", "appointment-in"];
-        opGroup.items.sort((a, b) => {
-          const indexA = order.indexOf(a.id);
-          const indexB = order.indexOf(b.id);
-          // If both are in the order array, sort by order array
-          if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-          // If only A is in the array, A comes first
-          if (indexA !== -1) return -1;
-          // If only B is in the array, B comes first
-          if (indexB !== -1) return 1;
-          // Otherwise maintain original order (mostly)
-          return 0;
-        });
-      }
-    }
-    
     return groups.filter((group) => group.items.length > 0);
   }, [sidebarNavItems]);
   const groupKeyForPage = (pageId: string) => NAV_ITEMS.find((item) => item.id === pageId)?.group || "overview";
@@ -357,6 +323,7 @@ function App() {
     if (currentUser?.access_role === "clinician") {
       return "queue";
     }
+    const currentPermissions = resolvePermissions(currentUser);
     const candidatePages = [
       "dashboard",
       "add",
@@ -391,21 +358,7 @@ function App() {
     for (const candidate of candidatePages) {
       const navItem = NAV_ITEMS.find((item) => item.id === candidate);
       if (!navItem) continue;
-      
-      // We must mock canAccessNavItem logic here because canAccessNavItem relies on state (user, permissions)
-      // which might be stale during login, so we re-evaluate it with currentUser.
-      
-      let hasAccess = false;
-      const isAdminCheck = resolvePermissions(currentUser).includes("admin.use");
-      if (navItem.id === "employees") {
-        hasAccess = isAdminCheck;
-      } else if (currentUser?.user_type !== "admin" && navItem.module && !(currentUser?.module_access || []).includes(navItem.module)) {
-        hasAccess = false;
-      } else {
-        hasAccess = !navItem.permission || resolvePermissions(currentUser).includes(navItem.permission);
-      }
-
-      if (hasAccess) {
+      if (!navItem.permission || currentPermissions.includes(navItem.permission)) {
         return candidate;
       }
     }
@@ -460,132 +413,6 @@ function App() {
       window.removeEventListener("app:unauthorized", handleUnauthorized);
     };
   }, []);
-
-  // Global Polling (Doctor & Staff Notifications)
-  const previousStatusesRef = useRef<Record<number, string>>({});
-  
-  useEffect(() => {
-    // Only poll if user is logged in
-    if (!user) return;
-    
-    let active = true;
-    const pollQueue = async () => {
-      if (!active) return;
-      try {
-        const now = new Date();
-        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        const data = await apiFetch<{ appointments?: any[] }>(`/api/appointments?date=${today}`);
-        const appointments = data.appointments || [];
-        
-        const currentStatuses: Record<number, string> = {};
-        appointments.forEach(a => {
-          currentStatuses[a.id] = a.status;
-        });
-        
-        const isClinician = user.access_role === "clinician";
-        const isStaff = user.access_role === "receptionist" || user.access_role === "admin";
-        
-        const playAlertSound = () => {
-          try {
-            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-            if (!AudioContext) return;
-            const ctx = new AudioContext();
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.type = "sine";
-            osc.frequency.setValueAtTime(880, ctx.currentTime); // A5
-            osc.frequency.setValueAtTime(1108.73, ctx.currentTime + 0.1); // C#6
-            gain.gain.setValueAtTime(0, ctx.currentTime);
-            gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.02);
-            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-            osc.start(ctx.currentTime);
-            osc.stop(ctx.currentTime + 0.3);
-          } catch (e) {
-            // Audio context failed or blocked
-          }
-        };
-
-        if (Object.keys(previousStatusesRef.current).length > 0) {
-          if (isClinician) {
-            // Find new appointments that are checked_in
-            const newPatients = appointments.filter(a => 
-              (a.status === "checked_in" || a.status === "scheduled") && 
-              !previousStatusesRef.current[a.id]
-            );
-            
-            if (newPatients.length > 0) {
-              const newPatient = newPatients[0];
-              // Play sound and show notice
-              if (typeof window !== "undefined") {
-                try {
-                  const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-                  const oscillator = audioCtx.createOscillator();
-                  const gainNode = audioCtx.createGain();
-                  oscillator.type = "sine";
-                  oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
-                  gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                  oscillator.connect(gainNode);
-                  gainNode.connect(audioCtx.destination);
-                  oscillator.start();
-                  oscillator.stop(audioCtx.currentTime + 0.15); // short beep
-                  setTimeout(() => {
-                    const osc2 = audioCtx.createOscillator();
-                    const gain2 = audioCtx.createGain();
-                    osc2.type = "sine";
-                    osc2.frequency.setValueAtTime(1046.5, audioCtx.currentTime); // C6
-                    gain2.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                    osc2.connect(gain2);
-                    gain2.connect(audioCtx.destination);
-                    osc2.start();
-                    osc2.stop(audioCtx.currentTime + 0.2);
-                  }, 200);
-                } catch (e) {
-                  // fallback if AudioContext fails
-                }
-              }
-              setNotice({ 
-                type: "success", 
-                message: `New Patient Arrived: ${newPatient.patient_name} (Token #${newPatient.token_no})` 
-              });
-            }
-          }
-          
-          if (isStaff) {
-            // Find newly completed appointments
-            const completedPatients = appointments.filter(a => 
-              a.status === "completed" && 
-              previousStatusesRef.current[a.id] &&
-              previousStatusesRef.current[a.id] !== "completed"
-            );
-            
-            if (completedPatients.length > 0) {
-              const patient = completedPatients[0];
-              playAlertSound();
-              setNotice({ 
-                type: "success", 
-                message: `Consultation Completed: ${patient.patient_name} with Dr. ${patient.doctor_name || "Unknown"}` 
-              });
-            }
-          }
-        }
-        
-        previousStatusesRef.current = currentStatuses;
-      } catch (e) {
-        // silently fail polling
-      }
-    };
-
-    // Poll immediately, then every 15 seconds
-    void pollQueue();
-    const interval = setInterval(pollQueue, 15000);
-    
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, [user]);
 
   const loadStats = async () => {
     try {
@@ -655,7 +482,7 @@ function App() {
   useEffect(() => {
     if (!user) return;
     const activeNav = NAV_ITEMS.find((item) => item.id === page);
-    if (activeNav && !canAccessNavItem(activeNav, activeNav.permission)) {
+    if (activeNav && !canAccessNavItem(activeNav.id, activeNav.permission)) {
       setPage(getDefaultPage(user));
       setNotice({ type: "warning", message: activeNav.deniedHint || "You do not have access to this module." });
       return;
@@ -842,19 +669,9 @@ function App() {
     setSelectedPatient(null);
   };
 
-  const navigateToPage = (targetPage: string, extraData?: any) => {
-    let nextPage = targetPage;
-    if (nextPage === "registration") {
-      nextPage = "appointment-in";
-    }
-    
+  const navigateToPage = (nextPage: string) => {
     if (nextPage === "patients") {
       setPatientsPageKey((prev) => prev + 1);
-    }
-    if (nextPage === "appointment-in" && extraData?.prefillDoctor) {
-      setAppointmentPrefill(extraData.prefillDoctor);
-    } else if (nextPage === "appointment-in") {
-      setAppointmentPrefill(null);
     }
     syncUrlForPage(nextPage);
     setPage(nextPage);
@@ -1169,10 +986,11 @@ function App() {
         {page === "ocr" && hasPermission("patients.write") && <OcrPage setNotice={setNotice} />}
 
         {page === "appointment-in" && hasPermission("patients.read") && (
-          <RegistrationDeskPage mode="appointment-in" selectedPatient={selectedPatient} setNotice={setNotice} onNavigate={navigateToPage} prefillData={appointmentPrefill} />
+          <RegistrationDeskPage mode="appointment-in" selectedPatient={selectedPatient} setNotice={setNotice} onNavigate={navigateToPage} />
         )}
-        {page === "appointment-out" && hasPermission("registration.write") && (
-          <RegistrationDeskPage mode="appointment-out" selectedPatient={selectedPatient} setNotice={setNotice} onNavigate={navigateToPage} prefillData={appointmentPrefill} />
+
+        {page === "appointment-out" && hasPermission("patients.read") && (
+          <RegistrationDeskPage mode="appointment-out" selectedPatient={selectedPatient} setNotice={setNotice} onNavigate={navigateToPage} />
         )}
         {page === "queue" && hasPermission("patients.read") && (
           <QueuePage setNotice={setNotice} onNavigate={navigateToPage} isReceptionist={user?.access_role === "receptionist"} />
@@ -1214,7 +1032,7 @@ function App() {
           <ReadmitPage onSelect={handleSelectPatient} setNotice={setNotice} onReadmitComplete={refreshPatientData} ocrLanguage={ocrLanguage} />
         )}
 
-        {page === "symptom-ai" && <SymptomAiPage setNotice={setNotice} onNavigate={navigateToPage} />}
+        {page === "symptom-ai" && <SymptomAiPage setNotice={setNotice} />}
         {page === "bulk-ai" && hasPermission("patients.write") && <BulkPatientAiPage setNotice={setNotice} />}
 
         {page === "billing-aging" && hasPermission("billing.read") && <BillingAgingPage setNotice={setNotice} />}

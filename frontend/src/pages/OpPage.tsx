@@ -103,7 +103,7 @@ export default function OpPage({ setNotice, canEdit }: Props) {
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [savingAppointment, setSavingAppointment] = useState(false);
   const [isRazorpayReady, setIsRazorpayReady] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState(new Date().toLocaleDateString('en-CA'));
   const [selectedDoctor, setSelectedDoctor] = useState("");
   const [uploadPrescriptionPatient, setUploadPrescriptionPatient] = useState<{ id: string; name: string } | null>(null);
 

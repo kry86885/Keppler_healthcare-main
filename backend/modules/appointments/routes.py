@@ -115,6 +115,11 @@ def appointments_list():
     status = request.args.get("status")
     visit_type = request.args.get("visit_type")
     doctor_name = request.args.get("doctor_name")
+    
+    # Enforce isolation for clinicians
+    if getattr(g, "current_user", {}).get("access_role") == "clinician":
+        doctor_name = g.current_user.get("full_name") or g.current_user.get("username")
+
     patient_id = request.args.get("patient_id")
     return jsonify(
         {

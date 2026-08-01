@@ -9,6 +9,15 @@ import type { Notice } from "../types";
 
 type Props = {
   setNotice: Dispatch<SetStateAction<Notice | null>>;
+  onNavigate?: (page: string, extraData?: any) => void;
+};
+
+type Doctor = {
+  id: number;
+  doctor_name: string;
+  department: string;
+  consultation_fee: number;
+  status: string;
 };
 
 type Region = {
@@ -153,7 +162,7 @@ function entryKey(entry: HistoryEntry) {
   return `${entry.createdAt}-${entry.description.slice(0, 24)}`;
 }
 
-export default function SymptomAiPage({ setNotice }: Props) {
+export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
   const [activeSection, setActiveSection] = useState<"home" | "documents" | "about" | "safety">("home");
   const [historySidebarOpen, setHistorySidebarOpen] = useState(false);
   const [symptomDocuments, setSymptomDocuments] = useState<SymptomDocument[]>([]);
@@ -173,10 +182,20 @@ export default function SymptomAiPage({ setNotice }: Props) {
   const [loading, setLoading] = useState(false);
   const [responseText, setResponseText] = useState("");
   const [activeHistoryKey, setActiveHistoryKey] = useState<string | null>(null);
+  const [suggestedDoctors, setSuggestedDoctors] = useState<Doctor[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [contextOptions, setContextOptions] = useState<string[]>(FALLBACK_CONTEXT_TAGS);
   const [durationOptions, setDurationOptions] = useState<string[]>(FALLBACK_DURATIONS);
   const [regions, setRegions] = useState<Region[]>(FALLBACK_REGIONS);
+
+  const fetchSuggestedDoctors = async (region: string) => {
+    try {
+      const data = await apiFetch<{ doctors?: Doctor[] }>(`/api/op/doctors/suggest?region=${encodeURIComponent(region)}`);
+      setSuggestedDoctors(data.doctors || []);
+    } catch {
+      setSuggestedDoctors([]);
+    }
+  };
 
   useEffect(() => {
     setHistory(parseStoredHistory());
@@ -275,6 +294,7 @@ export default function SymptomAiPage({ setNotice }: Props) {
       const nextResponse = data.response || "No insights returned.";
       const resolvedRegion = data.detected_region || bodyRegion;
       setResponseText(nextResponse);
+      void fetchSuggestedDoctors(resolvedRegion);
       if (data.detected_region && regions.some((entry) => entry.name === data.detected_region)) {
         setBodyRegion(data.detected_region);
       }
@@ -656,25 +676,88 @@ export default function SymptomAiPage({ setNotice }: Props) {
           </div>
 
           {responseText && (
-            <Card className="symptom-report-card">
-              <CardHeader className="symptom-report-header">
-                <CardTitle>Wellness Insights</CardTitle>
-                <CardDescription className="symptom-report-meta">
-                  <Badge variant="outline">{bodyRegion}</Badge>
-                  <span className="symptom-intensity-badge" style={{ backgroundColor: intensityColor(intensity) }}>
-                    {intensity}/10
-                  </span>
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="symptom-report-content">
-                <MarkdownReport text={responseText} />
-                <div className="symptom-actions">
-                  <Button variant="secondary" onClick={exportCurrent}>
-                    Download Insight
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <>
+              <Card className="symptom-report-card">
+                <CardHeader className="symptom-report-header">
+                  <CardTitle>Wellness Insights</CardTitle>
+                  <CardDescription className="symptom-report-meta">
+                    <Badge variant="outline">{bodyRegion}</Badge>
+                    <span className="symptom-intensity-badge" style={{ backgroundColor: intensityColor(intensity) }}>
+                      {intensity}/10
+                    </span>
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="symptom-report-content">
+                  <MarkdownReport text={responseText} />
+                  <div className="symptom-actions">
+                    <Button variant="secondary" onClick={exportCurrent}>
+                      Download Insight
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="symptom-report-card" style={{ marginTop: "1rem" }}>
+                <CardHeader>
+                  <CardTitle style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <span>👨‍⚕️</span> Suggested Doctors (Administrative Department)
+                  </CardTitle>
+                  <CardDescription>
+                    Based on your AI assessment for <strong>{bodyRegion}</strong>, here are available specialist doctors added by the Administrative department:
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {suggestedDoctors.length === 0 ? (
+                    <p className="muted">No specialist doctors currently listed for this department.</p>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "1rem" }}>
+                      {suggestedDoctors.map((doc) => (
+                        <div
+                          key={doc.id}
+                          style={{
+                            padding: "1rem",
+                            border: "1px solid var(--border-color, #E2E8F0)",
+                            borderRadius: "8px",
+                            backgroundColor: "var(--bg-subtle, #F8FAFC)",
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "space-between",
+                            gap: "0.75rem",
+                          }}
+                        >
+                          <div>
+                            <h4 style={{ margin: 0, fontSize: "1.05rem", color: "var(--text-main, #0F172A)" }}>{doc.doctor_name}</h4>
+                            <p className="muted" style={{ margin: "0.25rem 0", fontSize: "0.875rem" }}>
+                              Department: <strong>{doc.department}</strong>
+                            </p>
+                            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
+                              <Badge variant={doc.status === "available" ? "secondary" : "outline"}>
+                                {doc.status || "available"}
+                              </Badge>
+                              {doc.consultation_fee ? (
+                                <Badge variant="outline">Fee: ${doc.consultation_fee}</Badge>
+                              ) : null}
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setNotice({
+                                type: "success",
+                                message: `Opening Appointment Desk for ${doc.doctor_name} (${doc.department})`,
+                              });
+                              onNavigate?.("registration", { prefillDoctor: { doctorName: doc.doctor_name, department: doc.department } });
+                            }}
+                          >
+                            Book Appointment with {doc.doctor_name}
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
           )}
 
         </TabsContent>

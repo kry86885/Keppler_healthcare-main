@@ -35,6 +35,8 @@ export default function EmployeesPage({ setNotice, canWriteEmployees }: Props) {
   const [editForm, setEditForm] = useState<Partial<EditForm>>({});
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
   const [deletingEmployee, setDeletingEmployee] = useState(false);
+  const [departments, setDepartments] = useState<{ department_name?: string }[]>([]);
+  const [customDept, setCustomDept] = useState("");
 
   const toggleModule = (current: ModuleId[] | undefined, moduleName: ModuleId) => {
     const set = new Set(current || []);
@@ -57,9 +59,19 @@ export default function EmployeesPage({ setNotice, canWriteEmployees }: Props) {
     setStats(data);
   };
 
+  const loadDepartments = async () => {
+    try {
+      const data = await apiFetch<{ departments?: { department_name?: string }[] }>("/api/registration/departments");
+      setDepartments(data.departments || []);
+    } catch {
+      // ignore
+    }
+  };
+
   useEffect(() => {
     void loadEmployees();
     void loadStats();
+    void loadDepartments();
   }, []);
 
   const handleAdd = async (event: FormEvent<HTMLFormElement>) => {
@@ -68,11 +80,16 @@ export default function EmployeesPage({ setNotice, canWriteEmployees }: Props) {
       setNotice({ type: "warning", message: "You do not have permission to add employees." });
       return;
     }
+    
+    const finalDepartment = form.department === "Other" ? customDept : form.department;
+    const payload = { ...form, department: finalDepartment };
+    
     try {
-      const res = await apiFetch<{ success: boolean; message: string }>("/api/employees", { method: "POST", body: JSON.stringify(form) });
+      const res = await apiFetch<{ success: boolean; message: string }>("/api/employees", { method: "POST", body: JSON.stringify(payload) });
       if (res.success) {
         setNotice({ type: "success", message: res.message });
         setForm(EMPTY_SIGNUP_FORM);
+        setCustomDept("");
         void loadEmployees();
         void loadStats();
         setTab("list");
@@ -169,209 +186,255 @@ export default function EmployeesPage({ setNotice, canWriteEmployees }: Props) {
       <h3>Employee Management</h3>
 
       <Tabs>
-        <TabsTrigger active={tab === "list"} onClick={() => setTab("list")}>All Employees</TabsTrigger>
+        <TabsTrigger active={tab === "list"} onClick={() => setTab("list")}>Directory</TabsTrigger>
         <TabsTrigger
-          active={tab === "add"}
-          onClick={() => setTab("add")}
+          active={tab === "rbac"}
+          onClick={() => setTab("rbac")}
           disabled={!canWriteEmployees}
-          title={!canWriteEmployees ? "No permission to add employees." : ""}
+          title={!canWriteEmployees ? "No permission to manage access control." : ""}
         >
-          Add New Employee
+          Access Control (RBAC)
         </TabsTrigger>
         <TabsTrigger active={tab === "stats"} onClick={() => setTab("stats")}>Statistics</TabsTrigger>
       </Tabs>
 
       <TabsContent>
         {tab === "list" && (
-          <>
-            <div className="search-bar">
-              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name, email, phone, or ID" />
-              <Button variant="primary" onClick={() => void loadEmployees(query)}>Search</Button>
-              <Button variant="secondary" onClick={() => void loadEmployees("")}>Clear</Button>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "1.5rem", marginTop: "1.5rem" }}>
+            {/* Left Column: Add Employee Form */}
+            <div className="panel" style={{ padding: "1.5rem", background: "#FFFFFF", borderRadius: "12px", border: "1px solid #E2E8F0", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+              <h4 style={{ margin: "0 0 0.5rem 0", fontSize: "1.15rem", color: "#0F172A", fontWeight: 600 }}>
+                ➕ Add New Employee
+              </h4>
+              <p className="muted" style={{ margin: "0 0 1.25rem 0", fontSize: "0.875rem" }}>
+                Basic details only. RBAC permissions can be configured later.
+              </p>
+              <form className="grid-form" onSubmit={handleAdd}>
+                <Label>Username<Input value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} required disabled={!canWriteEmployees} /></Label>
+                <Label>Password<Input type="password" value={form.password} onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))} required disabled={!canWriteEmployees} /></Label>
+                <Label>Full Name<Input value={form.full_name} onChange={(e) => setForm((p) => ({ ...p, full_name: e.target.value }))} required disabled={!canWriteEmployees} /></Label>
+                <Label>Email<Input value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} required disabled={!canWriteEmployees} /></Label>
+                <Label>Phone<Input value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} required disabled={!canWriteEmployees} /></Label>
+                <Label>
+                  Job Title
+                  <Select value={form.job_role} onChange={(e) => setForm((p) => ({ ...p, job_role: e.target.value }))} required disabled={!canWriteEmployees}>
+                    <option value="">Select a role</option>
+                    <option value="Doctor">Doctor</option>
+                    <option value="Nurse">Nurse</option>
+                    <option value="Admin">Admin</option>
+                    <option value="Receptionist">Receptionist</option>
+                    <option value="Technician">Technician</option>
+                    <option value="Other">Other</option>
+                  </Select>
+                </Label>
+                <Label>
+                  Department
+                  <Select value={form.department} onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))} required disabled={!canWriteEmployees}>
+                    <option value="">Select a department</option>
+                    {departments.map(d => d.department_name ? <option key={d.department_name} value={d.department_name}>{d.department_name}</option> : null)}
+                    <option value="Other">Other (Type custom)</option>
+                  </Select>
+                </Label>
+                {form.department === "Other" && (
+                  <Label>
+                    Custom Department
+                    <Input value={customDept} onChange={(e) => setCustomDept(e.target.value)} required disabled={!canWriteEmployees} placeholder="Type department name..." />
+                  </Label>
+                )}
+                <Label className="span-2">Address<Textarea rows={2} value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} disabled={!canWriteEmployees} /></Label>
+                <Label className="span-2">Emergency Contact<Input value={form.emergency_contact} onChange={(e) => setForm((p) => ({ ...p, emergency_contact: e.target.value }))} disabled={!canWriteEmployees} /></Label>
+                <div className="form-actions span-2">
+                  <Button variant="primary" type="submit" disabled={!canWriteEmployees}>Add Employee</Button>
+                  <Button variant="secondary" type="button" onClick={() => setForm(EMPTY_SIGNUP_FORM)}>Reset</Button>
+                </div>
+              </form>
             </div>
 
-            <div className="employee-list">
-              {employees.length === 0 && <p className="muted">No employees found.</p>}
-              {employees.map((emp) => (
-                <details key={emp.employee_id} className="doc-item">
-                  <summary>
-                    <span className="doc-item-title">
-                      <span className={`status-dot ${emp.status === "active" ? "success" : "danger"}`} />
-                      {emp.full_name || emp.username} · {emp.employee_id}
-                    </span>
-                  </summary>
-                  <div className="detail-grid">
-                    <div>
-                      <h4>Personal Information</h4>
-                      <p>Username: {emp.username}</p>
-                      <p>Full Name: {emp.full_name || "-"}</p>
-                      <p>Email: {emp.email || "-"}</p>
-                      <p>Phone: {emp.phone || "-"}</p>
-                      <p>Address: {emp.address || "-"}</p>
-                    </div>
-                    <div>
-                      <h4>Employment Information</h4>
-                      <p>Employee ID: {emp.employee_id}</p>
-                      <p>User Type: {USER_TYPE_LABELS[emp.user_type || ""] || USER_TYPE_LABELS.normal}</p>
-                      <p>Modules: {(emp.module_access || DEFAULT_MODULE_ACCESS).join(", ")}</p>
-                      <p>Job Title: {emp.job_role || "-"}</p>
-                      <p>Department: {emp.department || "-"}</p>
-                      <p>Status: <Badge variant={emp.status === "active" ? "default" : "destructive"}>{emp.status || "-"}</Badge></p>
-                      <p>Date Joined: {formatDate(emp.date_joined)}</p>
-                      <p>Emergency Contact: {emp.emergency_contact || "-"}</p>
-                    </div>
-                  </div>
+            {/* Right Column: Employees Directory Table */}
+            <div className="panel" style={{ padding: "1.5rem", background: "#FFFFFF", borderRadius: "12px", border: "1px solid #E2E8F0", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: "1.15rem", color: "#0F172A", fontWeight: 600 }}>
+                    👥 Employee Directory ({employees.length})
+                  </h4>
+                  <p className="muted" style={{ margin: "0.25rem 0 0 0", fontSize: "0.875rem" }}>
+                    Basic staff information and contact details.
+                  </p>
+                </div>
+                <div className="module-inline-actions">
+                  <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search..." style={{ width: '200px' }} />
+                  <Button variant="secondary" size="sm" onClick={() => void loadEmployees(query)}>Search</Button>
+                </div>
+              </div>
 
-                  {editingId !== emp.employee_id ? (
-                    <div className="form-actions">
-                      <Button variant="secondary" onClick={() => startEdit(emp)}>Edit</Button>
-                    </div>
-                  ) : (
-                    <div className="panel">
-                      <h4>Edit Employee Details</h4>
-                      <form className="grid-form" onSubmit={(e) => e.preventDefault()}>
-                        <Label>Full Name<Input value={editForm.full_name || ""} onChange={(e) => setEditForm((p) => ({ ...p, full_name: e.target.value }))} /></Label>
-                        <Label>Email<Input value={editForm.email || ""} onChange={(e) => setEditForm((p) => ({ ...p, email: e.target.value }))} /></Label>
-                        <Label>Phone<Input value={editForm.phone || ""} onChange={(e) => setEditForm((p) => ({ ...p, phone: e.target.value }))} /></Label>
-                        <Label>Department<Input value={editForm.department || ""} onChange={(e) => setEditForm((p) => ({ ...p, department: e.target.value }))} /></Label>
-                        <Label>
-                          User Type
-                          <Select value={editForm.user_type || "normal"} onChange={(e) => setEditForm((p) => ({ ...p, user_type: e.target.value as SignupForm["user_type"] }))}>
-                            {USER_TYPE_OPTIONS.map((role) => (
-                              <option key={role.value} value={role.value}>{role.label}</option>
-                            ))}
-                          </Select>
-                        </Label>
-                        {(editForm.user_type || "normal") !== "admin" && (
-                          <Label className="span-2">
-                            Module Access
-                            <div className="module-grid">
-                              {MODULE_OPTIONS.map((module) => {
-                                const selected = (editForm.module_access || []).includes(module.value);
-                                return (
-                                  <label key={module.value} className="checkbox-line">
-                                    <Checkbox
-                                      checked={selected}
-                                      onChange={() =>
-                                        setEditForm((p) => ({
-                                          ...p,
-                                          module_access: toggleModule(p.module_access, module.value),
-                                        }))
-                                      }
-                                    />
-                                    <span>{module.label}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </Label>
-                        )}
-                        <Label>
-                          Job Title
-                          <Select value={editForm.job_role || ""} onChange={(e) => setEditForm((p) => ({ ...p, job_role: e.target.value }))}>
-                            <option value="">Select a role</option>
-                            <option value="Doctor">Doctor</option>
-                            <option value="Nurse">Nurse</option>
-                            <option value="Admin">Admin</option>
-                            <option value="Receptionist">Receptionist</option>
-                            <option value="Technician">Technician</option>
-                            <option value="Other">Other</option>
-                          </Select>
-                        </Label>
-                        <Label>
-                          Status
-                          <Select value={editForm.status || "active"} onChange={(e) => setEditForm((p) => ({ ...p, status: e.target.value }))}>
-                            <option value="active">active</option>
-                            <option value="inactive">inactive</option>
-                          </Select>
-                        </Label>
-                        <Label className="span-2">Address<Textarea rows={2} value={editForm.address || ""} onChange={(e) => setEditForm((p) => ({ ...p, address: e.target.value }))} /></Label>
-                        <Label className="span-2">Emergency Contact<Input value={editForm.emergency_contact || ""} onChange={(e) => setEditForm((p) => ({ ...p, emergency_contact: e.target.value }))} /></Label>
-                        <div className="form-actions span-2">
-                          <Button variant="primary" type="button" onClick={() => void handleEditSave(emp.employee_id)} disabled={!canWriteEmployees}>
-                            Save Changes
+              <Table>
+                <TableHead style={{ gridTemplateColumns: "2fr 2fr 2fr 1.5fr 1.5fr" }}>
+                  <TableCell>EMPLOYEE</TableCell>
+                  <TableCell>CONTACT</TableCell>
+                  <TableCell>ROLE / DEPT</TableCell>
+                  <TableCell>STATUS</TableCell>
+                  <TableCell style={{ textAlign: "right" }}>ACTIONS</TableCell>
+                </TableHead>
+                <div>
+                  {employees.map((emp) => (
+                    <TableRow key={emp.employee_id} style={{ gridTemplateColumns: "2fr 2fr 2fr 1.5fr 1.5fr" }}>
+                      <TableCell>
+                        <div style={{ fontWeight: 600, color: "#1E293B" }}>{emp.full_name || emp.username}</div>
+                        <div className="muted" style={{ fontSize: "0.75rem" }}>ID: {emp.employee_id}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div style={{ fontSize: "0.85rem" }}>{emp.email || "-"}</div>
+                        <div className="muted" style={{ fontSize: "0.85rem" }}>{emp.phone || "-"}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div style={{ fontWeight: 500 }}>{emp.job_role || "-"}</div>
+                        <span style={{ padding: "0.2rem 0.4rem", background: "#F1F5F9", borderRadius: "4px", fontSize: "0.75rem", color: "#334155" }}>
+                          {emp.department || "No Dept"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          style={{
+                            padding: "0.2rem 0.5rem",
+                            borderRadius: "12px",
+                            fontSize: "0.8rem",
+                            fontWeight: 600,
+                            backgroundColor: emp.status === "active" ? "#DEF7EC" : "#FDE8E8",
+                            color: emp.status === "active" ? "#03543F" : "#9B1C1C",
+                          }}
+                        >
+                          {emp.status === "active" ? "● Active" : "○ Inactive"}
+                        </span>
+                      </TableCell>
+                      <TableCell style={{ textAlign: "right" }}>
+                        <div className="module-inline-actions" style={{ justifyContent: "flex-end" }}>
+                          <Button variant="secondary" size="sm" onClick={() => void toggleStatus(emp)} disabled={!canWriteEmployees}>
+                            {emp.status === "active" ? "Deactivate" : "Activate"}
                           </Button>
-                          <Button variant="secondary" type="button" onClick={() => setEditingId(null)}>Cancel</Button>
+                          <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(emp)} disabled={!canWriteEmployees}>
+                            Delete
+                          </Button>
                         </div>
-                      </form>
-                    </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {employees.length === 0 && (
+                    <TableRow style={{ gridTemplateColumns: "1fr" }}>
+                      <TableCell className="muted" style={{ gridColumn: "1 / -1", padding: "2rem", textAlign: "center" }}>
+                        No employees found.
+                      </TableCell>
+                    </TableRow>
                   )}
-
-                  <div className="form-actions">
-                    <Button variant="secondary" onClick={() => void toggleStatus(emp)} disabled={!canWriteEmployees}>
-                      {emp.status === "active" ? "Deactivate" : "Activate"}
-                    </Button>
-                    <Button variant="destructive" onClick={() => setDeleteTarget(emp)} disabled={!canWriteEmployees}>
-                      Delete
-                    </Button>
-                  </div>
-                </details>
-              ))}
+                </div>
+              </Table>
             </div>
-          </>
+          </div>
         )}
 
-        {tab === "add" && (
-          <div className="panel">
-            <h4>Add New Employee</h4>
-            <form className="grid-form" onSubmit={handleAdd}>
-              <Label>Username<Input value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} required /></Label>
-              <Label>Password<Input type="password" value={form.password} onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))} required /></Label>
-              <Label>Full Name<Input value={form.full_name} onChange={(e) => setForm((p) => ({ ...p, full_name: e.target.value }))} required /></Label>
-              <Label>Email<Input value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} required /></Label>
-              <Label>Phone<Input value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} required /></Label>
-              <Label>
-                User Type
-                <Select value={form.user_type} onChange={(e) => setForm((p) => ({ ...p, user_type: e.target.value as SignupForm["user_type"] }))} required>
-                  {USER_TYPE_OPTIONS.map((role) => (
-                    <option key={role.value} value={role.value}>{role.label}</option>
-                  ))}
-                </Select>
-              </Label>
-              {form.user_type !== "admin" && (
-                <Label className="span-2">
-                  Module Access
-                  <div className="module-grid">
-                    {MODULE_OPTIONS.map((module) => {
-                      const selected = form.module_access.includes(module.value);
-                      return (
-                        <label key={module.value} className="checkbox-line">
-                          <Checkbox
-                            checked={selected}
-                            onChange={() =>
-                              setForm((p) => ({
-                                ...p,
-                                module_access: toggleModule(p.module_access, module.value),
-                              }))
-                            }
-                          />
-                          <span>{module.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </Label>
-              )}
-              <Label>
-                Job Title
-                <Select value={form.job_role} onChange={(e) => setForm((p) => ({ ...p, job_role: e.target.value }))} required>
-                  <option value="">Select a role</option>
-                  <option value="Doctor">Doctor</option>
-                  <option value="Nurse">Nurse</option>
-                  <option value="Admin">Admin</option>
-                  <option value="Receptionist">Receptionist</option>
-                  <option value="Technician">Technician</option>
-                  <option value="Other">Other</option>
-                </Select>
-              </Label>
-              <Label>Department<Input value={form.department} onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))} required /></Label>
-              <Label className="span-2">Address<Textarea rows={2} value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} /></Label>
-              <Label className="span-2">Emergency Contact<Input value={form.emergency_contact} onChange={(e) => setForm((p) => ({ ...p, emergency_contact: e.target.value }))} /></Label>
-              <div className="form-actions span-2">
-                <Button variant="primary" type="submit">Add Employee</Button>
-                <Button variant="secondary" type="button" onClick={() => setForm(EMPTY_SIGNUP_FORM)}>Reset</Button>
+        {tab === "rbac" && (
+          <div className="panel" style={{ padding: "1.5rem", background: "#FFFFFF", borderRadius: "12px", border: "1px solid #E2E8F0", marginTop: "1.5rem" }}>
+            <h4 style={{ margin: "0 0 0.5rem 0", fontSize: "1.15rem", color: "#0F172A", fontWeight: 600 }}>
+              🛡️ Access Control (RBAC)
+            </h4>
+            <p className="muted" style={{ margin: "0 0 1.5rem 0", fontSize: "0.875rem" }}>
+              Manage user roles and module permissions for existing employees.
+            </p>
+            <Table>
+              <TableHead style={{ gridTemplateColumns: "2fr 1fr 3fr 1fr" }}>
+                <TableCell>EMPLOYEE</TableCell>
+                <TableCell>USER TYPE</TableCell>
+                <TableCell>MODULE ACCESS</TableCell>
+                <TableCell style={{ textAlign: "right" }}>ACTIONS</TableCell>
+              </TableHead>
+              <div>
+                {employees.map((emp) => (
+                  <TableRow key={`rbac-${emp.employee_id}`} style={{ gridTemplateColumns: "2fr 1fr 3fr 1fr" }}>
+                    <TableCell>
+                      <div style={{ fontWeight: 600, color: "#1E293B" }}>{emp.full_name || emp.username}</div>
+                      <div className="muted" style={{ fontSize: "0.75rem" }}>{emp.job_role || "-"}</div>
+                    </TableCell>
+                    {editingId === emp.employee_id ? (
+                      <TableCell style={{ gridColumn: "1 / -1" }}>
+                        <div className="panel" style={{ margin: "0.5rem 0", padding: "1rem", background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                          <h5 style={{ marginTop: 0, marginBottom: "1rem" }}>Edit Access for {emp.full_name || emp.username}</h5>
+                          <Label>
+                            User Type
+                            <Select value={editForm.user_type || "normal"} onChange={(e) => setEditForm((p) => ({ ...p, user_type: e.target.value as SignupForm["user_type"] }))}>
+                              {USER_TYPE_OPTIONS.map((role) => (
+                                <option key={role.value} value={role.value}>{role.label}</option>
+                              ))}
+                            </Select>
+                          </Label>
+                          {(editForm.user_type || "normal") !== "admin" && (
+                            <Label style={{ marginTop: "1rem" }}>
+                              Module Access
+                              <div className="module-grid" style={{ marginTop: "0.5rem" }}>
+                                {MODULE_OPTIONS.map((module) => {
+                                  const selected = (editForm.module_access || []).includes(module.value);
+                                  return (
+                                    <label key={module.value} className="checkbox-line" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                                      <Checkbox
+                                        checked={selected}
+                                        onChange={() =>
+                                          setEditForm((p) => ({
+                                            ...p,
+                                            module_access: toggleModule(p.module_access, module.value),
+                                          }))
+                                        }
+                                      />
+                                      <span style={{ fontSize: "0.85rem" }}>{module.label}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </Label>
+                          )}
+                          <div className="form-actions" style={{ marginTop: "1.5rem" }}>
+                            <Button variant="primary" type="button" onClick={() => void handleEditSave(emp.employee_id)} disabled={!canWriteEmployees}>
+                              Save Access
+                            </Button>
+                            <Button variant="secondary" type="button" onClick={() => setEditingId(null)}>Cancel</Button>
+                          </div>
+                        </div>
+                      </TableCell>
+                    ) : (
+                      <>
+                        <TableCell>
+                          <Badge variant={emp.user_type === "admin" ? "default" : "secondary"}>
+                            {USER_TYPE_LABELS[emp.user_type || ""] || USER_TYPE_LABELS.normal}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                            {emp.user_type === "admin" ? (
+                              <span style={{ fontSize: "0.75rem", color: "#64748B" }}>All Modules</span>
+                            ) : (
+                              (emp.module_access && emp.module_access.length > 0 ? emp.module_access : DEFAULT_MODULE_ACCESS).map(m => (
+                                <span key={m} style={{ padding: "0.1rem 0.4rem", background: "#E2E8F0", borderRadius: "4px", fontSize: "0.7rem", color: "#475569" }}>
+                                  {m}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell style={{ textAlign: "right" }}>
+                          <Button variant="secondary" size="sm" onClick={() => startEdit(emp)} disabled={!canWriteEmployees}>
+                            Edit Access
+                          </Button>
+                        </TableCell>
+                      </>
+                    )}
+                  </TableRow>
+                ))}
+                {employees.length === 0 && (
+                  <TableRow style={{ gridTemplateColumns: "1fr" }}>
+                    <TableCell className="muted" style={{ gridColumn: "1 / -1", padding: "2rem", textAlign: "center" }}>
+                      No employees found.
+                    </TableCell>
+                  </TableRow>
+                )}
               </div>
-            </form>
+            </Table>
           </div>
         )}
 
