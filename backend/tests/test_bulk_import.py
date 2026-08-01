@@ -1,9 +1,27 @@
 import io
+import json
+import pytest
 
 import app  # noqa: F401  -- must be imported before modules.bulk_import.routes directly,
 # since app.py registers that blueprint at the bottom of its own module and importing
 # the submodule first here would otherwise hit a circular import.
 from modules.bulk_import.routes import _build_filter_clause
+
+
+@pytest.fixture(autouse=True)
+def mock_llm_provider(monkeypatch):
+    import ai.service
+    monkeypatch.setattr(ai.service.llm_provider, "is_configured", lambda: True)
+
+    def mock_generate(prompt, context=""):
+        return json.dumps({
+            "answer": "Found Ravi Kumar and Asha Rao.",
+            "entries": [
+                {"name": "Ravi Kumar", "phone": "9876500000", "medical_condition": "hypertension"},
+                {"name": "Asha Rao", "phone": "9876543210", "medical_condition": "diabetes"}
+            ]
+        })
+    monkeypatch.setattr(ai.service.llm_provider, "generate", mock_generate)
 from utils.database import (
     resolve_hospital_id,
     add_patient,

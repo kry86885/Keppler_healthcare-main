@@ -4,6 +4,12 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def mock_load_dotenv(monkeypatch):
+    import dotenv
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *args, **kwargs: None)
+
+
+@pytest.fixture(autouse=True)
 def clean_database():
     # Override backend/tests/conftest.py autouse DB cleanup for this
     # module because these tests intentionally mutate DB config/env.

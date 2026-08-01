@@ -11,9 +11,11 @@ from dotenv import load_dotenv
 
 try:
     import psycopg2
+    from psycopg2 import pool as psycopg2_pool
     from psycopg2.extras import DictCursor
 except Exception:  # pragma: no cover - optional when using sqlite only
     psycopg2 = None
+    psycopg2_pool = None
     DictCursor = None
 
 try:
@@ -51,7 +53,10 @@ def normalize_hospital_code(code):
 
 def _normalize_database_url(url: str) -> str:
     if url.startswith("postgres://"):
-        return "postgresql://" + url[len("postgres://"):]
+        url = "postgresql://" + url[len("postgres://"):]
+    if "connect_timeout" not in url:
+        sep = "&" if "?" in url else "?"
+        url += f"{sep}connect_timeout=5"
     return url
 
 
@@ -77,13 +82,62 @@ def _resolve_sqlite_db_path():
     return fallback_path
 
 
+_PG_POOL = None
+_PG_POOL_MINCONN = int(os.getenv("PG_POOL_MIN", "1"))
+_PG_POOL_MAXCONN = int(os.getenv("PG_POOL_MAX", "20"))
+
+
+def _get_pg_pool():
+    # Lazily created (not at import time) so sqlite-only setups never touch this,
+    # and so gunicorn's `-w 3` worker *processes* each build their own pool after
+    # forking rather than sharing one pool object across process boundaries.
+    global _PG_POOL
+    if _PG_POOL is None:
+        _PG_POOL = psycopg2_pool.ThreadedConnectionPool(
+            _PG_POOL_MINCONN,
+            _PG_POOL_MAXCONN,
+            _normalize_database_url(DATABASE_URL),
+            cursor_factory=DictCursor,
+        )
+    return _PG_POOL
+
+
 @contextmanager
-def get_connection():
+def get_connection(autocommit: bool = False):
     if IS_POSTGRES:
         if psycopg2 is not None:
-            conn = psycopg2.connect(_normalize_database_url(DATABASE_URL), cursor_factory=DictCursor)
+            # Pooled: previously every call opened a brand-new TCP+TLS+auth
+            # connection and threw it away on exit, which is the dominant cost
+            # of a request against a remote/serverless Postgres (e.g. Neon) and
+            # becomes the real bottleneck well before CPU or storage do under
+            # concurrent load. Reusing pooled connections avoids paying that
+            # handshake on every single request.
+            pool = _get_pg_pool()
+            conn = pool.getconn()
+            # A pooled connection may have been left in a different autocommit
+            # mode by whichever request used it last -- always set explicitly.
+            conn.autocommit = autocommit
+            try:
+                yield _CompatConnection(conn, postgres=True)
+            except Exception:
+                if not autocommit:
+                    conn.rollback()
+                raise
+            finally:
+                pool.putconn(conn)
+            return
         elif psycopg is not None:
+            # Rare fallback driver, only used if psycopg2 isn't installed --
+            # pooling it would need the separate psycopg_pool package, not
+            # worth adding for a path that's not the primary one.
             conn = psycopg.connect(_normalize_database_url(DATABASE_URL))
+            if autocommit:
+                conn.autocommit = True
+            try:
+                yield _CompatConnection(conn, postgres=True)
+            finally:
+                conn.close()
+            return
         else:
             raise RuntimeError(
                 "PostgreSQL driver missing for DATABASE_URL. "
@@ -91,11 +145,6 @@ def get_connection():
                 "or install either `psycopg2-binary` or `psycopg[binary]`. "
                 "If you want SQLite locally, set DB_ENGINE=sqlite."
             )
-        try:
-            yield _CompatConnection(conn, postgres=True)
-        finally:
-            conn.close()
-        return
 
     sqlite_path = _resolve_sqlite_db_path()
     conn = sqlite3.connect(sqlite_path, check_same_thread=False)
@@ -303,7 +352,13 @@ def set_hospital_status(hospital_code, status, reason=None):
 
 
 def init_database():
-    with get_connection() as conn:
+    # Runs dozens of independent, idempotent (IF NOT EXISTS-guarded) DDL statements.
+    # Autocommit so each one lands immediately rather than sitting in one giant
+    # multi-minute uncommitted transaction -- against a remote/serverless Postgres
+    # (e.g. Neon) a long-held transaction is prone to dropping mid-way, and every
+    # such drop previously left an "idle in transaction" session wedged on a table
+    # lock that blocked every subsequent retry until manually killed.
+    with get_connection(autocommit=True) as conn:
         cursor = conn.cursor()
 
         if IS_POSTGRES:
@@ -1796,7 +1851,7 @@ def ensure_vector_store_tables(conn):
             heart_rate INTEGER,
             blood_pressure TEXT,
             spo2 INTEGER,
-            ventilator_active BOOLEAN DEFAULT 0,
+            ventilator_active BOOLEAN DEFAULT FALSE,
             critical_alerts TEXT,
             recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -2377,22 +2432,23 @@ def generate_patient_id(hospital_id=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        # Find the highest continuous sequence id. Using a professional MRN-like sequence starting at 100001
+        # Find the highest continuous sequence id directly from the database.
         cursor.execute(
-            "SELECT patient_id FROM patients WHERE hospital_id = ? AND patient_id LIKE ?",
+            "SELECT patient_id FROM patients WHERE hospital_id = ? AND patient_id LIKE ? "
+            "ORDER BY CAST(SUBSTR(patient_id, 5) AS INTEGER) DESC LIMIT 1",
             (scoped_hospital_id, 'PAT-1%')
         )
-        ids = [row[0] for row in cursor.fetchall()]
+        row = cursor.fetchone()
         
         max_num = 100000
-        for pid in ids:
+        if row:
             try:
                 # Expecting format PAT-100001
-                num = int(pid.split('-')[1])
+                num = int(row[0].split('-')[1])
                 if num > max_num:
                     max_num = num
             except (IndexError, ValueError):
-                continue
+                pass
                 
     return f"PAT-{max_num + 1}"
 

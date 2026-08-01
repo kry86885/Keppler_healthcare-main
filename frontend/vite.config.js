@@ -12,5 +12,10 @@ export default defineConfig({
     setupFiles: "./src/test/setup.js",
     include: ["src/**/*.test.{js,jsx,ts,tsx}"],
     exclude: ["tests/e2e/**", "node_modules/**", "dist/**"],
+    server: {
+      deps: {
+        inline: ["@exodus/bytes", "html-encoding-sniffer"]
+      }
+    }
   },
 });

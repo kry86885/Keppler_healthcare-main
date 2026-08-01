@@ -216,7 +216,7 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: "600px", background: "var(--color-bg)", padding: "1.5rem", borderRadius: "8px", position: "relative", zIndex: 1000, margin: "10% auto" }}>
+      <div className="modal-content" style={{ width: "90%", maxWidth: "600px", background: "var(--color-bg)", padding: "1.5rem", borderRadius: "8px", position: "relative", zIndex: 1000, margin: "10vh auto" }}>
         <div className="modal-header" style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem" }}>
           <h2>Upload Prescription for {patientName}</h2>
           <button className="modal-close" onClick={onClose} aria-label="Close modal" style={{ cursor: "pointer", background: "none", border: "none", fontSize: "1.5rem" }}>
@@ -256,7 +256,7 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
               <Button onClick={handleParseMedicines} disabled={parsing || !ocrText.trim()}>
                 {parsing ? "Parsing..." : "Parse Medicines for Pharmacy"}
               </Button>
-              <div style={{ display: "flex", gap: "1rem" }}>
+              <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
                 <Button onClick={onClose}>Close</Button>
                 <Button onClick={handlePrint} disabled={printing || !ocrText.trim()}>
                   {printing ? "Preparing..." : "Print"}
@@ -272,7 +272,8 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
         {step === "verify" && (
           <div>
             <p>Review the extracted medicines. You can edit them before sending to pharmacy.</p>
-            <Table style={{ marginBottom: "1rem" }}>
+            <div style={{ overflowX: "auto", marginBottom: "1rem", width: "100%" }}>
+              <Table>
               <TableHead>
                 <TableCell>Medicine</TableCell>
                 <TableCell>Dosage</TableCell>
@@ -306,12 +307,13 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
                   </TableCell>
                 </TableRow>
               ))}
-            </Table>
-            <div style={{ display: "flex", gap: "1rem", justifyContent: "space-between" }}>
+              </Table>
+            </div>
+            <div style={{ display: "flex", gap: "1rem", justifyContent: "space-between", flexWrap: "wrap" }}>
               <Button onClick={() => setMedicines([...medicines, { name: "", dosage: "", quantity: 1 }])}>
                 Add Medicine
               </Button>
-              <div style={{ display: "flex", gap: "1rem" }}>
+              <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
                 <Button onClick={() => setStep("review")}>Back</Button>
                 <Button onClick={handleConfirm}>Confirm & Send to Pharmacy</Button>
               </div>

@@ -1,5 +1,16 @@
+import os
 import psycopg2
-conn = psycopg2.connect('postgresql://postgres:rahul%40123@localhost:5432/HospAI_DB')
+from dotenv import load_dotenv
+
+load_dotenv()
+database_url = os.getenv("DATABASE_URL")
+if not database_url:
+    raise ValueError("DATABASE_URL is not set in the environment or .env file")
+
+if database_url.startswith("postgres://"):
+    database_url = "postgresql://" + database_url[len("postgres://"):]
+
+conn = psycopg2.connect(database_url)
 cur = conn.cursor()
 cur.execute("UPDATE users SET access_role='clinician', module_access='[\"patients\"]' WHERE username='doctor'")
 conn.commit()

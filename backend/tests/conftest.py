@@ -4,14 +4,29 @@ import sys
 
 import pytest
 
+# Module-level, not inside a fixture: pytest imports every test module during its
+# *collection* phase, before any fixture ever runs -- and several test files (e.g.
+# test_bulk_import.py) do a module-level `import app`, whose own module-level code
+# calls init_database() immediately on import. Setting these inside a fixture would
+# be too late for that first collection-time import. Tests must never depend on
+# whatever DB_ENGINE/DATABASE_URL happens to be sitting in a developer's root .env
+# (e.g. pointed at a real shared Postgres) -- database.py's load_dotenv(...,
+# override=False) would otherwise pick that up, silently making the suite try to
+# reach a real database instead of the fast, isolated SQLite fixture it's meant to
+# use. Confirmed this exact thing was happening: the full suite took over an hour
+# instead of ~1-2 minutes because collection itself hung against stale
+# local-Postgres credentials from the root .env before a single test could run.
+os.environ["DB_ENGINE"] = "sqlite"
+os.environ["DATABASE_URL"] = ""
+os.environ["BUCKET_URL"] = "s3://memory-test/bucket"
+# Must be set before app.py (and therefore core.celery_app.celery_init_app) is ever
+# imported/reloaded -- app.config["TESTING"] is only set *after* the app_client fixture
+# reloads the module, which is too late for celery_init_app's own eager-mode check.
+os.environ["CELERY_TASK_ALWAYS_EAGER"] = "true"
+
 
 @pytest.fixture(scope="session", autouse=True)
 def test_db_env():
-    os.environ["BUCKET_URL"] = "s3://memory-test/bucket"
-    # Must be set before app.py (and therefore core.celery_app.celery_init_app) is ever
-    # imported/reloaded -- app.config["TESTING"] is only set *after* the app_client fixture
-    # reloads the module, which is too late for celery_init_app's own eager-mode check.
-    os.environ["CELERY_TASK_ALWAYS_EAGER"] = "true"
     if "backend" not in sys.path:
         sys.path.insert(0, os.path.dirname(__file__) + "/..")
 

@@ -10,16 +10,24 @@ services:
       context: .
       dockerfile: backend/Dockerfile.dev
     env_file:
+      # DB_ENGINE/DATABASE_URL deliberately live only in this per-developer,
+      # gitignored file -- NOT hardcoded below -- so everyone on the team can
+      # point at the same shared Postgres (or their own) without editing this
+      # tracked compose file. Previously DB_ENGINE/DB_PATH were hardcoded here,
+      # which silently overrode whatever was in .env (compose `environment:`
+      # always wins over `env_file:`), so a shared DATABASE_URL never took effect.
       - ./backend/.env
     environment:
       - PORT=5011
-      - DB_ENGINE=sqlite
-      - DB_PATH=/data/healthcare.db
       - FLASK_ENV=development
       - SESSION_COOKIE_SECURE=false
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - OCR_BACKEND_URL=http://ocr-api:7620
+    # Lets DATABASE_URL use host.docker.internal to reach a Postgres server
+    # running natively on the host (as opposed to another container).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "5011:5011"
     volumes:
@@ -49,11 +57,11 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - DB_ENGINE=sqlite
-      - DB_PATH=/data/healthcare.db
       - FLASK_ENV=development
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./backend:/app/backend
       - ./healthcare.db:/data/healthcare.db
