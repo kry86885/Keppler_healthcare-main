@@ -147,19 +147,22 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
 
   const handleDepartmentChange = (dept: string) => {
     setAppointmentForm((prev) => {
+      // Match case-insensitively against departments list and doctors list
+      const matchedDeptObj = departments.find(d => (d.department_name || "").toLowerCase() === (dept || "").toLowerCase());
+      const matchedDocDept = doctors.find(d => (d.department || "").toLowerCase() === (dept || "").toLowerCase());
+      const targetDeptName = matchedDeptObj ? matchedDeptObj.department_name : (matchedDocDept?.department || dept);
+
       let nextDoctor = prev.doctor_name;
       let nextFee = prev.consultation_fee;
 
-      if (dept && doctors.length > 0) {
-        // Only overwrite doctor if current doctor doesn't belong to the newly selected department
-        const isCurrentDoctorInDept = doctors.some(d => 
-          (d.department || "").toLowerCase() === dept.toLowerCase() && 
-          (d.doctor_name || "").toLowerCase() === (prev.doctor_name || "").toLowerCase()
-        );
+      if (targetDeptName && doctors.length > 0) {
+        // Find doctors belonging to target department (case-insensitive)
+        const inDeptDocs = doctors.filter(d => (d.department || "").toLowerCase() === targetDeptName.toLowerCase());
+        const isCurrentDoctorInDept = inDeptDocs.some(d => (d.doctor_name || "").toLowerCase() === (prev.doctor_name || "").toLowerCase());
 
-        if (!isCurrentDoctorInDept) {
-          const availableDocs = doctors.filter(d => (d.department || "").toLowerCase() === dept.toLowerCase() && d.status === "available");
-          const targetDoc = availableDocs.length > 0 ? availableDocs[0] : doctors.find(d => (d.department || "").toLowerCase() === dept.toLowerCase());
+        if (!isCurrentDoctorInDept && inDeptDocs.length > 0) {
+          const availableDocs = inDeptDocs.filter(d => d.status === "available");
+          const targetDoc = availableDocs.length > 0 ? availableDocs[0] : inDeptDocs[0];
           
           if (targetDoc) {
             nextDoctor = targetDoc.doctor_name || "";
@@ -168,7 +171,7 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
         }
       }
 
-      return { ...prev, department: dept, doctor_name: nextDoctor, consultation_fee: nextFee };
+      return { ...prev, department: targetDeptName, doctor_name: nextDoctor, consultation_fee: nextFee };
     });
   };
 
@@ -224,18 +227,22 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
     }
     setTriageLoading(true);
     try {
-      const availableDepartments = departments.map((d) => d.department_name).filter(Boolean);
-      const res = await fetch(`${SYMPTOM_API_BASE}/api/symptom-ai/triage`, {
+      // Build unique list of departments combining department_master AND active doctors' departments
+      const availableDepartments = Array.from(
+        new Set([
+          ...departments.map((d) => d.department_name),
+          ...doctors.map((doc) => doc.department)
+        ])
+      ).filter(Boolean) as string[];
+
+      const res = await apiFetch<{ department?: string; urgency?: string; reasoning?: string }>("/api/symptom-ai/triage", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ symptoms: symptomsText, available_departments: availableDepartments }),
       });
-      if (!res.ok) throw new Error("Triage API error");
-      const data = await res.json();
-      if (data.department) {
-        handleDepartmentChange(data.department);
+      if (res.department) {
+        handleDepartmentChange(res.department);
       }
-      setTriageResult({ urgency: data.urgency, reasoning: data.reasoning });
+      setTriageResult({ urgency: res.urgency, reasoning: res.reasoning });
     } catch (error) {
       reportError(setNotice, error as { message?: string }, "Unable to get AI triage recommendation.");
     } finally {

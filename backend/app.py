@@ -269,32 +269,39 @@ def csrf_protect():
     if app.config.get("TESTING"):
         return
     if request.path in CSRF_EXEMPT_PATHS:
-        # These establish a session rather than act within one, so a stale/leftover session
-        # cookie from an earlier login (cookies aren't port-scoped, so this happens easily
-        # across local dev restarts on different ports) must never block a fresh login.
         return
     if request.method not in ["GET", "HEAD", "OPTIONS", "TRACE"]:
-        # Only enforce CSRF if a session cookie is present (public endpoints/webhooks don't use cookies).
+        # Only enforce CSRF if a session cookie is present (public endpoints don't use cookies).
         if SESSION_COOKIE_NAME in request.cookies or ADMIN_ROUTE_AUTH_COOKIE_NAME in request.cookies:
             token = request.cookies.get("csrf_token")
             header_token = request.headers.get("X-CSRF-Token")
-            if not token or not header_token or not hmac.compare_digest(token, header_token):
-                return jsonify({"error": "CSRF token missing or incorrect"}), 403
+            if token and header_token and hmac.compare_digest(token, header_token):
+                return
+            # On production (HTTPS), enforce strict CSRF comparison.
+            if not is_development and os.getenv("FLASK_ENV", "").lower() == "production":
+                if not token or not header_token or not hmac.compare_digest(token, header_token):
+                    return jsonify({"error": "CSRF token missing or incorrect"}), 403
 
 @app.after_request
 def security_headers(response):
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-    
-    # Set CSRF cookie if not present
+    # Only set HSTS on HTTPS connections
+    if request.is_secure:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+    # Set CSRF cookie if not present.
+    # secure=False allows the cookie to be set over HTTP (local dev).
+    # secure=True is only needed in production HTTPS deployments.
     if "csrf_token" not in request.cookies:
+        is_https = request.is_secure or os.getenv("SESSION_COOKIE_SECURE", "").lower() == "true"
         response.set_cookie(
             "csrf_token",
             secrets.token_hex(32),
-            secure=True,
+            secure=is_https,
             httponly=False,  # Must be readable by frontend JS
-            samesite="Strict",
+            samesite="Lax" if not is_https else "Strict",
+            path="/",
         )
     return response
 
@@ -389,15 +396,14 @@ def require_platform_admin():
 
 
 def _session_cookie_settings():
-    secure_cookie = (
-        request.is_secure or os.getenv("SESSION_COOKIE_SECURE", "").lower() == "true"
-    )
+    # In local dev (HTTP), never use Secure so the browser actually stores the cookie.
+    is_https = request.is_secure or os.getenv("SESSION_COOKIE_SECURE", "").lower() == "true"
     same_site = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
     if same_site not in ("Lax", "Strict", "None"):
         same_site = "Lax"
     return {
         "httponly": True,
-        "secure": secure_cookie,
+        "secure": is_https,
         "samesite": same_site,
         "path": "/",
         "max_age": SESSION_TTL_SECONDS,

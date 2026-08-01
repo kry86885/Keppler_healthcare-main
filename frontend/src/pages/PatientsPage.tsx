@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { FiEye, FiTrash2 } from "react-icons/fi";
 import MarkdownReport from "../components/MarkdownReport";
 import DocumentUploadDropzone from "../components/DocumentUploadDropzone";
 import { Alert, Badge, Button, Checkbox, ConfirmDialog, Input, Select, Table, TableCell, TableHead, TableRow, Tabs, TabsContent, TabsTrigger, Textarea } from "../components/ui";
@@ -247,73 +248,100 @@ export default function PatientsPage({
           {loading && <Badge>Searching</Badge>}
         </div>
 
-        <Table className="patient-list-table">
-          <TableHead>
-            <TableCell>Patient</TableCell>
-            <TableCell>Age</TableCell>
-            <TableCell>Gender</TableCell>
-            <TableCell>Phone</TableCell>
-            <TableCell>Created</TableCell>
-            <TableCell>Actions</TableCell>
-          </TableHead>
-          {displayPatients.map((patient) => {
-            const expanded = selectedPatient?.patient_id === patient.patient_id;
-            return (
-              <Fragment key={patient.patient_id}>
-                <TableRow className={expanded ? "active" : ""}>
-                  <TableCell>
-                    {patient.name} {patient.last_name}
-                  </TableCell>
-                  <TableCell>{patient.age || "-"}</TableCell>
-                  <TableCell>{patient.gender || "-"}</TableCell>
-                  <TableCell>{patient.phone || "-"}</TableCell>
-                  <TableCell>{formatDateTimeIST(patient.created_at)}</TableCell>
-                  <TableCell className="row-actions">
-                    <Button variant="ghost" size="sm" onClick={() => onSelect(expanded ? null : patient)}>
-                      {expanded ? "Hide" : "View"}
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() =>
-                        setDeleteTarget({
-                          patientId: patient.patient_id,
-                          label: `${patient.name} ${patient.last_name || ""}`.trim() || patient.patient_id,
-                        })
-                      }
-                      disabled={!canDelete}
-                      title={!canDelete ? "Only Owner / MD / CEO can delete patients." : ""}
-                    >
-                      Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-                {expanded && (
-                  <div className="table-row-expand">
-                    <PatientDetail
-                      patientRef={patient}
-                      setNotice={setNotice}
-                      canEdit={canEdit}
-                      canReadBilling={canReadBilling}
-                      canReadLab={canReadLab}
-                      ocrLanguage={ocrLanguage}
-                      languages={languages}
-                      canDelete={canDelete}
-                      onRequestDelete={(fullPatient) =>
-                        setDeleteTarget({
-                          patientId: fullPatient.patient_id,
-                          label: `${fullPatient.name} ${fullPatient.last_name || ""}`.trim() || fullPatient.patient_id,
-                        })
-                      }
-                      onPatientUpdated={onPatientUpdated}
-                      refreshToken={refreshToken}
-                    />
-                  </div>
-                )}
-              </Fragment>
-            );
-          })}
-        </Table>
+        <div className="overflow-x-auto w-full">
+          <Table className="patient-list-table">
+            <TableHead>
+              <TableCell>Patient</TableCell>
+              <TableCell className="text-center">Age</TableCell>
+              <TableCell className="text-center">Gender</TableCell>
+              <TableCell>Phone</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell className="text-center">Actions</TableCell>
+              <TableCell>Created</TableCell>
+            </TableHead>
+            {displayPatients.map((patient) => {
+              const expanded = selectedPatient?.patient_id === patient.patient_id;
+              const isCompleted = patient.status?.toLowerCase() === 'completed';
+              const isConsultation = patient.status?.toLowerCase().includes('consultation');
+              return (
+                <Fragment key={patient.patient_id}>
+                  <TableRow className={`hover:bg-muted/50 ${expanded ? "active" : ""}`}>
+                    <TableCell>
+                      <div className="font-medium text-foreground">{patient.name} {patient.last_name}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{patient.patient_id}</div>
+                    </TableCell>
+                    <TableCell className="text-center">{patient.age || "—"}</TableCell>
+                    <TableCell className="text-center">{patient.gender || "—"}</TableCell>
+                    <TableCell>{patient.phone || "—"}</TableCell>
+                    <TableCell>
+                      {patient.status ? (
+                        <Badge variant={isCompleted ? 'default' : isConsultation ? 'secondary' : 'outline'}>
+                          {patient.status.charAt(0).toUpperCase() + patient.status.slice(1).replace('_', ' ')}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-muted-foreground hover:text-foreground flex items-center gap-1"
+                          onClick={() => onSelect(expanded ? null : patient)}
+                          title={expanded ? "Hide details" : "View details"}
+                        >
+                          <FiEye className="h-4 w-4" />
+                          <span>View</span>
+                        </Button>
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-destructive hover:bg-destructive/10 flex items-center gap-1"
+                            onClick={() =>
+                              setDeleteTarget({
+                                patientId: patient.patient_id,
+                                label: `${patient.name} ${patient.last_name || ""}`.trim() || patient.patient_id,
+                              })
+                            }
+                            title="Delete patient"
+                          >
+                            <FiTrash2 className="h-4 w-4" />
+                            <span>Delete</span>
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>{formatDateTimeIST(patient.created_at)}</TableCell>
+                  </TableRow>
+                  {expanded && (
+                    <div className="table-row-expand">
+                      <PatientDetail
+                        patientRef={patient}
+                        setNotice={setNotice}
+                        canEdit={canEdit}
+                        canReadBilling={canReadBilling}
+                        canReadLab={canReadLab}
+                        ocrLanguage={ocrLanguage}
+                        languages={languages}
+                        canDelete={canDelete}
+                        onRequestDelete={(fullPatient) =>
+                          setDeleteTarget({
+                            patientId: fullPatient.patient_id,
+                            label: `${fullPatient.name} ${fullPatient.last_name || ""}`.trim() || fullPatient.patient_id,
+                          })
+                        }
+                        onPatientUpdated={onPatientUpdated}
+                        refreshToken={refreshToken}
+                      />
+                    </div>
+                  )}
+                </Fragment>
+              );
+            })}
+          </Table>
+        </div>
 
         <div className="module-mobile-list patient-list-mobile" aria-label="Patient list cards">
           {displayPatients.map((patient) => {
@@ -1149,7 +1177,7 @@ function PatientDetail({
               <p>Phone: {patient.phone || "-"}</p>
               <p>Blood Group: {patient.blood_group || "-"}</p>
               <p>Emergency Contact: {patient.emergency_contact || "-"}</p>
-              <p>Aadhar Number: {patient.aadhar_number || "-"}</p>
+              <p>Aadhar Number: {patient.aadhar_number || "Not provided"}</p>
               <p>Address: {patient.address || "-"}</p>
               <p>Weight: {patient.weight || "-"} kg</p>
               <p>Height: {patient.height || "-"} cm</p>

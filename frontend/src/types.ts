@@ -113,6 +113,7 @@ export interface Patient {
   emergency_contact?: string;
   aadhar_number?: string;
   created_at?: string;
+  status?: string;
 }
 
 export interface Admission {
@@ -435,3 +436,19 @@ export interface Employee {
   module_access?: ModuleId[];
   date_joined?: string;
 }
+
+export interface PatientWallet {
+  patient_id: string;
+  balance: number;
+  updated_at?: string;
+}
+
+export interface Refund {
+  id: number;
+  invoice_id: number;
+  amount: number;
+  reason?: string;
+  status?: string;
+  created_at?: string;
+}
+

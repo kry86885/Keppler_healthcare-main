@@ -5,7 +5,7 @@ import { Button, Input, Label, Select, Table, TableCell, TableHead, TableRow } f
 import { apiFetch, reportError } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { openRazorpayCheckout } from "../lib/razorpay";
-import type { Notice } from "../types";
+import type { Notice, PatientWallet, Refund } from "../types";
 
 export type BillingView =
   | "aging"
@@ -15,7 +15,9 @@ export type BillingView =
   | "insurance-claims"
   | "invoices"
   | "payment-mode-breakdown"
-  | "collections-by-module";
+  | "collections-by-module"
+  | "consolidated-bill"
+  | "wallet-refunds";
 
 type Props = {
   setNotice: Dispatch<SetStateAction<Notice | null>>;
@@ -197,6 +199,14 @@ const BILLING_VIEW_CONFIG: Record<BillingView, { title: string; subtitle: string
     title: "Collections by Module",
     subtitle: "Monitor amount collected per billing module.",
   },
+  "consolidated-bill": {
+    title: "Consolidated Bill & Payment",
+    subtitle: "Process master payments against patient due balances.",
+  },
+  "wallet-refunds": {
+    title: "Patient Wallet & Refunds",
+    subtitle: "Manage advance deposits and issue secure refunds.",
+  },
 };
 
 function formatCurrency(amount?: number) {
@@ -219,8 +229,15 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
   const [isRazorpayReady, setIsRazorpayReady] = useState(true);
   const maxBreakdownValue = Math.max(1, ...summary.payment_mode_breakdown.map((row) => row.count || 0));
   const maxModuleCollectionValue = Math.max(1, ...summary.collections_by_module.map((row) => row.count || 0));
-  const needsInvoices = view === "create-invoice" || view === "record-payment" || view === "insurance-claims" || view === "invoices";
+  const needsInvoices = view === "create-invoice" || view === "record-payment" || view === "insurance-claims" || view === "invoices" || view === "consolidated-bill";
   const needsClaims = view === "insurance-claims";
+
+  const [walletSearchId, setWalletSearchId] = useState("");
+  const [walletData, setWalletData] = useState<PatientWallet | null>(null);
+  const [refundsList, setRefundsList] = useState<Refund[]>([]);
+  const [walletForm, setWalletForm] = useState({ amount: "", reason: "" });
+  const [refundForm, setRefundForm] = useState({ invoice_id: "", amount: "", reason: "" });
+  const [masterPaymentForm, setMasterPaymentForm] = useState({ patient_id: "", amount: "", payment_mode: "cash", use_wallet: false });
 
   const buildInvoicePath = (nextFilters: BillingFilters) => {
     const params = new URLSearchParams();
@@ -416,6 +433,85 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
       reportError(setNotice, error as { message?: string; status?: number }, "Unable to record payment.");
     } finally {
       setSavingPayment(false);
+    }
+  };
+
+
+  const loadWalletAndRefunds = async (patientId: string) => {
+    if (!patientId.trim()) return;
+    try {
+      const wData = await apiFetch<{ wallet: import("../types").PatientWallet }>(`/api/billing/wallet/${patientId}`);
+      setWalletData(wData.wallet);
+      const rData = await apiFetch<{ refunds: import("../types").Refund[] }>(`/api/billing/refunds`);
+      setRefundsList(rData.refunds || []);
+    } catch (e) {
+      reportError(setNotice, e as { message?: string }, "Failed to load wallet data.");
+    }
+  };
+
+  const handleAddWallet = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!walletSearchId || !walletForm.amount || !walletForm.reason) {
+      setNotice({ type: "error", message: "All fields are required" });
+      return;
+    }
+    try {
+      await apiFetch("/api/billing/wallet", {
+        method: "POST",
+        body: JSON.stringify({ patient_id: walletSearchId, amount: Number(walletForm.amount), reason: walletForm.reason })
+      });
+      setNotice({ type: "success", message: "Wallet updated" });
+      setWalletForm({ amount: "", reason: "" });
+      void loadWalletAndRefunds(walletSearchId);
+    } catch (e) {
+      reportError(setNotice, e as { message?: string }, "Failed to add to wallet.");
+    }
+  };
+
+  const handleCreateRefund = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!refundForm.invoice_id || !refundForm.amount || !refundForm.reason) {
+      setNotice({ type: "error", message: "All fields are required" });
+      return;
+    }
+    try {
+      await apiFetch("/api/billing/refunds", {
+        method: "POST",
+        body: JSON.stringify({ invoice_id: Number(refundForm.invoice_id), amount: Number(refundForm.amount), reason: refundForm.reason })
+      });
+      setNotice({ type: "success", message: "Refund created" });
+      setRefundForm({ invoice_id: "", amount: "", reason: "" });
+      void loadWalletAndRefunds(walletSearchId);
+    } catch (e) {
+      reportError(setNotice, e as { message?: string }, "Failed to create refund.");
+    }
+  };
+
+  const handleMasterPayment = async (e: FormEvent) => {
+    e.preventDefault();
+    const patientInvoices = invoices.filter(inv => inv.patient_id === masterPaymentForm.patient_id && (inv.due_amount || 0) > 0);
+    if (patientInvoices.length === 0) {
+      setNotice({ type: "error", message: "No pending invoices found for this patient" });
+      return;
+    }
+    
+    const allocations = patientInvoices.map(inv => ({ invoice_id: inv.id, amount: inv.due_amount }));
+    try {
+      await apiFetch("/api/billing/master-payment", {
+        method: "POST",
+        body: JSON.stringify({
+          patient_id: masterPaymentForm.patient_id,
+          total_amount: Number(masterPaymentForm.amount),
+          payment_mode: masterPaymentForm.payment_mode,
+          use_wallet: masterPaymentForm.use_wallet,
+          allocations
+        })
+      });
+      setNotice({ type: "success", message: "Master payment applied" });
+      setMasterPaymentForm({ patient_id: "", amount: "", payment_mode: "cash", use_wallet: false });
+      void loadBilling();
+    } catch (err) {
+      reportError(setNotice, err as { message?: string }, "Master payment failed.");
     }
   };
 
@@ -1051,6 +1147,148 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
               </div>
             </>
           ) : null}
+        </div>
+      );
+    }
+
+    if (view === "consolidated-bill") {
+      const patientInvoices = invoices.filter(inv => inv.patient_id === masterPaymentForm.patient_id && (inv.due_amount || 0) > 0);
+      return (
+        <div className="panel">
+          <div className="module-panel-head">
+            <h3>Consolidated Bill & Payment</h3>
+          </div>
+          <form className="module-filters" onSubmit={(e) => { e.preventDefault(); }}>
+            <Label title="Patient ID">
+              <Input type="text" placeholder="Patient ID" value={masterPaymentForm.patient_id} onChange={(e) => setMasterPaymentForm({ ...masterPaymentForm, patient_id: e.target.value })} required />
+            </Label>
+          </form>
+          {masterPaymentForm.patient_id && (
+            <>
+              {patientInvoices.length > 0 ? (
+                <>
+                  <Table className="module-table" role="table" aria-label="Pending Invoices">
+                    <TableHead>
+                      <TableCell>Invoice</TableCell>
+                      <TableCell>Module</TableCell>
+                      <TableCell>Total</TableCell>
+                      <TableCell>Due</TableCell>
+                    </TableHead>
+                    {patientInvoices.map(inv => (
+                      <TableRow key={inv.id}>
+                        <TableCell>{inv.invoice_no || `INV-${inv.id}`}</TableCell>
+                        <TableCell>{inv.module || "-"}</TableCell>
+                        <TableCell>{formatCurrency(inv.total_amount)}</TableCell>
+                        <TableCell>{formatCurrency(inv.due_amount)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </Table>
+                  <form className="module-form" onSubmit={handleMasterPayment} style={{ marginTop: '1rem' }}>
+                    <div className="form-grid">
+                      <Label title="Master Payment Amount">
+                        <Input type="number" step="0.01" min="0.01" value={masterPaymentForm.amount} onChange={e => setMasterPaymentForm({...masterPaymentForm, amount: e.target.value})} required />
+                      </Label>
+                      <Label title="Payment Mode">
+                        <Select value={masterPaymentForm.payment_mode} onChange={e => setMasterPaymentForm({...masterPaymentForm, payment_mode: e.target.value})}>
+                          <option value="cash">Cash</option>
+                          <option value="card">Card</option>
+                          <option value="upi">UPI</option>
+                          <option value="bank_transfer">Bank Transfer</option>
+                        </Select>
+                      </Label>
+                      <Label title="Deduct from Wallet?">
+                        <input type="checkbox" checked={masterPaymentForm.use_wallet} onChange={e => setMasterPaymentForm({...masterPaymentForm, use_wallet: e.target.checked})} style={{ marginLeft: "0.5rem" }} />
+                      </Label>
+                    </div>
+                    <Button type="submit">Apply Master Payment</Button>
+                  </form>
+                </>
+              ) : (
+                <p className="muted" style={{ marginTop: "1rem" }}>No pending invoices for this patient.</p>
+              )}
+            </>
+          )}
+        </div>
+      );
+    }
+
+    if (view === "wallet-refunds") {
+      return (
+        <div className="panel">
+          <div className="module-panel-head">
+            <h3>Patient Wallet & Refunds</h3>
+          </div>
+          <form className="module-filters" onSubmit={(e) => { e.preventDefault(); void loadWalletAndRefunds(walletSearchId); }}>
+            <Label title="Patient ID">
+              <Input type="text" placeholder="Patient ID" value={walletSearchId} onChange={(e) => setWalletSearchId(e.target.value)} required />
+            </Label>
+            <Button type="submit">Search</Button>
+          </form>
+
+          {walletData && (
+            <div className="stat-grid module-stat-grid" style={{ marginTop: '1rem' }}>
+              <StatCard label="Current Wallet Balance" value={formatCurrency(walletData.balance)} />
+            </div>
+          )}
+
+          {walletData && (
+            <form className="module-form" onSubmit={handleAddWallet} style={{ marginTop: '1rem' }}>
+              <h4>Add Funds to Wallet</h4>
+              <div className="form-grid">
+                <Label title="Amount">
+                  <Input type="number" step="0.01" min="0.01" value={walletForm.amount} onChange={e => setWalletForm({...walletForm, amount: e.target.value})} required />
+                </Label>
+                <Label title="Reason">
+                  <Input type="text" placeholder="e.g. Advance deposit" value={walletForm.reason} onChange={e => setWalletForm({...walletForm, reason: e.target.value})} required />
+                </Label>
+              </div>
+              <Button type="submit">Add Funds</Button>
+            </form>
+          )}
+
+          <hr style={{ margin: "2rem 0" }} />
+
+          <form className="module-form" onSubmit={handleCreateRefund}>
+            <h4>Issue Refund against Invoice</h4>
+            <div className="form-grid">
+              <Label title="Invoice ID">
+                <Input type="number" value={refundForm.invoice_id} onChange={e => setRefundForm({...refundForm, invoice_id: e.target.value})} required />
+              </Label>
+              <Label title="Refund Amount">
+                <Input type="number" step="0.01" min="0.01" value={refundForm.amount} onChange={e => setRefundForm({...refundForm, amount: e.target.value})} required />
+              </Label>
+              <Label title="Reason">
+                <Input type="text" placeholder="Refund reason" value={refundForm.reason} onChange={e => setRefundForm({...refundForm, reason: e.target.value})} required />
+              </Label>
+            </div>
+            <Button type="submit" variant="destructive">Issue Refund</Button>
+          </form>
+
+          <hr style={{ margin: "2rem 0" }} />
+
+          <h4>Recent Refunds</h4>
+          {refundsList.length === 0 ? (
+            <p className="muted" style={{ marginTop: "1rem" }}>No recent refunds found.</p>
+          ) : (
+            <Table className="module-table" role="table" aria-label="Refunds List" style={{ marginTop: "1rem" }}>
+              <TableHead>
+                <TableCell>Invoice</TableCell>
+                <TableCell>Amount</TableCell>
+                <TableCell>Reason</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Date</TableCell>
+              </TableHead>
+              {refundsList.map(ref => (
+                <TableRow key={ref.id}>
+                  <TableCell>{ref.invoice_id}</TableCell>
+                  <TableCell>{formatCurrency(ref.amount)}</TableCell>
+                  <TableCell>{ref.reason}</TableCell>
+                  <TableCell>{ref.status}</TableCell>
+                  <TableCell>{formatDateTime(ref.created_at)}</TableCell>
+                </TableRow>
+              ))}
+            </Table>
+          )}
         </div>
       );
     }

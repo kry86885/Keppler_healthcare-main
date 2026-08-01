@@ -2519,7 +2519,8 @@ def get_all_patients(hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM patients WHERE hospital_id = ? AND deleted_at IS NULL ORDER BY created_at DESC",
+            """SELECT p.*, (SELECT status FROM appointments a WHERE a.patient_id = p.patient_id ORDER BY a.created_at DESC LIMIT 1) as status 
+            FROM patients p WHERE p.hospital_id = ? AND p.deleted_at IS NULL ORDER BY p.created_at DESC""",
             (scoped_hospital_id,),
         )
         return cursor.fetchall()
@@ -2534,13 +2535,14 @@ def search_patients(query, hospital_id=None):
         search = f"%{query.strip().lower()}%"
         cursor.execute(
             """
-            SELECT * FROM patients WHERE
-            hospital_id = ? AND deleted_at IS NULL AND (
-            LOWER(name) LIKE ? OR LOWER(last_name) LIKE ? OR LOWER(middle_name) LIKE ?
-            OR LOWER(phone) LIKE ? OR LOWER(patient_id) LIKE ? OR LOWER(aadhar_number) LIKE ?
-            OR LOWER(TRIM(name || ' ' || COALESCE(middle_name, '') || ' ' || last_name)) LIKE ?
-            OR LOWER(TRIM(last_name || ' ' || name)) LIKE ?)
-            ORDER BY created_at DESC
+            SELECT p.*, (SELECT status FROM appointments a WHERE a.patient_id = p.patient_id ORDER BY a.created_at DESC LIMIT 1) as status
+            FROM patients p WHERE
+            p.hospital_id = ? AND p.deleted_at IS NULL AND (
+            LOWER(p.name) LIKE ? OR LOWER(p.last_name) LIKE ? OR LOWER(p.middle_name) LIKE ?
+            OR LOWER(p.phone) LIKE ? OR LOWER(p.patient_id) LIKE ? OR LOWER(p.aadhar_number) LIKE ?
+            OR LOWER(TRIM(p.name || ' ' || COALESCE(p.middle_name, '') || ' ' || p.last_name)) LIKE ?
+            OR LOWER(TRIM(p.last_name || ' ' || p.name)) LIKE ?)
+            ORDER BY p.created_at DESC
         """,
             (scoped_hospital_id, search, search, search, search, search, search, search, search),
         )

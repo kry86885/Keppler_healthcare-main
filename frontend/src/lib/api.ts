@@ -22,9 +22,9 @@ export function setHospitalCode(hospitalCode: string): void {
 }
 
 export function getCsrfToken(): string | undefined {
-  return typeof document !== "undefined"
-    ? document.cookie.split("; ").find((row) => row.startsWith("csrf_token="))?.split("=")[1]
-    : undefined;
+  if (typeof document === "undefined") return undefined;
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : undefined;
 }
 
 /**

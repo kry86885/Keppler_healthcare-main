@@ -995,7 +995,7 @@ function App() {
         {page === "queue" && hasPermission("patients.read") && (
           <QueuePage setNotice={setNotice} onNavigate={navigateToPage} isReceptionist={user?.access_role === "receptionist"} />
         )}
-        {page === "doctor-prescription" && hasPermission("patients.read") && <DoctorPrescriptionPage setNotice={setNotice} onNavigate={navigateToPage} />}
+        {page === "doctor-prescription" && hasPermission("patients.read") && <DoctorPrescriptionPage setNotice={setNotice} onNavigate={navigateToPage} isAdmin={isAdmin} user={user} />}
         {page === "emr" && hasPermission("patients.read") && <EmrPage setNotice={setNotice} />}
 
         {page === "consent-desk" && hasPermission("patients.write") && (

@@ -289,7 +289,7 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
                 <TableCell>ACTIONS</TableCell>
               </TableRow>
             </TableHead>
-            <tbody>
+            <div>
               {doctors.map((doc) => (
                 <TableRow key={doc.id}>
                   <TableCell>{doc.doctor_name}</TableCell>
@@ -316,7 +316,7 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
                   <TableCell className="muted">No doctors added yet.</TableCell>
                 </TableRow>
               )}
-            </tbody>
+            </div>
           </Table>
         </div>
       </div>

@@ -1,7 +1,11 @@
 import type { ModuleOption, ModuleId, NavItem, PatientForm, SignupForm, UserTypeOption } from "../types";
 
-export const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5011";
-export const SYMPTOM_API_BASE = import.meta.env.VITE_SYMPTOM_API_BASE || "http://localhost:5002";
+// With Vite's dev server proxy, API requests use relative paths (/api/...).
+// The proxy transparently forwards them to the Flask backend on port 5001.
+// This eliminates all cross-origin cookie issues.
+export const API_BASE = import.meta.env.VITE_API_BASE ?? "";
+export const SYMPTOM_API_BASE = import.meta.env.VITE_SYMPTOM_API_BASE ?? "";
+
 
 export const USER_TYPE_OPTIONS: UserTypeOption[] = [
   {

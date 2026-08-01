@@ -57,6 +57,55 @@ def _notify_patient_consultation_started(appointment_id, hospital_id):
     except Exception:
         logger.exception("Failed to send consultation-start WhatsApp notification for appointment %s", appointment_id)
 
+def _notify_next_patient_to_be_ready(appointment_id, hospital_id):
+    """Notify the next patient in the queue for the same doctor that they are next."""
+    try:
+        appointment = get_appointment_by_id(appointment_id, hospital_id=hospital_id)
+        if not appointment:
+            return
+            
+        doctor_name = appointment.get("doctor_name")
+        appointment_date = appointment.get("appointment_date")
+        
+        if not doctor_name or not appointment_date:
+            return
+            
+        today_appts = list_appointments(
+            appointment_date=appointment_date,
+            doctor_name=doctor_name,
+            hospital_id=hospital_id
+        )
+        
+        # Filter patients who are waiting
+        waiting_appts = [
+            a for a in today_appts 
+            if a.get("status") in ("scheduled", "waiting", "checked_in")
+        ]
+        waiting_appts.sort(key=lambda x: x.get("token_no") or 999999)
+        
+        if not waiting_appts:
+            return
+            
+        next_appt = waiting_appts[0]
+        patient_id = next_appt.get("patient_id")
+        phone = None
+        if patient_id:
+            patient = get_patient(patient_id, hospital_id=hospital_id)
+            phone = patient.get("phone") if patient else None
+            
+        if not phone:
+            return
+            
+        doctor = next_appt.get("doctor_name") or "your doctor"
+        body = (
+            f"Hi {next_appt.get('patient_name')}, please be ready! "
+            f"You are next in line to see Dr. {doctor}. "
+            f"Your Token is #{next_appt.get('token_no')}."
+        )
+        send_whatsapp_message(phone, body)
+    except Exception:
+        logger.exception("Failed to send be-ready WhatsApp notification for next patient.")
+
 # NOTE: Add your utils.database imports here after extraction.
 
 @appointments_bp.get("/api/appointments")
@@ -119,6 +168,7 @@ def appointments_update(appointment_id):
     )
     if payload.get("status") == "in_consultation":
         _notify_patient_consultation_started(appointment_id, current_hospital_id())
+        _notify_next_patient_to_be_ready(appointment_id, current_hospital_id())
     return jsonify({"status": "ok"})
 
 

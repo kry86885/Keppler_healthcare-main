@@ -1,9 +1,10 @@
-﻿import { useMemo } from "react";
-import PatientCard from "../components/PatientCard";
+import { useMemo } from "react";
 import StatCard from "../components/StatCard";
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, List, ListItem } from "../components/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Table, TableHead, TableRow, TableCell, Badge } from "../components/ui";
 import { Skeleton } from "../components/ui/Skeleton";
 import type { DashboardAnalytics, DistributionItem, HospitalSummary, Patient, Stats } from "../types";
+import { formatDateTimeIST } from "../lib/format";
+import { FiEye } from "react-icons/fi";
 
 type Props = {
   stats: Stats;
@@ -137,13 +138,50 @@ export default function DashboardPage({
             {recentPatients.length === 0 ? (
               <p className="muted">No patients registered yet.</p>
             ) : (
-              <List className="recent-patient-list" aria-label="Recent patients list">
-                {recentPatients.map((patient) => (
-                  <ListItem key={patient.patient_id}>
-                    <PatientCard patient={patient} />
-                  </ListItem>
-                ))}
-              </List>
+              <div className="overflow-x-auto w-full">
+                <Table className="recent-patient-table">
+                  <TableHead>
+                    <TableCell>Patient</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell className="text-center">Actions</TableCell>
+                  </TableHead>
+                  {recentPatients.map((patient) => {
+                    const isCompleted = patient.status?.toLowerCase() === 'completed';
+                    const isConsultation = patient.status?.toLowerCase().includes('consultation');
+                    return (
+                      <TableRow key={patient.patient_id} className="hover:bg-muted/50">
+                        <TableCell>
+                          <div className="font-medium text-foreground">{patient.name} {patient.last_name}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">{patient.patient_id}</div>
+                        </TableCell>
+                        <TableCell>
+                          {patient.status ? (
+                            <Badge variant={isCompleted ? 'default' : isConsultation ? 'secondary' : 'outline'}>
+                              {patient.status.charAt(0).toUpperCase() + patient.status.slice(1).replace('_', ' ')}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 px-2 text-muted-foreground hover:text-foreground flex items-center gap-1"
+                              onClick={() => onNavigate("patients")}
+                              title="View details"
+                            >
+                              <FiEye className="h-4 w-4" />
+                              <span>View</span>
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>

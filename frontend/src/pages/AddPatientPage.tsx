@@ -87,6 +87,22 @@ export default function AddPatientPage({ onCreate, setNotice, onNavigate }: Prop
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (!form.phone || !/^\d{10}$/.test(form.phone.trim())) {
+      setNotice({ type: "warning", message: "Phone number must be exactly 10 digits." });
+      return;
+    }
+
+    if (form.aadhar_number && !/^\d{12}$/.test(form.aadhar_number.trim())) {
+      setNotice({ type: "warning", message: "Aadhar number must be exactly 12 digits." });
+      return;
+    }
+
+    if (form.emergency_contact && !/^\d{10}$/.test(form.emergency_contact.trim())) {
+      setNotice({ type: "warning", message: "Emergency contact must be exactly 10 digits." });
+      return;
+    }
+
     const payload: Record<string, unknown> = {
       ...form,
     };
@@ -102,7 +118,18 @@ export default function AddPatientPage({ onCreate, setNotice, onNavigate }: Prop
   };
 
   const handleChange = (field: keyof PatientForm) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const value = field === "pregnant" ? (event.target as HTMLInputElement).checked : event.target.value;
+    let value: string | boolean | number = field === "pregnant" ? (event.target as HTMLInputElement).checked : event.target.value;
+    
+    if (field === "phone") {
+      value = (value as string).replace(/\D/g, "").slice(0, 10);
+    }
+    if (field === "emergency_contact") {
+      value = (value as string).replace(/\D/g, "").slice(0, 10);
+    }
+    if (field === "aadhar_number") {
+      value = (value as string).replace(/\D/g, "").slice(0, 12);
+    }
+
     setForm((prev) => {
       if (field === "dob") {
         return {
@@ -155,7 +182,7 @@ export default function AddPatientPage({ onCreate, setNotice, onNavigate }: Prop
           </Label>
           <Label>
             Phone
-            <Input value={form.phone} onChange={handleChange("phone")} />
+            <Input type="tel" value={form.phone} onChange={handleChange("phone")} maxLength={10} pattern="\d{10}" required />
           </Label>
           <Label>
             Weight (kg)
@@ -175,24 +202,31 @@ export default function AddPatientPage({ onCreate, setNotice, onNavigate }: Prop
           </Label>
           <Label>
             Blood Group
-            <Input value={form.blood_group} onChange={handleChange("blood_group")} />
+            <Select value={form.blood_group} onChange={handleChange("blood_group")}>
+              <option value="">Select Blood Group</option>
+              <option value="A+">A+</option>
+              <option value="A-">A-</option>
+              <option value="B+">B+</option>
+              <option value="B-">B-</option>
+              <option value="AB+">AB+</option>
+              <option value="AB-">AB-</option>
+              <option value="O+">O+</option>
+              <option value="O-">O-</option>
+            </Select>
           </Label>
           <Label>
             Emergency Contact
-            <Input value={form.emergency_contact} onChange={handleChange("emergency_contact")} />
+            <Input type="tel" value={form.emergency_contact} onChange={handleChange("emergency_contact")} maxLength={10} pattern="\d{10}" />
           </Label>
           <Label>
             Aadhar Number
-            <Input value={form.aadhar_number} onChange={handleChange("aadhar_number")} />
+            <Input type="text" value={form.aadhar_number} onChange={handleChange("aadhar_number")} maxLength={12} pattern="\d{12}" />
           </Label>
           <Label style={{ gridColumn: "1 / -1" }}>
             Address
             <Textarea value={form.address} onChange={handleChange("address")} />
           </Label>
-          <Label className="checkbox">
-            <Checkbox checked={form.pregnant} onChange={handleChange("pregnant")} />
-            Pregnant
-          </Label>
+
 
         </form>
 
