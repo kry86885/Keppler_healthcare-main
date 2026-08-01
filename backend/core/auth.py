@@ -387,6 +387,10 @@ def create_default_users():
                     user["email"],
                 ),
             )
+            # Commit immediately to release the SQLite write lock before calling
+            # add_employee(), which acquires its own connection and writes.
+            conn.commit()
+
             if cursor.rowcount == 0:
                 user["employee_id"] = generate_employee_id(hospital_id=hospital_id)
                 try:
