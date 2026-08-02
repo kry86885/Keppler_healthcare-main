@@ -15,6 +15,11 @@ export default function SettingsPage({ stats, user, canReadAudit }: Props) {
   const [auditModule, setAuditModule] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  
+  const [templates, setTemplates] = useState<{template_key: string, content: string}[]>([]);
+  const [editingTemplate, setEditingTemplate] = useState<{template_key: string, content: string} | null>(null);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateNotice, setTemplateNotice] = useState("");
 
   const loadAuditLogs = async (moduleName = auditModule) => {
     if (!canReadAudit) return;
@@ -36,8 +41,37 @@ export default function SettingsPage({ stats, user, canReadAudit }: Props) {
   useEffect(() => {
     if (canReadAudit) {
       void loadAuditLogs("");
+      void loadTemplates();
     }
   }, [canReadAudit]);
+
+  const loadTemplates = async () => {
+    try {
+      const data = await apiFetch<{templates: any[]}>("/api/whatsapp/templates");
+      setTemplates(data.templates || []);
+    } catch (err) {
+      console.error("Failed to load templates", err);
+    }
+  };
+
+  const saveTemplate = async () => {
+    if (!editingTemplate) return;
+    setTemplateLoading(true);
+    setTemplateNotice("");
+    try {
+      await apiFetch("/api/whatsapp/templates", {
+        method: "PUT",
+        body: JSON.stringify(editingTemplate)
+      });
+      setTemplateNotice("Template saved.");
+      setEditingTemplate(null);
+      await loadTemplates();
+    } catch (err) {
+      setTemplateNotice("Failed to save template.");
+    } finally {
+      setTemplateLoading(false);
+    }
+  };
 
   return (
     <section className="module-page">
@@ -125,6 +159,53 @@ export default function SettingsPage({ stats, user, canReadAudit }: Props) {
           </>
         )}
       </div>
+
+      {canReadAudit && (
+        <div className="panel">
+          <div className="module-panel-head">
+            <div>
+              <h3>WhatsApp Templates</h3>
+              <p className="muted">Manage the automated feedback prompts sent via WhatsApp.</p>
+            </div>
+          </div>
+          {templateNotice && <p className="notice">{templateNotice}</p>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {templates.map(t => (
+              <div key={t.template_key} style={{ border: '1px solid var(--border-color)', padding: '1rem', borderRadius: '4px' }}>
+                <h4 style={{ margin: '0 0 0.5rem 0', textTransform: 'capitalize' }}>{t.template_key.replace('_', ' ')}</h4>
+                <p style={{ whiteSpace: 'pre-wrap', color: 'var(--muted-color)' }}>{t.content}</p>
+                <Button variant="ghost" onClick={() => setEditingTemplate(t)} style={{ marginTop: '0.5rem' }}>Edit</Button>
+              </div>
+            ))}
+            {templates.length === 0 && (
+              <Button onClick={() => setEditingTemplate({template_key: 'comment_prompt', content: ''})}>Add New Template</Button>
+            )}
+          </div>
+          
+          {editingTemplate && (
+            <div style={{ marginTop: '1rem', padding: '1rem', border: '1px solid var(--primary-color)', borderRadius: '4px' }}>
+              <h4>Editing: {editingTemplate.template_key}</h4>
+              <Input 
+                value={editingTemplate.template_key} 
+                onChange={e => setEditingTemplate({...editingTemplate, template_key: e.target.value})}
+                placeholder="Template Key"
+                style={{ marginBottom: '0.5rem' }}
+                disabled={templates.some(t => t.template_key === editingTemplate.template_key)}
+              />
+              <textarea 
+                value={editingTemplate.content} 
+                onChange={e => setEditingTemplate({...editingTemplate, content: e.target.value})}
+                style={{ width: '100%', minHeight: '100px', padding: '0.5rem', marginBottom: '0.5rem' }}
+                placeholder="Template Content"
+              />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <Button onClick={saveTemplate} disabled={templateLoading}>Save</Button>
+                <Button variant="ghost" onClick={() => setEditingTemplate(null)}>Cancel</Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }

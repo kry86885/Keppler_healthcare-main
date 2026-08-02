@@ -104,8 +104,9 @@ def patients_list():
     
     # Enforce isolation for clinicians
     doctor_name = None
-    if getattr(g, "current_user", {}).get("access_role") == "clinician":
-        doctor_name = g.current_user.get("full_name") or g.current_user.get("username")
+    current_user = getattr(g, "current_user", {})
+    if current_user.get("access_role") == "clinician" or (current_user.get("job_role") or "").strip().lower() == "doctor":
+        doctor_name = current_user.get("full_name") or current_user.get("username")
         
     patients = (
         search_patients(query, hospital_id=hospital_id, doctor_name=doctor_name)
@@ -280,6 +281,10 @@ def patients_create():
         "allergies": payload.get("allergies"),
         "symptoms": payload.get("symptoms"),
         "phone": payload.get("phone"),
+        "address": payload.get("address"),
+        "blood_group": payload.get("blood_group"),
+        "emergency_contact": payload.get("emergency_contact"),
+        "aadhar_number": payload.get("aadhar_number"),
     }
     add_patient(data)
     admission_id = add_admission(patient_id, "Initial registration")
@@ -319,6 +324,10 @@ def patients_update(patient_id):
         "allergies": payload.get("allergies"),
         "symptoms": payload.get("symptoms"),
         "phone": payload.get("phone"),
+        "address": payload.get("address"),
+        "blood_group": payload.get("blood_group"),
+        "emergency_contact": payload.get("emergency_contact"),
+        "aadhar_number": payload.get("aadhar_number"),
     }
     update_patient(patient_id, data)
     log_audit_event("update", "patients", patient_id, {"fields": list(data.keys())})

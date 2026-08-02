@@ -278,14 +278,15 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
     const phone = appt.patient_phone?.replace(/\D/g, "");
     if (!phone) return; // no phone on record — skip silently
 
-    const doctorName = user?.full_name || appt.doctor_name || "your doctor";
+    const doctorName = appt.doctor_name || user?.full_name || "your doctor";
     const hospitalName = "HospAI Medical Centre";
     const tokenNo = appt.token_no ?? "";
     const patientName = appt.patient_name ?? "Patient";
     const visitType = appt.visit_type === "IP" ? "In-Patient" : "Out-Patient";
+    const departmentName = appt.department ? `• Dept       : ${appt.department}` : null;
     const now = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
 
-    const message = [
+    const messageLines = [
       `🏥 *${hospitalName}*`,
       ``,
       `Dear *${patientName}*,`,
@@ -296,13 +297,17 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
       `• Token No   : *#${tokenNo}*`,
       `• Visit Type : ${visitType}`,
       `• Doctor     : Dr. ${doctorName}`,
+    ];
+    if (departmentName) messageLines.push(departmentName);
+    messageLines.push(
       `• Called At  : ${now}`,
       ``,
       `Please carry your previous reports, prescriptions, and ID proof.`,
       ``,
       `Thank you for choosing ${hospitalName}.`,
-      `_This is an automated notification._`,
-    ].join("\n");
+      `_This is an automated notification._`
+    );
+    const message = messageLines.join("\n");
 
     // Normalize phone — add country code if missing
     const e164 = phone.startsWith("91") || phone.startsWith("+91")

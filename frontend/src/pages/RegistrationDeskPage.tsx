@@ -10,7 +10,7 @@ import type { Appointment, Notice, Patient } from "../types";
 import PatientAutocomplete from "../components/PatientAutocomplete";
 
 import AppointmentQueueCard from "../components/AppointmentQueueCard";
-
+import StatCard from "../components/StatCard";
 type RegistrationMode = "appointment-in" | "appointment-out" | "consent" | "insurance";
 
 type Props = {
@@ -190,16 +190,10 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
             nextFee = targetDoc.consultation_fee != null ? String(targetDoc.consultation_fee) : "0";
           }
         } else if (inDeptDocs.length === 0 && dept !== "General") {
-          // If the AI returned a department that has no doctors, fallback to General
-          const generalDocs = doctors.filter(d => (d.department || "").toLowerCase() === "general");
-          if (generalDocs.length > 0) {
-            const availableDocs = generalDocs.filter(d => d.status === "available");
-            const targetDoc = availableDocs.length > 0 ? availableDocs[0] : generalDocs[0];
-            if (targetDoc) {
-              nextDoctor = targetDoc.doctor_name || "";
-              nextFee = targetDoc.consultation_fee != null ? String(targetDoc.consultation_fee) : "0";
-            }
-          }
+          // If the AI or user selected a department that has no doctors, 
+          // leave the doctor field blank so they can type a guest doctor name.
+          nextDoctor = "";
+          nextFee = "0";
         }
       }
 
@@ -259,9 +253,10 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
     }
     setTriageLoading(true);
     try {
-      // Build list of departments that actually have registered doctors
+      // Pass all registered departments, even if no doctors are currently available.
       const availableDepartments = Array.from(
         new Set([
+          ...departments.map((d) => d.department_name),
           ...doctors.map((doc) => doc.department)
         ])
       ).filter(Boolean) as string[];
@@ -360,6 +355,8 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
           appointment_date: appointmentForm.appointment_date,
           status: "checked_in",
           notes: appointmentForm.notes.trim() || undefined,
+          consultation_fee: Number(appointmentForm.consultation_fee) || 0,
+          payment_mode: appointmentForm.payment_mode,
         }),
       });
       setAppointmentForm((prev) => ({
@@ -608,8 +605,13 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
     [appointments]
   );
 
-  const appointmentOutQueue = useMemo(
-    () => appointments.filter((item) => ["checked_in", "in_consultation", "completed", "cancelled"].includes(item.status)),
+  const appointmentOutActiveQueue = useMemo(
+    () => appointments.filter((item) => ["checked_in", "in_consultation"].includes(item.status)),
+    [appointments]
+  );
+
+  const appointmentOutCompletedQueue = useMemo(
+    () => appointments.filter((item) => item.status === "completed"),
     [appointments]
   );
 
@@ -783,14 +785,22 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
     );
   }
 
-  const queue = mode === "appointment-in" ? appointmentInQueue : appointmentOutQueue;
+  const queue = mode === "appointment-in" ? appointmentInQueue : appointmentOutActiveQueue;
 
   return (
     <section className="module-page">
       
-      <div className="module-panel-head">
-        <h3>{mode === "appointment-in" ? "Appointment In Desk" : "Appointment Out Desk"}</h3>
-      </div>
+      {mode === "appointment-in" && (
+        <div className="module-panel-head">
+          <h3>Appointment In Desk</h3>
+        </div>
+      )}
+
+      {mode === "appointment-out" && (
+        <div style={{ marginBottom: "1.5rem" }}>
+          <StatCard label="Completed Consultations Today" value={appointmentOutCompletedQueue.length} />
+        </div>
+      )}
 
 
       {mode === "appointment-in" ? (
@@ -924,8 +934,9 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
         </div>
       ) : null}
 
+      {(mode === "appointment-in" || mode === "appointment-out") ? (
       <div className="panel registration-desk-panel">
-        <h4>{mode === "appointment-in" ? "Appointment Queue (In)" : "Appointment Queue (Out)"}</h4>
+        <h4>{mode === "appointment-in" ? "Appointment Queue (In)" : "Active Consultations"}</h4>
         {appointmentsLoading ? <p className="muted">Loading queue...</p> : null}
         {!appointmentsLoading && queue.length === 0 ? (
           <div className="module-empty-state">
@@ -975,6 +986,31 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
           </div>
         ) : null}
       </div>
+      ) : null}
+
+      {mode === "appointment-out" && (
+        <div className="panel registration-desk-panel">
+          <h4>Completed Consultations</h4>
+          {appointmentOutCompletedQueue.length === 0 ? (
+            <div className="module-empty-state">
+              <span className="module-empty-state-icon">
+                <FiCalendar aria-hidden />
+              </span>
+              <p className="module-empty-state-title">No completed consultations today</p>
+            </div>
+          ) : (
+            <div className="queue-card-list">
+              {appointmentOutCompletedQueue.map((appointment) => (
+                <AppointmentQueueCard
+                  key={appointment.id}
+                  appointment={appointment}
+                  actions={null}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }
