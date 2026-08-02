@@ -10,7 +10,7 @@ import type { Appointment, Notice, Patient } from "../types";
 import PatientAutocomplete from "../components/PatientAutocomplete";
 
 import AppointmentQueueCard from "../components/AppointmentQueueCard";
-
+import StatCard from "../components/StatCard";
 type RegistrationMode = "appointment-in" | "appointment-out" | "consent" | "insurance";
 
 type Props = {
@@ -608,8 +608,13 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
     [appointments]
   );
 
-  const appointmentOutQueue = useMemo(
-    () => appointments.filter((item) => ["checked_in", "in_consultation", "completed", "cancelled"].includes(item.status)),
+  const appointmentOutActiveQueue = useMemo(
+    () => appointments.filter((item) => ["checked_in", "in_consultation"].includes(item.status)),
+    [appointments]
+  );
+
+  const appointmentOutCompletedQueue = useMemo(
+    () => appointments.filter((item) => item.status === "completed"),
     [appointments]
   );
 
@@ -783,14 +788,22 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
     );
   }
 
-  const queue = mode === "appointment-in" ? appointmentInQueue : appointmentOutQueue;
+  const queue = mode === "appointment-in" ? appointmentInQueue : appointmentOutActiveQueue;
 
   return (
     <section className="module-page">
       
-      <div className="module-panel-head">
-        <h3>{mode === "appointment-in" ? "Appointment In Desk" : "Appointment Out Desk"}</h3>
-      </div>
+      {mode === "appointment-in" && (
+        <div className="module-panel-head">
+          <h3>Appointment In Desk</h3>
+        </div>
+      )}
+
+      {mode === "appointment-out" && (
+        <div style={{ marginBottom: "1.5rem" }}>
+          <StatCard label="Completed Consultations Today" value={appointmentOutCompletedQueue.length} />
+        </div>
+      )}
 
 
       {mode === "appointment-in" ? (
@@ -924,8 +937,9 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
         </div>
       ) : null}
 
+      {(mode === "appointment-in" || mode === "appointment-out") ? (
       <div className="panel registration-desk-panel">
-        <h4>{mode === "appointment-in" ? "Appointment Queue (In)" : "Appointment Queue (Out)"}</h4>
+        <h4>{mode === "appointment-in" ? "Appointment Queue (In)" : "Active Consultations"}</h4>
         {appointmentsLoading ? <p className="muted">Loading queue...</p> : null}
         {!appointmentsLoading && queue.length === 0 ? (
           <div className="module-empty-state">
@@ -975,6 +989,31 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
           </div>
         ) : null}
       </div>
+      ) : null}
+
+      {mode === "appointment-out" && (
+        <div className="panel registration-desk-panel">
+          <h4>Completed Consultations</h4>
+          {appointmentOutCompletedQueue.length === 0 ? (
+            <div className="module-empty-state">
+              <span className="module-empty-state-icon">
+                <FiCalendar aria-hidden />
+              </span>
+              <p className="module-empty-state-title">No completed consultations today</p>
+            </div>
+          ) : (
+            <div className="queue-card-list">
+              {appointmentOutCompletedQueue.map((appointment) => (
+                <AppointmentQueueCard
+                  key={appointment.id}
+                  appointment={appointment}
+                  actions={null}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }

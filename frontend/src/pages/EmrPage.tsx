@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { Button, Input, Table, Badge, Card, Tabs, TabsTrigger } from "../components/ui";
+import { Button, Input, Table, Badge, Card, Tabs, TabsTrigger, Modal } from "../components/ui";
 import { apiFetch } from "../lib/api";
-import { FiSearch as Search, FiPrinter as Printer, FiFileText as FileText, FiShare2 as Share2, FiActivity as Activity, FiUser as User, FiZap as Zap } from "react-icons/fi";
+import { FiSearch as Search, FiPrinter as Printer, FiFileText as FileText, FiShare2 as Share2, FiActivity as Activity, FiUser as User, FiZap as Zap, FiMail as Mail, FiMessageCircle as MessageCircle } from "react-icons/fi";
 import type { Patient } from "../types";
 
 export default function EmrPage({ setNotice }: { setNotice: (msg: any) => void }) {
@@ -12,6 +12,7 @@ export default function EmrPage({ setNotice }: { setNotice: (msg: any) => void }
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState("");
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   const handleSearch = async () => {
     if (!searchQuery) return;
@@ -57,16 +58,42 @@ export default function EmrPage({ setNotice }: { setNotice: (msg: any) => void }
     }
   };
 
-  const handlePrint = () => window.print();
-  const handleExportPdf = () => window.print(); // Using browser print-to-pdf
-  const handleShareWhatsApp = () => {
+  const handlePrint = () => { 
+    setIsShareModalOpen(false); 
+    setTimeout(() => window.print(), 150);
+  };
+  const handleExportPdf = () => { 
+    setIsShareModalOpen(false); 
+    setTimeout(() => window.print(), 150);
+  };
+  const handleShareWhatsApp = async () => {
     if (!emrData) return;
-    const text = `Dear ${emrData.patient.name}, your medical record from HospAI Hospital is attached. Please find your EMR report.`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+    setIsShareModalOpen(false);
+    const phone = emrData.patient.phone ? emrData.patient.phone.replace(/\D/g, '') : '';
+    
+    // Tell backend to open a feedback window
+    if (phone) {
+      try {
+        await apiFetch('/api/whatsapp/init_feedback', {
+          method: 'POST',
+          body: JSON.stringify({
+            patient_id: emrData.patient.patient_id || emrData.patient.id,
+            phone: phone
+          })
+        });
+      } catch (err) {
+        console.error("Failed to init WhatsApp feedback window", err);
+      }
+    }
+
+    const text = `Dear ${emrData.patient.name},\n\nYour medical record from HospAI Hospital is ready. Please find your EMR report attached to this message.\n\nYour feedback helps us maintain the quality of our patient care. Please reply with a rating from 1 (Poor) to 5 (Excellent). If you have any specific suggestions or concerns about your visit, feel free to include them in your reply as well.\n\nThank you.\nHospAI Hospital`;
+    const url = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, "_blank");
   };
   const handleShareEmail = () => {
     if (!emrData) return;
-    const body = `Dear ${emrData.patient.name},\n\nYour medical record from HospAI Hospital is attached.\nPlease find your EMR report.\n\nThank you.`;
+    setIsShareModalOpen(false);
+    const body = `Dear ${emrData.patient.name},\n\nYour medical record from HospAI Hospital is attached.\nPlease find your EMR report.\n\nYour feedback helps us maintain the quality of our patient care. Please reply with a rating from 1 (Poor) to 5 (Excellent). If you have any specific suggestions or concerns about your visit, feel free to include them in your reply as well.\n\nThank you.\nHospAI Hospital`;
     window.location.href = `mailto:?subject=HospAI EMR Report&body=${encodeURIComponent(body)}`;
   };
 
@@ -112,7 +139,13 @@ export default function EmrPage({ setNotice }: { setNotice: (msg: any) => void }
           @media print {
             body * { visibility: hidden; }
             .emr-page, .emr-page * { visibility: visible; }
-            .emr-page { position: absolute; left: 0; top: 0; width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
+            .emr-page { position: absolute; left: 0; top: 0; width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 15px !important; }
+            .emr-page h1 { font-size: 24px !important; margin-bottom: 4px !important; }
+            .emr-page h2 { font-size: 16px !important; margin-bottom: 8px !important; margin-top: 16px !important; }
+            .emr-page .mb-8 { margin-bottom: 16px !important; }
+            .emr-page .pb-4 { padding-bottom: 8px !important; }
+            .emr-table { margin-bottom: 16px !important; font-size: 12px !important; }
+            .emr-table td, .emr-table th { padding: 6px 10px !important; }
             .no-print, .no-print * { display: none !important; }
             .print-only { display: block !important; }
           }
@@ -123,8 +156,9 @@ export default function EmrPage({ setNotice }: { setNotice: (msg: any) => void }
         <div className="flex justify-between items-center mb-6 no-print">
           <Button variant="secondary" onClick={() => setSelectedPatient(null)}>Back to Search</Button>
           <div className="flex gap-2">
-            <Button variant="primary" onClick={handlePrint}><Printer className="w-4 h-4 mr-2" /> Print EMR</Button>
-            <Button variant="secondary" onClick={handleExportPdf}><FileText className="w-4 h-4 mr-2" /> Export PDF</Button>
+            <Button variant="primary" onClick={() => setIsShareModalOpen(true)}>
+              <Share2 className="w-4 h-4 mr-2" /> Export & Share
+            </Button>
           </div>
         </div>
 
@@ -295,18 +329,36 @@ export default function EmrPage({ setNotice }: { setNotice: (msg: any) => void }
         <div className="mt-12 text-center text-xs text-gray-400 print-only border-t pt-4">
           Generated securely from HospAI EMR System
         </div>
+
+        <Modal open={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} title="Export & Share EMR" description="Choose how you would like to share this patient's medical record.">
+          <div className="flex flex-col gap-3 mt-4">
+            <Button variant="secondary" className="justify-start text-lg py-6" onClick={handlePrint}>
+              <Printer className="w-5 h-5 mr-3" /> Print Physical Copy
+            </Button>
+            <Button variant="secondary" className="justify-start text-lg py-6" onClick={handleExportPdf}>
+              <FileText className="w-5 h-5 mr-3" /> Save as PDF
+            </Button>
+            <Button variant="primary" className="justify-start text-lg py-6 bg-green-600 border-green-600 hover:bg-green-700" onClick={handleShareWhatsApp}>
+              <MessageCircle className="w-5 h-5 mr-3" /> Share via WhatsApp
+            </Button>
+            <Button variant="primary" className="justify-start text-lg py-6" onClick={handleShareEmail}>
+              <Mail className="w-5 h-5 mr-3" /> Share via Email
+            </Button>
+          </div>
+          <div className="mt-4 p-3 bg-blue-50 text-blue-800 text-sm rounded-md border border-blue-200">
+            <strong>Note:</strong> WhatsApp does not allow automatic PDF attachment. You must manually attach the downloaded PDF after the WhatsApp window opens.
+          </div>
+        </Modal>
       </div>
     );
   }
 
   return (
-    <div className="emr-page max-w-4xl mx-auto py-8">
-      <Card className="p-8 shadow-sm">
-        <div className="flex items-center gap-3 mb-6">
-          <Activity className="w-8 h-8 text-blue-600" />
-          <h2 className="text-2xl font-bold text-gray-800">EMR Search</h2>
+    <section className="module-page">
+      <div className="panel registration-desk-panel">
+        <div style={{ marginBottom: "1rem" }}>
+          <p className="muted">Search patient by Name, last 4 digits of mobile number, UHID, or Patient ID.</p>
         </div>
-        <p className="text-gray-600 mb-6">Search patient by Name, last 4 digits of mobile number, UHID, or Patient ID.</p>
 
         <div className="flex gap-4 mb-8">
           <Input
@@ -325,7 +377,7 @@ export default function EmrPage({ setNotice }: { setNotice: (msg: any) => void }
           <div className="mt-8 border-t pt-6">
             <h3 className="font-bold mb-4 text-gray-700">Search Results</h3>
             <div className="overflow-x-auto">
-              <Table>
+              <table className="emr-table w-full text-left border-collapse">
                 <thead>
                   <tr>
                     <th>Patient ID</th>
@@ -348,7 +400,7 @@ export default function EmrPage({ setNotice }: { setNotice: (msg: any) => void }
                     </tr>
                   ))}
                 </tbody>
-              </Table>
+              </table>
             </div>
           </div>
         )}
@@ -358,7 +410,32 @@ export default function EmrPage({ setNotice }: { setNotice: (msg: any) => void }
             <p>No patients found matching your search.</p>
           </div>
         )}
-      </Card>
-    </div>
+      </div>
+
+      <Modal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} title="Export & Share EMR">
+        <div className="grid grid-cols-2 gap-4">
+          <Button variant="primary" onClick={handlePrint} className="flex flex-col items-center justify-center p-6 h-32 gap-3">
+            <Printer className="w-8 h-8" />
+            <span>Print EMR</span>
+          </Button>
+          <Button variant="secondary" onClick={handleExportPdf} className="flex flex-col items-center justify-center p-6 h-32 gap-3">
+            <FileText className="w-8 h-8" />
+            <span>Download PDF</span>
+          </Button>
+          <Button onClick={handleShareWhatsApp} className="flex flex-col items-center justify-center p-6 h-32 gap-3" style={{ backgroundColor: '#25D366', color: 'white', border: 'none' }}>
+            <MessageCircle className="w-8 h-8" />
+            <span>WhatsApp (Pre-fill Text)</span>
+          </Button>
+          <Button variant="secondary" onClick={handleShareEmail} className="flex flex-col items-center justify-center p-6 h-32 gap-3">
+            <Mail className="w-8 h-8" />
+            <span>Share via Email</span>
+          </Button>
+        </div>
+        <p className="text-sm text-gray-500 mt-4 text-center px-4">
+          <strong style={{color: 'var(--warning-color, #d97706)'}}>Note:</strong> WhatsApp does not allow auto-attaching local files. Please download the PDF first, click WhatsApp, and manually attach the PDF to the message.
+        </p>
+      </Modal>
+
+    </section>
   );
 }
