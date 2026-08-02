@@ -387,6 +387,10 @@ def create_default_users():
                     user["email"],
                 ),
             )
+            # Commit before add_employee(), which opens its own connection --
+            # otherwise this connection's still-open UPDATE transaction
+            # self-deadlocks against it ("database is locked").
+            conn.commit()
             if cursor.rowcount == 0:
                 user["employee_id"] = generate_employee_id(hospital_id=hospital_id)
                 try:

@@ -1,8 +1,7 @@
 """Embedding generation and vector similarity search for clinical documents.
 
-Embeddings are generated via the Gemini embedding API (consistent with the existing
-Gemini-backed OCR/AI provider decision) rather than a local model -- this avoids adding
-a multi-GB PyTorch/sentence-transformers dependency to a Flask+gunicorn deployment.
+Embeddings are generated via a local Ollama embedding model (no API key, no cloud
+dependency) rather than a cloud embedding API or a heavy in-process PyTorch model.
 
 Vectors are stored as JSON-encoded float arrays (portable across SQLite and Postgres)
 and compared via cosine similarity in Python. This works identically on both database
@@ -15,9 +14,10 @@ import json
 import math
 import os
 
-from .ocr import get_genai_model
+import requests
 
-EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "text-embedding-004")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
 
 
 def generate_embedding(text: str):
@@ -25,15 +25,14 @@ def generate_embedding(text: str):
     text = (text or "").strip()
     if not text:
         return None
-    client = get_genai_model()
-    if client is None:
-        return None
     try:
-        response = client.models.embed_content(model=EMBEDDING_MODEL, contents=text)
-        embeddings = getattr(response, "embeddings", None)
-        if not embeddings:
-            return None
-        values = getattr(embeddings[0], "values", None)
+        resp = requests.post(
+            f"{OLLAMA_BASE_URL}/api/embeddings",
+            json={"model": EMBEDDING_MODEL, "prompt": text},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        values = resp.json().get("embedding")
         return list(values) if values else None
     except Exception:
         return None

@@ -8,12 +8,11 @@ from ai.service import translate_patient_filter_prompt, answer_bulk_document_pro
 from utils.database import (
     create_bulk_import_job,
     get_bulk_import_job,
-    update_bulk_import_job,
     query_bulk_patients,
     BULK_IMPORT_PATIENT_FIELDS,
 )
 
-from .tasks import suggest_mapping_task, import_rows_task, extract_document_task, is_document_file, DOCUMENT_EXTENSIONS
+from .tasks import suggest_mapping_task, extract_document_task, is_document_file, DOCUMENT_EXTENSIONS
 
 bulk_import_bp = Blueprint("bulk_import", __name__)
 
@@ -82,33 +81,6 @@ def bulk_import_job_status(job_id):
             except (TypeError, ValueError):
                 pass
     return jsonify(response)
-
-
-@bulk_import_bp.post("/api/bulk-import/jobs/<int:job_id>/mapping")
-@require_permissions("patients.write")
-def bulk_import_confirm_mapping(job_id):
-    hospital_id = current_hospital_id()
-    job = get_bulk_import_job(job_id, hospital_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
-    if job["status"] != "AWAITING_MAPPING":
-        return jsonify({"error": f"Job is not awaiting a mapping (status: {job['status']})"}), 409
-
-    payload = request.get_json(silent=True) or {}
-    mapping = payload.get("mapping") or {}
-    # "phone" is a valid mapping target even though it's not in BULK_IMPORT_PATIENT_FIELDS --
-    # that list is specifically the upsert `fields` dict columns, with phone deliberately
-    # kept separate since it's its own column (and the dedup/contact key) in the upsert.
-    valid_targets = set(BULK_IMPORT_PATIENT_FIELDS) | {"phone"}
-    invalid_targets = set(mapping.values()) - valid_targets
-    if invalid_targets:
-        return jsonify({"error": f"Unknown target field(s): {sorted(invalid_targets)}"}), 400
-    if "phone" not in mapping.values():
-        return jsonify({"error": "At least one column must be mapped to 'phone' -- it's required to contact or dedupe patients."}), 400
-
-    update_bulk_import_job(job_id, status="IMPORTING")
-    import_rows_task.delay(job_id, mapping)
-    return jsonify({"status": "IMPORTING"})
 
 
 def _build_filter_clause(conditions, logic):

@@ -10,18 +10,10 @@ from pathlib import Path
 from datetime import datetime, timezone
 import io
 
+import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
-
-try:
-    from google import genai
-    from google.genai import types
-    _GENAI_IMPORT_ERROR = None
-except Exception as exc:  # pragma: no cover - import guard for local/dev env mismatch
-    genai = None
-    types = None
-    _GENAI_IMPORT_ERROR = exc
 from fpdf import FPDF
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -379,14 +371,39 @@ def _rate_limit():
     _last_request = time.time()
 
 
-def _extract_api_key():
-    return (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:3b-instruct")
+
+
+def _ollama_available():
+    try:
+        resp = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=2)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def _ollama_generate(prompt: str, json_mode: bool = False, temperature: float = 0.7, max_tokens: int = 1024):
+    payload = {
+        "model": OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "options": {"temperature": temperature, "num_predict": max_tokens},
+    }
+    if json_mode:
+        payload["format"] = "json"
+    try:
+        resp = requests.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload, timeout=180)
+        resp.raise_for_status()
+        return (resp.json().get("response") or "").strip(), None
+    except Exception as exc:
+        return None, str(exc)
 
 
 def _require_api_key():
-    if _extract_api_key():
+    if _ollama_available():
         return None
-    return jsonify({"error": "Missing GEMINI_API_KEY/GOOGLE_API_KEY in environment"}), 503
+    return jsonify({"error": f"Local AI model (Ollama) is not reachable at {OLLAMA_BASE_URL}"}), 503
 
 
 def detect_region_from_text(text: str):
@@ -670,37 +687,18 @@ def _generate_insight_pdf(payload):
 
 
 def _generate_with_gemini(system_prompt: str, user_prompt: str):
-    if genai is None or types is None:
-        return (
-            None,
-            "google-genai is not available. Install dependencies and restart "
-            f"(import error: {_GENAI_IMPORT_ERROR})",
-        )
-
-    key = _extract_api_key()
-    if not key:
-        return None, "Missing GEMINI_API_KEY/GOOGLE_API_KEY in environment"
+    if not _ollama_available():
+        return None, f"Local AI model (Ollama) is not reachable at {OLLAMA_BASE_URL}"
 
     _rate_limit()
-    model_name = os.getenv("SYMPTOM_AI_MODEL", "gemini-2.5-flash")
-    try:
-        client = genai.Client(api_key=key)
-        response = client.models.generate_content(
-            model=model_name,
-            contents=f"{system_prompt}\n\nUser input:\n{user_prompt}",
-            config=types.GenerateContentConfig(
-                temperature=0.7,
-                max_output_tokens=1024,
-                top_p=0.95,
-                top_k=40,
-            ),
-        )
-        text = (response.text or "").strip()
-        if not text:
-            return None, "Empty response from model"
-        return text, None
-    except Exception as exc:
-        return None, str(exc)
+    text, error = _ollama_generate(
+        f"{system_prompt}\n\nUser input:\n{user_prompt}", temperature=0.7, max_tokens=1024
+    )
+    if error:
+        return None, error
+    if not text:
+        return None, "Empty response from model"
+    return text, None
 
 
 def _classify_region_with_gemini(description: str):
@@ -709,10 +707,7 @@ def _classify_region_with_gemini(description: str):
     # fallback for when that quick match comes up empty: ask the model to pick the closest
     # region from the same fixed list, constrained to an exact-match response so it can't
     # hallucinate a region name the frontend won't recognize.
-    if genai is None or types is None:
-        return None
-    key = _extract_api_key()
-    if not key:
+    if not _ollama_available():
         return None
 
     region_names = list(BODY_REGIONS.keys())
@@ -724,22 +719,10 @@ def _classify_region_with_gemini(description: str):
     )
     try:
         _rate_limit()
-        model_name = os.getenv("SYMPTOM_AI_MODEL", "gemini-2.5-flash")
-        client = genai.Client(api_key=key)
-        response = client.models.generate_content(
-            model=model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0,
-                max_output_tokens=50,
-                # Gemini 2.5's internal "thinking" tokens count against max_output_tokens;
-                # left at the default, a small budget like this gets consumed entirely by
-                # invisible reasoning and response.text comes back empty. This is a trivial
-                # classification task, so thinking is disabled outright.
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
-            ),
-        )
-        candidate = (response.text or "").strip()
+        text, error = _ollama_generate(prompt, temperature=0, max_tokens=20)
+        if error or not text:
+            return None
+        candidate = text.strip()
         return candidate if candidate in BODY_REGIONS else None
     except Exception:
         return None
@@ -795,7 +778,7 @@ def symptom_meta():
                 "disclaimer": "Educational tool only. Not medical advice.",
                 "emergency": "For severe or urgent concerns, contact emergency services immediately.",
             },
-            "api_key_configured": bool(_extract_api_key()),
+            "api_key_configured": _ollama_available(),
         }
     )
 
@@ -873,19 +856,11 @@ def triage():
 
     try:
         _rate_limit()
-        model_name = os.getenv("SYMPTOM_AI_MODEL", "gemini-2.5-flash")
-        client = genai.Client(api_key=_extract_api_key())
-        response = client.models.generate_content(
-            model=model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0,
-                response_mime_type="application/json",
-            ),
-        )
-        candidate = (response.text or "").strip()
+        text, error = _ollama_generate(prompt, json_mode=True, temperature=0, max_tokens=300)
+        if error or not text:
+            raise RuntimeError(error or "Empty response from model")
         import json
-        triage_result = json.loads(candidate)
+        triage_result = json.loads(text)
         
         # Enforce that the selected department is valid
         dept = triage_result.get("department")
