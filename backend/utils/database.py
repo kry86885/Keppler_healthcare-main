@@ -69,7 +69,11 @@ def _to_sql_params(sql: str):
 
 
 def _resolve_sqlite_db_path():
-    preferred_path = os.path.abspath(DB_PATH)
+    # Re-read from environment every call so that test fixtures (which set
+    # os.environ["DB_PATH"] before importing app code) take effect even though
+    # the module-level DB_PATH constant is captured at import time.
+    _db_path = os.environ.get("DB_PATH") or DB_PATH
+    preferred_path = os.path.abspath(_db_path)
     preferred_dir = os.path.dirname(preferred_path) or "."
     try:
         os.makedirs(preferred_dir, exist_ok=True)
@@ -95,12 +99,16 @@ def _get_pg_pool():
     # forking rather than sharing one pool object across process boundaries.
     global _PG_POOL
     if _PG_POOL is None:
-        _PG_POOL = psycopg2_pool.ThreadedConnectionPool(
-            _PG_POOL_MINCONN,
-            _PG_POOL_MAXCONN,
-            _normalize_database_url(DATABASE_URL),
-            cursor_factory=DictCursor,
-        )
+        try:
+            _PG_POOL = psycopg2_pool.ThreadedConnectionPool(
+                _PG_POOL_MINCONN,
+                _PG_POOL_MAXCONN,
+                _normalize_database_url(DATABASE_URL),
+                cursor_factory=DictCursor,
+            )
+        except Exception:
+            _PG_POOL = None
+            raise
     return _PG_POOL
 
 
@@ -115,7 +123,29 @@ def get_connection(autocommit: bool = False):
             # concurrent load. Reusing pooled connections avoids paying that
             # handshake on every single request.
             pool = _get_pg_pool()
-            conn = pool.getconn()
+            conn = None
+            for attempt in range(3):
+                try:
+                    conn = pool.getconn()
+                    # Ping the connection to ensure it's alive
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT 1")
+                    # psycopg2 automatically starts a transaction for the SELECT 1.
+                    # We must rollback so we can safely change autocommit mode later.
+                    conn.rollback()
+                    break
+                except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                    # Connection is dead, throw it away
+                    if conn:
+                        pool.putconn(conn, close=True)
+                        conn = None
+                    # If this is the last attempt, it might mean the DB is completely unreachable
+                    if attempt == 2:
+                        raise
+            
+            if not conn:
+                raise RuntimeError("Failed to get a working connection from pool")
+
             # A pooled connection may have been left in a different autocommit
             # mode by whichever request used it last -- always set explicitly.
             conn.autocommit = autocommit
@@ -123,7 +153,10 @@ def get_connection(autocommit: bool = False):
                 yield _CompatConnection(conn, postgres=True)
             except Exception:
                 if not autocommit:
-                    conn.rollback()
+                    try:
+                        conn.rollback()
+                    except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                        pass # Ignore rollback errors on already closed/broken connections
                 raise
             finally:
                 pool.putconn(conn)
@@ -149,11 +182,13 @@ def get_connection(autocommit: bool = False):
             )
 
     sqlite_path = _resolve_sqlite_db_path()
-    conn = sqlite3.connect(sqlite_path, check_same_thread=False, timeout=30.0)
-    try:
-        conn.execute("PRAGMA journal_mode=WAL")
-    except Exception:
-        pass
+    isolation = None if autocommit else ""
+    conn = sqlite3.connect(sqlite_path, check_same_thread=False, timeout=30.0, isolation_level=isolation)
+    if not os.environ.get("SQLITE_NO_WAL"):
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            pass
     conn.row_factory = sqlite3.Row
     try:
         yield _CompatConnection(conn, postgres=False)
@@ -174,6 +209,11 @@ class _CompatConnection:
 
     def rollback(self):
         return self._conn.rollback()
+
+    def execute(self, query, params=None):
+        cur = self.cursor()
+        cur.execute(query, params)
+        return cur
 
     def __getattr__(self, name):
         return getattr(self._conn, name)
@@ -398,6 +438,62 @@ def init_database():
 
         if not IS_POSTGRES:
             migrate_users_table_if_needed(conn)
+
+        if IS_POSTGRES:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS patient_feedback (
+                    id SERIAL PRIMARY KEY,
+                    patient_id INTEGER,
+                    emr_id INTEGER,
+                    rating INTEGER,
+                    comment TEXT,
+                    status TEXT DEFAULT 'New',
+                    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    whatsapp_message_id TEXT,
+                    phone_number TEXT
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS patient_feedback (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    patient_id INTEGER,
+                    emr_id INTEGER,
+                    rating INTEGER,
+                    comment TEXT,
+                    status TEXT DEFAULT 'New',
+                    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    whatsapp_message_id TEXT,
+                    phone_number TEXT
+                )
+                """
+            )
+
+        if IS_POSTGRES:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS whatsapp_templates (
+                    id SERIAL PRIMARY KEY,
+                    template_key TEXT UNIQUE NOT NULL,
+                    content TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS whatsapp_templates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    template_key TEXT UNIQUE NOT NULL,
+                    content TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
 
         if IS_POSTGRES:
             cursor.execute(

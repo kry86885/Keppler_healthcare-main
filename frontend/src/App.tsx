@@ -12,6 +12,7 @@ import AdminPage from "./pages/AdminPage";
 import DoctorSchedulingPage from "./pages/DoctorSchedulingPage";
 import DashboardPage from "./pages/DashboardPage";
 import EmployeesPage from "./pages/EmployeesPage";
+import PatientExperiencePage from "./pages/PatientExperiencePage";
 import BillingAgingPage from "./pages/BillingAgingPage";
 import BillingReconciliationPage from "./pages/BillingReconciliationPage";
 import BillingCreateInvoicePage from "./pages/BillingCreateInvoicePage";
@@ -1171,7 +1172,7 @@ function App() {
         {page === "appointment-in" && hasPermission("patients.read") && (
           <RegistrationDeskPage mode="appointment-in" selectedPatient={selectedPatient} setNotice={setNotice} onNavigate={navigateToPage} prefillData={appointmentPrefill} />
         )}
-        {page === "appointment-out" && hasPermission("registration.write") && (
+        {page === "appointment-out" && hasPermission("patients.write") && (
           <RegistrationDeskPage mode="appointment-out" selectedPatient={selectedPatient} setNotice={setNotice} onNavigate={navigateToPage} prefillData={appointmentPrefill} />
         )}
         {page === "queue" && hasPermission("patients.read") && (
@@ -1243,6 +1244,8 @@ function App() {
         {page === "reports" && hasPermission("reports.read") && <ReportsPage setNotice={setNotice} />}
 
         {page === "employees" && hasPermission("employees.read") && <EmployeesPage setNotice={setNotice} canWriteEmployees={hasPermission("employees.write")} />}
+
+        {page === "patient-experience" && hasPermission("admin.use") && <PatientExperiencePage setNotice={setNotice} />}
 
         {page === "admin" && hasPermission("employees.write") && <AdminPage setNotice={setNotice} />}
 

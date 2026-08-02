@@ -116,7 +116,7 @@ describe("RegistrationDeskPage", () => {
       await flush();
     });
 
-    expect(container.textContent).toContain("Appointment Out Desk");
+    expect(container.textContent).toContain("Completed Consultations Today");
     const tokenEl8 = container.querySelector('[data-testid="appointment-token"]') as HTMLElement;
     expect(tokenEl8).toBeTruthy();
     expect(tokenEl8.textContent).toBe("Token #8");

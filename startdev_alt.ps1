@@ -64,9 +64,7 @@ Start-ServiceIfDown -name "Symptom AI Backend" -port 6002 -workDir "$Root\sympto
 # 3. Frontend
 $frontendEnv = @{
     "PORT" = "6173"
-    "VITE_API_BASE" = "http://localhost:6001"
-    "VITE_API_URL" = "http://localhost:6001"
-    "VITE_SYMPTOM_API_BASE" = "http://localhost:6002"
+    "BACKEND_PROXY_TARGET" = "http://127.0.0.1:6001"
     "VITE_DEV_SERVER_URL" = "http://localhost:6173"
     "CHOKIDAR_USEPOLLING" = "true"
     "WATCHPACK_POLLING" = "true"
