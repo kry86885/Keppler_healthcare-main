@@ -3426,19 +3426,24 @@ def create_appointment(data, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT COALESCE(MAX(token_no), 0) AS value FROM appointments "
-            "WHERE DATE(appointment_date) = DATE(?) AND hospital_id = ?",
+            _to_sql_params("SELECT COALESCE(MAX(token_no), 0) AS value FROM appointments "
+            "WHERE DATE(appointment_date) = DATE(?) AND hospital_id = ?"),
             (appointment_day, scoped_hospital_id),
         )
         token_no = int((cursor.fetchone() or {"value": 0})["value"] or 0) + 1
-        cursor.execute(
-            """
+        
+        insert_sql = """
             INSERT INTO appointments (
                 patient_id, patient_name, visit_type, department, doctor_name,
                 appointment_date, token_no, status, notes, appointment_kind, follow_up_for,
                 reminder_sent_at, no_show_marked, hospital_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        """
+        if IS_POSTGRES:
+            insert_sql += " RETURNING id"
+            
+        cursor.execute(
+            _to_sql_params(insert_sql),
             (
                 data.get("patient_id"),
                 data["patient_name"],
@@ -3456,7 +3461,12 @@ def create_appointment(data, hospital_id=None):
                 scoped_hospital_id,
             ),
         )
-        appointment_id = cursor.lastrowid
+        
+        if IS_POSTGRES:
+            appointment_id = cursor.fetchone()[0]
+        else:
+            appointment_id = cursor.lastrowid
+            
         conn.commit()
         return appointment_id, token_no
 
@@ -5707,7 +5717,13 @@ def list_pharmacy_sales(medicine_name=None, invoice_id=None, patient_id=None, ho
             params.append(patient_id)
         where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         cursor.execute(
-            f"SELECT * FROM pharmacy_sales{where_clause} ORDER BY sold_at DESC",
+            f"""
+            SELECT s.*, p.name as patient_name 
+            FROM pharmacy_sales s 
+            LEFT JOIN patients p ON s.patient_id = p.patient_id 
+            {where_clause.replace("hospital_id", "s.hospital_id").replace("medicine_name", "s.medicine_name").replace("invoice_id", "s.invoice_id").replace("patient_id", "s.patient_id")} 
+            ORDER BY s.sold_at DESC
+            """,
             tuple(params),
         )
         return cursor.fetchall()
