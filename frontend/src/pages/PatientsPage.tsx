@@ -255,14 +255,11 @@ export default function PatientsPage({
               <TableCell className="text-center">Age</TableCell>
               <TableCell className="text-center">Gender</TableCell>
               <TableCell>Phone</TableCell>
-              <TableCell>Status</TableCell>
               <TableCell className="text-center">Actions</TableCell>
               <TableCell>Created</TableCell>
             </TableHead>
             {displayPatients.map((patient) => {
               const expanded = selectedPatient?.patient_id === patient.patient_id;
-              const isCompleted = patient.status?.toLowerCase() === 'completed';
-              const isConsultation = patient.status?.toLowerCase().includes('consultation');
               return (
                 <Fragment key={patient.patient_id}>
                   <TableRow className={`hover:bg-muted/50 ${expanded ? "active" : ""}`}>
@@ -273,16 +270,7 @@ export default function PatientsPage({
                     <TableCell className="text-center">{patient.age || "—"}</TableCell>
                     <TableCell className="text-center">{patient.gender || "—"}</TableCell>
                     <TableCell>{patient.phone || "—"}</TableCell>
-                    <TableCell>
-                      {patient.status ? (
-                        <Badge variant={isCompleted ? 'default' : isConsultation ? 'secondary' : 'outline'}>
-                          {patient.status.charAt(0).toUpperCase() + patient.status.slice(1).replace('_', ' ')}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
+                    <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-2">
                         <Button
                           variant="ghost"

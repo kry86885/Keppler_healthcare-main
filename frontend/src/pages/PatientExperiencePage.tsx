@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { apiFetch } from "../lib/api";
 import StatCard from "../components/StatCard";
-import { Button, Card, CardHeader, CardTitle, CardContent, Table, TableHead, TableRow, TableCell, Badge } from "../components/ui";
+import { Button, Card, CardHeader, CardTitle, CardContent, Table, TableHead, TableRow, TableCell, Badge, Modal, Input, Label } from "../components/ui";
 
-export default function PatientExperiencePage({ setNotice }: { setNotice: (msg: string | null) => void }) {
+export default function PatientExperiencePage({ setNotice }: { setNotice: any }) {
   const [feedback, setFeedback] = useState<any[]>([]);
   const [summary, setSummary] = useState({ total_responses: 0, average_rating: 0, unresolved_low_rated: 0 });
   const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState("All");
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [manualFeedback, setManualFeedback] = useState({ patient_id: "", comment: "" });
+  const [saving, setSaving] = useState(false);
 
   const loadData = () => {
     setLoading(true);
@@ -21,7 +23,7 @@ export default function PatientExperiencePage({ setNotice }: { setNotice: (msg: 
       })
       .catch((err) => {
         console.error(err);
-        setNotice("Failed to load patient experience data.");
+        setNotice({ type: "error", message: "Failed to load patient experience data." });
       })
       .finally(() => setLoading(false));
   };
@@ -30,27 +32,14 @@ export default function PatientExperiencePage({ setNotice }: { setNotice: (msg: 
     loadData();
   }, []);
 
-  const updateStatus = async (id: number, newStatus: string) => {
-    try {
-      await apiFetch(`/api/whatsapp/feedback/${id}/status`, {
-        method: "PUT",
-        body: { status: newStatus }
-      });
-      setNotice("Status updated successfully.");
-      loadData();
-    } catch (err: any) {
-      setNotice(err.message || "Failed to update status.");
-    }
-  };
+
 
   const exportCSV = () => {
-    const headers = ["Patient ID", "Patient Name", "Rating", "Comment", "Status", "Received At", "WhatsApp Msg ID", "Phone"];
+    const headers = ["Patient ID", "Patient Name", "Feedback", "Received At", "WhatsApp Msg ID", "Phone"];
     const rows = filteredFeedback.map(f => [
       f.patient_id || "",
       f.patient_name || "Unknown",
-      f.rating || "N/A",
       (f.comment || "").replace(/"/g, '""'),
-      f.status,
       f.received_at,
       f.whatsapp_message_id || "",
       f.phone_number || ""
@@ -72,135 +61,126 @@ export default function PatientExperiencePage({ setNotice }: { setNotice: (msg: 
   };
 
   const sortedFeedback = [...feedback].sort((a, b) => {
-    const ratingA = a.rating || 99;
-    const ratingB = b.rating || 99;
-    if (ratingA !== ratingB) return ratingA - ratingB;
     return new Date(b.received_at).getTime() - new Date(a.received_at).getTime();
   });
 
-  const filteredFeedback = sortedFeedback.filter(f => filterStatus === "All" || f.status === filterStatus);
+  const filteredFeedback = sortedFeedback;
+
+  const submitManualFeedback = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualFeedback.comment) return;
+    setSaving(true);
+    try {
+      await apiFetch("/api/whatsapp/feedback", {
+        method: "POST",
+        body: JSON.stringify(manualFeedback)
+      });
+      setNotice({ type: "success", message: "Feedback logged successfully." });
+      setShowAddModal(false);
+      setManualFeedback({ patient_id: "", comment: "" });
+      loadData();
+    } catch (err) {
+      setNotice({ type: "error", message: "Failed to log feedback." });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (loading) {
     return (
       <div className="page-container">
-        <header className="page-header">
-          <h1>Patient Experience</h1>
-          <p className="muted">Loading dashboard...</p>
-        </header>
+        <div style={{ display: "flex", justifyContent: "center", padding: "40px", color: "var(--muted-foreground)" }}>
+          <p>Loading patient insights...</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="page-container fade-in">
-      <header className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <h1>Patient Experience</h1>
-          <p className="muted">Monitor and manage patient feedback from WhatsApp</p>
-        </div>
-        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-          <select 
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: "var(--card)" }}
-          >
-            <option value="All">All Statuses</option>
-            <option value="New">New</option>
-            <option value="Escalated">Escalated</option>
-            <option value="Reviewed">Reviewed</option>
-            <option value="Resolved">Resolved</option>
-          </select>
-          <Button onClick={exportCSV} variant="primary">Export CSV</Button>
-        </div>
-      </header>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginBottom: "24px", gap: "12px" }}>
+        <Button onClick={() => setShowAddModal(true)} variant="secondary">Log Feedback</Button>
+        <Button onClick={exportCSV} variant="primary">Export CSV</Button>
+      </div>
+
+      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Log Patient Feedback">
+        <form onSubmit={submitManualFeedback} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div>
+            <Label>Patient ID (Optional)</Label>
+            <Input 
+              placeholder="e.g. PAT-100001" 
+              value={manualFeedback.patient_id} 
+              onChange={e => setManualFeedback(prev => ({...prev, patient_id: e.target.value}))} 
+            />
+          </div>
+          <div>
+            <Label>Feedback Comment</Label>
+            <textarea 
+              className="input" 
+              style={{ minHeight: "100px", width: "100%" }}
+              placeholder="Enter patient feedback here..." 
+              required
+              value={manualFeedback.comment} 
+              onChange={e => setManualFeedback(prev => ({...prev, comment: e.target.value}))} 
+            />
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "16px" }}>
+            <Button type="button" variant="ghost" onClick={() => setShowAddModal(false)}>Cancel</Button>
+            <Button type="submit" variant="primary" disabled={saving}>{saving ? "Saving..." : "Save Feedback"}</Button>
+          </div>
+        </form>
+      </Modal>
 
       <div className="dashboard-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "24px", marginBottom: "24px" }}>
         <StatCard 
-          label="Average Rating (out of 5)" 
-          value={summary.average_rating ? summary.average_rating.toFixed(1) : "0.0"} 
+          label="Total Feedback Received" 
+          value={feedback.length} 
         />
         <StatCard 
-          label="Total Responses" 
-          value={summary.total_responses} 
+          label="New Submissions" 
+          value={feedback.filter(f => f.status === 'New').length} 
         />
         <StatCard 
-          label="Needs Follow-up (Ratings 1-2)" 
-          value={summary.unresolved_low_rated} 
+          label="Escalated Issues" 
+          value={feedback.filter(f => f.status === 'Escalated').length} 
         />
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Recent Feedback</CardTitle>
+          <CardTitle>Recent Patient Insights</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
-            <thead>
               <TableRow>
                 <TableHead>Patient</TableHead>
-                <TableHead>Rating</TableHead>
-                <TableHead>Comment</TableHead>
+                <TableHead>Feedback</TableHead>
                 <TableHead>Date</TableHead>
-                <TableHead>Status</TableHead>
               </TableRow>
-            </thead>
-            <tbody>
               {filteredFeedback.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} style={{ textAlign: "center", padding: "32px", color: "var(--muted-foreground)" }}>
-                    No feedback found matching the filters.
-                  </TableCell>
+                  <td style={{ gridColumn: "1 / -1", textAlign: "center", padding: "40px", color: "var(--muted-foreground)" }}>
+                    No patient insights found.
+                  </td>
                 </TableRow>
               ) : (
-                filteredFeedback.map((f, i) => {
-                  const isLowRating = f.rating === 1 || f.rating === 2;
-                  
-                  return (
-                    <TableRow key={i} style={{ backgroundColor: isLowRating && f.status === 'Escalated' ? 'rgba(220, 38, 38, 0.05)' : undefined }}>
-                      <TableCell>
-                        <div style={{ fontWeight: 600 }}>{f.patient_name || "Unknown Patient"}</div>
-                        <div className="muted" style={{ fontSize: "0.85em" }}>ID: {f.patient_id}</div>
-                        {f.phone_number && <div className="muted" style={{ fontSize: "0.85em" }}>{f.phone_number}</div>}
-                      </TableCell>
-                      <TableCell>
-                        {f.rating ? (
-                          <Badge variant={isLowRating ? "destructive" : "success"}>
-                            {f.rating} / 5
-                          </Badge>
-                        ) : (
-                          <span className="muted" style={{ fontSize: "0.85em", fontStyle: "italic" }}>No Rating</span>
-                        )}
-                      </TableCell>
-                      <TableCell style={{ maxWidth: "300px", whiteSpace: "normal", wordWrap: "break-word" }}>
-                        {f.comment || <span className="muted" style={{ fontStyle: "italic" }}>No comment provided</span>}
-                      </TableCell>
-                      <TableCell>
-                        <div>{new Date(f.received_at).toLocaleDateString()}</div>
-                        <div className="muted" style={{ fontSize: "0.85em" }}>{new Date(f.received_at).toLocaleTimeString()}</div>
-                      </TableCell>
-                      <TableCell>
-                        <select
-                          value={f.status}
-                          onChange={(e) => updateStatus(f.id, e.target.value)}
-                          style={{ 
-                            padding: "6px 10px", 
-                            borderRadius: "6px", 
-                            border: "1px solid var(--border)", 
-                            background: f.status === 'Escalated' ? 'var(--destructive)' : 'var(--card)',
-                            color: f.status === 'Escalated' ? 'white' : 'inherit'
-                          }}
-                        >
-                          <option value="New">New</option>
-                          <option value="Reviewed">Reviewed</option>
-                          <option value="Escalated">Escalated</option>
-                          <option value="Resolved">Resolved</option>
-                        </select>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
+                filteredFeedback.map((f, i) => (
+                  <TableRow key={i} style={{ backgroundColor: f.status === 'Escalated' ? 'rgba(220, 38, 38, 0.04)' : undefined }}>
+                    <TableCell>
+                      <div style={{ fontWeight: 600, color: "var(--foreground)" }}>{f.patient_name || "Unknown Patient"}</div>
+                      <div className="muted" style={{ fontSize: "0.85em", marginTop: "4px" }}>ID: {f.patient_id}</div>
+                      {f.phone_number && <div className="muted" style={{ fontSize: "0.85em" }}>{f.phone_number}</div>}
+                    </TableCell>
+                    <TableCell style={{ maxWidth: "400px", whiteSpace: "normal", wordWrap: "break-word", lineHeight: "1.5" }}>
+                      {f.comment || <span className="muted" style={{ fontStyle: "italic" }}>No written feedback provided</span>}
+                    </TableCell>
+                    <TableCell>
+                      <div style={{ fontWeight: 500 }}>{new Date(f.received_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                      <div className="muted" style={{ fontSize: "0.85em", marginTop: "4px" }}>{new Date(f.received_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                    </TableCell>
+                  </TableRow>
+                ))
               )}
-            </tbody>
           </Table>
         </CardContent>
       </Card>

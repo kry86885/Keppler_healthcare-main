@@ -230,6 +230,8 @@ export default function OpPage({ setNotice, canEdit }: Props) {
         appointment_kind: appointmentForm.appointment_kind,
         follow_up_for: appointmentForm.appointment_kind === "follow_up" && appointmentForm.follow_up_for ? Number(appointmentForm.follow_up_for) : undefined,
         notes: appointmentForm.notes.trim() || undefined,
+        consultation_fee: Number(appointmentForm.consultation_fee) || 0,
+        payment_mode: appointmentForm.payment_mode,
       };
       await apiFetch(path, {
         method: appointmentId ? "PUT" : "POST",

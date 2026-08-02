@@ -215,6 +215,31 @@ def list_feedback():
         """).fetchall()
     return jsonify({"feedback": [dict(r) for r in rows]}), 200
 
+@whatsapp_bp.route("/feedback", methods=["POST"])
+@require_session
+def add_manual_feedback():
+    data = request.json
+    patient_id = data.get("patient_id")
+    phone = data.get("phone", "")
+    comment = data.get("comment", "")
+    
+    if not comment:
+        return jsonify({"error": "Comment is required"}), 400
+        
+    with get_connection(autocommit=True) as conn:
+        # Try to resolve patient_id string to integer if provided
+        real_patient_id = None
+        if patient_id:
+            patient = conn.execute("SELECT id FROM patients WHERE patient_id = %s", (patient_id,)).fetchone()
+            real_patient_id = patient['id'] if patient else None
+            
+        conn.execute("""
+            INSERT INTO patient_feedback (patient_id, phone_number, comment, status, received_at)
+            VALUES (%s, %s, %s, 'New', CURRENT_TIMESTAMP)
+        """, (real_patient_id, phone, comment))
+    
+    return jsonify({"success": True}), 201
+
 @whatsapp_bp.route("/feedback/<int:feedback_id>/status", methods=["PUT"])
 @require_session
 @require_permissions("admin.use")

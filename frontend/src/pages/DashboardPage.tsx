@@ -13,6 +13,7 @@ type Props = {
   hospitalSummary: HospitalSummary | null;
   analyticsLoading: boolean;
   onNavigate: (page: string) => void;
+  permissions: string[];
 };
 
 const CHART_COLORS = ["#0e7490", "#2563eb", "#16a34a", "#b45309", "#be123c", "#7c3aed", "#334155"];
@@ -108,19 +109,20 @@ function formatCurrency(amount?: number) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount || 0);
 }
 
-export default function DashboardPage({
-  stats,
-  recentPatients,
-  analytics,
-  hospitalSummary,
-  analyticsLoading,
-  onNavigate,
-}: Props) {
+export default function DashboardPage({ stats, recentPatients, analytics, hospitalSummary, analyticsLoading, onNavigate, permissions }: Props) {
+  const canViewBilling = permissions.includes("billing.read") || permissions.includes("accounts.read");
+  const canViewPharmacy = permissions.includes("pharmacy.read");
+  const canViewLab = permissions.includes("lab.read");
   const paymentModes = hospitalSummary?.revenue?.payment_mode_breakdown || [];
   const maxPaymentMode = Math.max(1, ...paymentModes.map((item) => item.count || 0));
 
   return (
-    <section className="dashboard">
+    <section className="fade-in page-container">
+      <div className="dashboard-header" style={{ marginBottom: "24px" }}>
+        <h2 style={{ fontSize: "24px", fontWeight: 700, color: "var(--foreground)" }}>Dashboard</h2>
+        <p className="muted">Stay ahead with real-time care intelligence.</p>
+      </div>
+
       <div className="stat-grid">
         <StatCard label="Total Patients" value={stats.total} />
         <StatCard label="New Today" value={stats.today} />
@@ -207,10 +209,14 @@ export default function DashboardPage({
       <div className="stat-grid module-stat-grid">
         <StatCard label="Today's OP" value={hospitalSummary?.ip_op_counts?.daily_op || 0} />
         <StatCard label="Today's IP" value={hospitalSummary?.ip_op_counts?.daily_ip || 0} />
-        <StatCard label="Monthly Revenue" value={formatCurrency(hospitalSummary?.revenue?.total)} />
-        <StatCard label="Outstanding Due" value={formatCurrency(hospitalSummary?.revenue?.due)} />
-        <StatCard label="Pharmacy Sales" value={formatCurrency(hospitalSummary?.pharmacy_summary?.monthly_sales)} />
-        <StatCard label="Diagnostics Income" value={formatCurrency(hospitalSummary?.diagnostics_summary?.monthly_income)} />
+        {canViewBilling && (
+          <>
+            <StatCard label="Monthly Revenue" value={formatCurrency(hospitalSummary?.revenue?.total)} />
+            <StatCard label="Outstanding Due" value={formatCurrency(hospitalSummary?.revenue?.due)} />
+          </>
+        )}
+        {canViewPharmacy && <StatCard label="Pharmacy Sales" value={formatCurrency(hospitalSummary?.pharmacy_summary?.monthly_sales)} />}
+        {canViewLab && <StatCard label="Diagnostics Income" value={formatCurrency(hospitalSummary?.diagnostics_summary?.monthly_income)} />}
       </div>
 
       <div className="dashboard-analytics-grid">
@@ -243,29 +249,31 @@ export default function DashboardPage({
             </div>
           </CardContent>
         </Card>
-        <Card className="panel dashboard-analytics-card">
-          <CardHeader>
-            <CardTitle>Collection Mix</CardTitle>
-            <CardDescription className="muted">Payment mode breakdown for this month.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {paymentModes.length === 0 ? (
-              <p className="muted">No payment activity yet.</p>
-            ) : (
-              <div className="summary-list">
-                {paymentModes.map((item) => (
-                  <div key={item.label} className="summary-list-row">
-                    <span className="bar-label">{item.label}</span>
-                    <div className="mini-bar-track" aria-hidden="true">
-                      <div className="mini-bar-fill" style={{ width: `${(item.count / maxPaymentMode) * 100}%` }} />
+        {canViewBilling && (
+          <Card className="panel dashboard-analytics-card">
+            <CardHeader>
+              <CardTitle>Collection Mix</CardTitle>
+              <CardDescription className="muted">Payment mode breakdown for this month.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {paymentModes.length === 0 ? (
+                <p className="muted">No payment activity yet.</p>
+              ) : (
+                <div className="summary-list">
+                  {paymentModes.map((item) => (
+                    <div key={item.label} className="summary-list-row">
+                      <span className="bar-label">{item.label}</span>
+                      <div className="mini-bar-track" aria-hidden="true">
+                        <div className="mini-bar-fill" style={{ width: `${(item.count / maxPaymentMode) * 100}%` }} />
+                      </div>
+                      <strong>{formatCurrency(item.count)}</strong>
                     </div>
-                    <strong>{formatCurrency(item.count)}</strong>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
         <Card className="panel dashboard-analytics-card">
           <CardHeader>
             <CardTitle>Referral Sources</CardTitle>

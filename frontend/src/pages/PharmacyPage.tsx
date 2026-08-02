@@ -182,6 +182,8 @@ export default function PharmacyPage({ setNotice }: Props) {
   const [savingPurchase, setSavingPurchase] = useState(false);
   const [deletingItem, setDeletingItem] = useState<InventoryItem | null>(null);
   const [pendingPrescriptionsSearch, setPendingPrescriptionsSearch] = useState("");
+  const [fulfillModal, setFulfillModal] = useState<PendingPrescription | null>(null);
+  const [fulfillMedicines, setFulfillMedicines] = useState<any[]>([]);
 
   const visibleItems = useMemo(() => {
     const search = filters.search.trim().toLowerCase();
@@ -366,34 +368,32 @@ export default function PharmacyPage({ setNotice }: Props) {
     setSaleForm((current) => ({ ...current, patient_id: patient.patient_id }));
   };
 
-  const handleFulfillPrescription = async (presc: PendingPrescription) => {
+  const handleFulfillPrescription = (presc: PendingPrescription) => {
+    let meds = [];
+    try { meds = JSON.parse(presc.medicines_json); } catch(e) {}
+    
+    // Auto-fill unit prices from inventory
+    const enrichedMeds = meds.map((m: any) => {
+      const inv = items.find(i => i.medicine_name.toLowerCase() === m.name.toLowerCase());
+      return {
+        ...m,
+        unit_price: inv ? inv.unit_price : 0
+      };
+    });
+
+    setFulfillMedicines(enrichedMeds);
+    setFulfillModal(presc);
+  };
+
+  const submitFulfillPrescription = async () => {
+    if (!fulfillModal) return;
     try {
-      let meds = [];
-      try { meds = JSON.parse(presc.medicines_json); } catch(e) {}
-      
-      // Auto-fill unit prices from inventory
-      const enrichedMeds = meds.map((m: any) => {
-        const inv = items.find(i => i.medicine_name.toLowerCase() === m.name.toLowerCase());
-        return {
-          ...m,
-          unit_price: inv ? inv.unit_price : 0
-        };
-      });
-
-      // Prompt for missing prices
-      for (const m of enrichedMeds) {
-        if (m.unit_price === 0) {
-          const priceStr = window.prompt(`Enter unit price (in ₹) for ${m.name} (Qty: ${m.quantity}):`, "10");
-          if (priceStr === null) return; // User cancelled
-          m.unit_price = Number(priceStr) || 0;
-        }
-      }
-
-      await apiFetch(`/api/pharmacy/prescriptions/${presc.id}/fulfill`, {
+      await apiFetch(`/api/pharmacy/prescriptions/${fulfillModal.id}/fulfill`, {
         method: "POST",
-        body: JSON.stringify({ medicines: enrichedMeds }),
+        body: JSON.stringify({ medicines: fulfillMedicines }),
       });
       setNotice({ type: "success", message: "Prescription fulfilled and sales recorded." });
+      setFulfillModal(null);
       await loadPharmacy();
     } catch (error) {
       reportError(setNotice, error as any, "Failed to fulfill prescription");
@@ -1002,7 +1002,7 @@ export default function PharmacyPage({ setNotice }: Props) {
                 <TableRow key={sale.id}>
                   <TableCell>{formatDate(sale.sold_at)}</TableCell>
                   <TableCell>{sale.medicine_name}</TableCell>
-                  <TableCell>{sale.patient_id || "-"}</TableCell>
+                  <TableCell>{sale.patient_name ? `${sale.patient_name} (${sale.patient_id})` : sale.patient_id || "-"}</TableCell>
                   <TableCell>{sale.prescription_ref || "-"}</TableCell>
                   <TableCell>{sale.quantity ?? 0}</TableCell>
                   <TableCell>{formatCurrency(sale.amount)}</TableCell>
@@ -1014,7 +1014,7 @@ export default function PharmacyPage({ setNotice }: Props) {
               {visibleSales.slice(0, 14).map((sale) => (
                 <article className="module-mobile-card" key={`sale-mobile-${sale.id}`}>
                   <h4>{sale.medicine_name}</h4>
-                  <p><strong>Patient:</strong> {sale.patient_id || "-"}</p>
+                  <p><strong>Patient:</strong> {sale.patient_name ? `${sale.patient_name} (${sale.patient_id})` : sale.patient_id || "-"}</p>
                   <p><strong>Prescription:</strong> {sale.prescription_ref || "-"}</p>
                   <p><strong>Quantity:</strong> {sale.quantity ?? 0}</p>
                   <p><strong>Amount:</strong> {formatCurrency(sale.amount)}</p>
@@ -1034,6 +1034,65 @@ export default function PharmacyPage({ setNotice }: Props) {
         onClose={() => setDeletingItem(null)}
         onConfirm={() => void confirmDeleteInventory()}
       />
+
+      {fulfillModal && (
+        <div className="modal-overlay" style={{ display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+          <div style={{ background: "#fff", padding: "1.5rem", borderRadius: "10px", width: "90%", maxWidth: "600px", boxShadow: "0 10px 25px rgba(0,0,0,0.1)" }}>
+            <h3 style={{ marginTop: 0, borderBottom: "1px solid #e2e8f0", paddingBottom: "0.5rem" }}>Fulfill Prescription & Bill</h3>
+            <div style={{ marginBottom: "1rem", fontSize: "0.85rem", color: "#475569", background: "#f8fafc", padding: "1rem", borderRadius: "8px" }}>
+              <div style={{ fontWeight: 600, color: "#1e293b", fontSize: "1rem" }}>{fulfillModal.patient_name} {fulfillModal.patient_last_name || ""}</div>
+              <div>Patient ID: {fulfillModal.patient_id}</div>
+              <div>Doctor: Dr. {fulfillModal.doctor_username}</div>
+            </div>
+            
+            <div style={{ overflowX: "auto", marginBottom: "1rem", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
+              <Table style={{ margin: 0 }}>
+                <thead>
+                  <TableRow>
+                    <TableHead>Medicine</TableHead>
+                    <TableHead>Qty</TableHead>
+                    <TableHead>Unit Cost (₹)</TableHead>
+                    <TableHead>Total</TableHead>
+                  </TableRow>
+                </thead>
+                <tbody>
+                  {fulfillMedicines.map((m, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell>{m.name} <div style={{fontSize:"0.7rem", color:"#64748b"}}>{m.dosage}</div></TableCell>
+                      <TableCell>{m.quantity}</TableCell>
+                      <TableCell>
+                        <Input 
+                          type="number"
+                          style={{ width: "80px", padding: "0.3rem" }}
+                          value={m.unit_price === 0 ? "" : m.unit_price}
+                          placeholder="0"
+                          onChange={(e) => {
+                            const newMeds = [...fulfillMedicines];
+                            newMeds[idx].unit_price = Number(e.target.value) || 0;
+                            setFulfillMedicines(newMeds);
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell style={{ fontWeight: 600 }}>
+                        {formatCurrency(m.quantity * (m.unit_price || 0))}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "1.5rem", background: "#f8fafc", padding: "1rem", borderRadius: "8px" }}>
+              <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: "#1e293b" }}>
+                Total Bill: <span style={{ color: "#0f172a" }}>{formatCurrency(fulfillMedicines.reduce((acc, m) => acc + (m.quantity * (m.unit_price || 0)), 0))}</span>
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <Button variant="secondary" onClick={() => setFulfillModal(null)}>Cancel</Button>
+                <Button onClick={submitFulfillPrescription}>Generate Bill & Fulfill</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
