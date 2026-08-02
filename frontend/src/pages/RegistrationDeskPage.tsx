@@ -937,9 +937,9 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
         </div>
       ) : null}
 
-      {mode === "appointment-in" ? (
+      {(mode === "appointment-in" || mode === "appointment-out") ? (
       <div className="panel registration-desk-panel">
-        <h4>Appointment Queue (In)</h4>
+        <h4>{mode === "appointment-in" ? "Appointment Queue (In)" : "Active Consultations"}</h4>
         {appointmentsLoading ? <p className="muted">Loading queue...</p> : null}
         {!appointmentsLoading && queue.length === 0 ? (
           <div className="module-empty-state">

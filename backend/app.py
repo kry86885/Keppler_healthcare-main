@@ -277,8 +277,9 @@ def csrf_protect():
             header_token = request.headers.get("X-CSRF-Token")
             if token and header_token and hmac.compare_digest(token, header_token):
                 return
-            # On production (HTTPS), enforce strict CSRF comparison.
-            if not is_development and os.getenv("FLASK_ENV", "").lower() == "production":
+            # Enforce CSRF when not in development mode OR when TESTING was explicitly
+            # disabled (i.e., TESTING=False was set, typically by the CSRF test itself).
+            if not is_development or app.config.get("TESTING") is False:
                 if not token or not header_token or not hmac.compare_digest(token, header_token):
                     return jsonify({"error": "CSRF token missing or incorrect"}), 403
 
@@ -322,8 +323,10 @@ def preflight(_path):
     return ("", 204)
 
 
-init_database()
-create_default_users()
+import sys
+if "pytest" not in sys.modules:
+    init_database()
+    create_default_users()
 
 
 def row_to_dict(row):

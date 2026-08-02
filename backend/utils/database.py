@@ -69,7 +69,11 @@ def _to_sql_params(sql: str):
 
 
 def _resolve_sqlite_db_path():
-    preferred_path = os.path.abspath(DB_PATH)
+    # Re-read from environment every call so that test fixtures (which set
+    # os.environ["DB_PATH"] before importing app code) take effect even though
+    # the module-level DB_PATH constant is captured at import time.
+    _db_path = os.environ.get("DB_PATH") or DB_PATH
+    preferred_path = os.path.abspath(_db_path)
     preferred_dir = os.path.dirname(preferred_path) or "."
     try:
         os.makedirs(preferred_dir, exist_ok=True)
@@ -178,11 +182,13 @@ def get_connection(autocommit: bool = False):
             )
 
     sqlite_path = _resolve_sqlite_db_path()
-    conn = sqlite3.connect(sqlite_path, check_same_thread=False, timeout=30.0)
-    try:
-        conn.execute("PRAGMA journal_mode=WAL")
-    except Exception:
-        pass
+    isolation = None if autocommit else ""
+    conn = sqlite3.connect(sqlite_path, check_same_thread=False, timeout=30.0, isolation_level=isolation)
+    if not os.environ.get("SQLITE_NO_WAL"):
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            pass
     conn.row_factory = sqlite3.Row
     try:
         yield _CompatConnection(conn, postgres=False)

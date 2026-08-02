@@ -221,7 +221,10 @@ def normalize_module_access(raw_modules, user_type: Optional[str] = None, access
     if parsed:
         return parsed
 
-    if raw_modules is None:
+    # Legacy fallback: only for non-normal roles (owner/clinician/receptionist legacy accounts
+    # that pre-date the module_access column). Normal users must have explicit modules assigned;
+    # missing or invalid module_access means zero access (explicit deny).
+    if raw_modules is None and normalized_type != "normal":
         return default_modules_for_legacy(access_role, legacy_role)
 
     # Default deny for normal users when module access is missing or invalid.

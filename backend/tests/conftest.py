@@ -16,26 +16,70 @@ import pytest
 # use. Confirmed this exact thing was happening: the full suite took over an hour
 # instead of ~1-2 minutes because collection itself hung against stale
 # local-Postgres credentials from the root .env before a single test could run.
+_TEST_DB = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "test.db"))
 os.environ["DB_ENGINE"] = "sqlite"
 os.environ["DATABASE_URL"] = ""
+os.environ["DB_PATH"] = _TEST_DB
+os.environ["SQLITE_NO_WAL"] = "1"  # WAL causes cross-connection write locks on Windows
 os.environ["BUCKET_URL"] = "s3://memory-test/bucket"
 # Must be set before app.py (and therefore core.celery_app.celery_init_app) is ever
 # imported/reloaded -- app.config["TESTING"] is only set *after* the app_client fixture
 # reloads the module, which is too late for celery_init_app's own eager-mode check.
 os.environ["CELERY_TASK_ALWAYS_EAGER"] = "true"
 
+# Remove stale test db before this session so we always start clean
+for _f in [_TEST_DB, _TEST_DB + "-wal", _TEST_DB + "-shm"]:
+    try:
+        os.remove(_f)
+    except (FileNotFoundError, PermissionError):
+        pass
+
+
+
+import sqlite3 as _sqlite3
+from contextlib import contextmanager
+
+# ---------------------------------------------------------------------------
+# Single shared SQLite connection for the ENTIRE test process.
+# Established at MODULE LOAD time (before any test files are collected/imported)
+# so that test files which `import app` at module level also go through this
+# patch. This eliminates all cross-connection write locks on Windows.
+# ---------------------------------------------------------------------------
+if "backend" not in sys.path:
+    sys.path.insert(0, os.path.dirname(__file__) + "/..")
+
+import utils.database as _db_module  # noqa: E402
+
+_SESSION_CONN = _sqlite3.connect(
+    _TEST_DB, check_same_thread=False, timeout=60.0, isolation_level=None
+)
+_SESSION_CONN.row_factory = _sqlite3.Row
+_ORIG_GET_CONNECTION = _db_module.get_connection
+
+
+@contextmanager
+def _session_get_connection(autocommit=False):
+    yield _db_module._CompatConnection(_SESSION_CONN, postgres=False)
+
+
+_db_module.get_connection = _session_get_connection
+
 
 @pytest.fixture(scope="session", autouse=True)
 def test_db_env():
-    if "backend" not in sys.path:
-        sys.path.insert(0, os.path.dirname(__file__) + "/..")
-
     from utils.database import init_database
     from core.auth import create_default_users
 
     init_database()
+    _SESSION_CONN.commit()
     create_default_users()
+    _SESSION_CONN.commit()
+
     yield
+
+    # Teardown: restore original and close the shared connection
+    _db_module.get_connection = _ORIG_GET_CONNECTION
+    _SESSION_CONN.close()
 
 
 @pytest.fixture(scope="session")
