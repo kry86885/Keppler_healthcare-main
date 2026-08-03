@@ -174,10 +174,12 @@ def appointments_create():
         payment_mode = normalize_payment_mode(payload.get("payment_mode", "cash"))
         record_invoice_payment(
             invoice_id,
-            consultation_fee,
-            payment_mode,
-            gateway_ref=None,
-            hospital_id=current_hospital_id()
+            {
+                "amount": consultation_fee,
+                "payment_mode": payment_mode,
+                "gateway_ref": None,
+                "created_by": g.current_user.get("username") if hasattr(g, "current_user") else ""
+            }
         )
 
     log_audit_event(

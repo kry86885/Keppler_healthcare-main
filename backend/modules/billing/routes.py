@@ -10,7 +10,7 @@ from app import (
 )
 from utils.database import (
     create_invoice, update_invoice, list_invoices, record_invoice_payment,
-    delete_invoice, get_invoice_by_id,
+    delete_invoice, get_invoice_by_id, list_all_invoice_payments,
     get_revenue_summary, list_insurance_claims, create_insurance_claim, update_insurance_claim,
     delete_insurance_claim
 )
@@ -24,6 +24,14 @@ def billing_invoices():
     module = request.args.get("module")
     return jsonify(
         {"invoices": rows_to_dicts(list_invoices(patient_id=patient_id, module=module, hospital_id=current_hospital_id()))}
+    )
+
+
+@billing_bp.get("/api/billing/payments")
+@require_permissions("billing.read")
+def billing_payments():
+    return jsonify(
+        {"payments": rows_to_dicts(list_all_invoice_payments(hospital_id=current_hospital_id()))}
     )
 
 
