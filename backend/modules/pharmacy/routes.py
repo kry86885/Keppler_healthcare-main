@@ -19,7 +19,7 @@ def pharmacy_inventory_list():
 
 
 @pharmacy_bp.post("/api/pharmacy/inventory")
-@require_permissions("pharmacy.write")
+@require_permissions("pharmacy.inventory.write")
 def pharmacy_inventory_upsert():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["medicine_name"])
@@ -37,7 +37,7 @@ def pharmacy_inventory_upsert():
 
 
 @pharmacy_bp.delete("/api/pharmacy/inventory/<int:item_id>")
-@require_permissions("pharmacy.write")
+@require_permissions("pharmacy.inventory.write")
 def pharmacy_inventory_delete(item_id):
     deleted = delete_inventory_item(item_id, actor=g.current_user.get("username"))
     if not deleted:
@@ -48,7 +48,7 @@ def pharmacy_inventory_delete(item_id):
 
 
 @pharmacy_bp.post("/api/pharmacy/sales")
-@require_permissions("pharmacy.write")
+@require_permissions("pharmacy.sales.write")
 def pharmacy_sale_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(
@@ -96,7 +96,7 @@ def pharmacy_suppliers_list():
 
 
 @pharmacy_bp.post("/api/pharmacy/suppliers")
-@require_permissions("pharmacy.write")
+@require_permissions("pharmacy.suppliers.write")
 def pharmacy_suppliers_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["supplier_name"])
@@ -109,7 +109,7 @@ def pharmacy_suppliers_create():
 
 
 @pharmacy_bp.put("/api/pharmacy/suppliers/<int:supplier_id>")
-@require_permissions("pharmacy.write")
+@require_permissions("pharmacy.suppliers.write")
 def pharmacy_suppliers_update(supplier_id):
     payload = request.get_json(force=True)
     updated = update_pharmacy_supplier(supplier_id, payload)
@@ -121,7 +121,7 @@ def pharmacy_suppliers_update(supplier_id):
 
 
 @pharmacy_bp.delete("/api/pharmacy/suppliers/<int:supplier_id>")
-@require_permissions("pharmacy.write")
+@require_permissions("pharmacy.suppliers.write")
 def pharmacy_suppliers_delete(supplier_id):
     deleted = delete_pharmacy_supplier(supplier_id, actor=g.current_user.get("username"))
     if not deleted:
@@ -140,7 +140,7 @@ def pharmacy_purchases_list():
 
 
 @pharmacy_bp.post("/api/pharmacy/purchases")
-@require_permissions("pharmacy.write")
+@require_permissions("pharmacy.purchases.write")
 def pharmacy_purchases_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["medicine_name", "quantity", "unit_cost"])
@@ -153,7 +153,7 @@ def pharmacy_purchases_create():
 
 
 @pharmacy_bp.put("/api/pharmacy/purchases/<int:purchase_id>")
-@require_permissions("pharmacy.write")
+@require_permissions("pharmacy.purchases.write")
 def pharmacy_purchases_update(purchase_id):
     payload = request.get_json(force=True)
     updated = update_pharmacy_purchase(purchase_id, payload)
@@ -165,7 +165,7 @@ def pharmacy_purchases_update(purchase_id):
 
 
 @pharmacy_bp.delete("/api/pharmacy/purchases/<int:purchase_id>")
-@require_permissions("pharmacy.write")
+@require_permissions("pharmacy.purchases.write")
 def pharmacy_purchases_delete(purchase_id):
     deleted = delete_pharmacy_purchase(purchase_id, actor=g.current_user.get("username"))
     if not deleted:
@@ -186,7 +186,7 @@ def pharmacy_summary():
 # ---- Prescriptions via OCR ----
 
 @pharmacy_bp.post("/api/pharmacy/prescriptions")
-@require_permissions("patients.write")
+@require_permissions("pharmacy.prescriptions.write")
 def create_prescription():
     payload = request.get_json(force=True)
     patient_id = payload.get("patient_id")
@@ -216,7 +216,7 @@ def list_prescriptions():
 
 
 @pharmacy_bp.post("/api/pharmacy/prescriptions/<int:prescription_id>/fulfill")
-@require_permissions("pharmacy.write")
+@require_permissions("pharmacy.prescriptions.write")
 def fulfill_prescription(prescription_id):
     from utils.database import get_pharmacy_prescription, fulfill_pharmacy_prescription, create_pharmacy_sale
     import json

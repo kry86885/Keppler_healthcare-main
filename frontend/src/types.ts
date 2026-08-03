@@ -1,5 +1,17 @@
 export type UserType = "admin" | "normal";
-export type ModuleId = "dashboard" | "patients" | "billing" | "pharmacy" | "lab" | "hrms" | "ot" | "accounts" | "reports" | "symptom_ai";
+export type ModuleId = "dashboard" | "patients" | "op" | "billing" | "pharmacy" | "lab" | "hrms" | "ot" | "accounts" | "reports" | "symptom_ai" | "employees" | "patient_experience";
+
+// A stored module_access entry is either a bare ModuleId (full access to that
+// module) or a dotted "module.subitem" string (access to just one sub-item
+// within it) -- see SUB_MODULES in lib/constants.ts. Kept as plain string
+// rather than a template-literal type since it round-trips through the
+// backend's JSON column as an unvalidated string array.
+export type ModuleAccessEntry = string;
+
+export interface SubModuleOption {
+  value: string;
+  label: string;
+}
 
 export interface UserTypeOption {
   value: UserType;
@@ -24,7 +36,7 @@ export interface User {
   role?: string;
   access_role?: string;
   user_type?: UserType;
-  module_access?: ModuleId[];
+  module_access?: ModuleAccessEntry[];
   permissions?: string[];
   employee_id?: string;
   status?: string;
@@ -384,7 +396,7 @@ export interface SignupForm {
   email: string;
   phone: string;
   user_type: UserType;
-  module_access: ModuleId[];
+  module_access: ModuleAccessEntry[];
   job_role: string;
   department: string;
   address: string;
@@ -434,7 +446,7 @@ export interface Employee {
   job_role?: string;
   access_role?: string;
   user_type?: UserType;
-  module_access?: ModuleId[];
+  module_access?: ModuleAccessEntry[];
   date_joined?: string;
 }
 

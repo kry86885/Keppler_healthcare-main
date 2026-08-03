@@ -42,7 +42,7 @@ def symptom_ai_documents_list():
 
 
 @symptom_ai_bp.post("/api/symptom-ai/documents")
-@require_permissions("symptom_ai.use")
+@require_permissions("symptom_ai.documents.write")
 def symptom_ai_documents_upload():
     if not rag_provider.is_configured():
         return jsonify({"error": "GEMINI_API_KEY is not configured on the server."}), 503
@@ -96,7 +96,7 @@ def symptom_ai_documents_upload():
 
 
 @symptom_ai_bp.delete("/api/symptom-ai/documents/<int:document_id>")
-@require_permissions("symptom_ai.use")
+@require_permissions("symptom_ai.documents.write")
 def symptom_ai_documents_delete(document_id):
     hospital_id = current_hospital_id()
     username = g.current_user.get("username")

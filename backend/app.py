@@ -743,8 +743,15 @@ def _handle_payload_too_large(exc):
 
 
 if __name__ == "__main__":
-    from utils.database import DATABASE_URL
-    print(f"=== STARTING BACKEND. USING DATABASE_URL: {DATABASE_URL} ===")
+    from urllib.parse import urlsplit
+    from utils.database import DATABASE_URL, DB_ENGINE, IS_POSTGRES, DB_PATH
+
+    if IS_POSTGRES:
+        parts = urlsplit(DATABASE_URL)
+        target = f"postgres://{parts.hostname}:{parts.port}{parts.path}"
+    else:
+        target = f"sqlite:{DB_PATH}"
+    print(f"=== STARTING BACKEND. DB_ENGINE={DB_ENGINE} TARGET={target} ===")
     port = int(os.getenv("PORT", "5001"))
     app.run(host="0.0.0.0", port=port, debug=True)
 

@@ -51,7 +51,7 @@ def accounts_ledger_list():
 
 
 @accounts_bp.post("/api/accounts/ledger")
-@require_permissions("accounts.write")
+@require_permissions("accounts.ledger.write")
 def accounts_ledger_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["entry_date", "entry_type", "category", "amount"])
@@ -64,7 +64,7 @@ def accounts_ledger_create():
 
 
 @accounts_bp.put("/api/accounts/ledger/<int:entry_id>")
-@require_permissions("accounts.write")
+@require_permissions("accounts.ledger.write")
 def accounts_ledger_update(entry_id):
     payload = request.get_json(force=True)
     updated = update_account_ledger_entry(entry_id, payload)
@@ -76,7 +76,7 @@ def accounts_ledger_update(entry_id):
 
 
 @accounts_bp.delete("/api/accounts/ledger/<int:entry_id>")
-@require_permissions("accounts.write")
+@require_permissions("accounts.ledger.write")
 def accounts_ledger_delete(entry_id):
     deleted = delete_account_ledger_entry(entry_id, actor=g.current_user.get("username"))
     if not deleted:
@@ -95,7 +95,7 @@ def accounts_vendor_payments_list():
 
 
 @accounts_bp.post("/api/accounts/vendors")
-@require_permissions("accounts.write")
+@require_permissions("accounts.vendors.write")
 def accounts_vendor_payments_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["vendor_name", "amount", "payment_date"])
@@ -108,7 +108,7 @@ def accounts_vendor_payments_create():
 
 
 @accounts_bp.put("/api/accounts/vendors/<int:payment_id>")
-@require_permissions("accounts.write")
+@require_permissions("accounts.vendors.write")
 def accounts_vendor_payments_update(payment_id):
     payload = request.get_json(force=True)
     updated = update_vendor_payment(payment_id, payload)
@@ -120,7 +120,7 @@ def accounts_vendor_payments_update(payment_id):
 
 
 @accounts_bp.delete("/api/accounts/vendors/<int:payment_id>")
-@require_permissions("accounts.write")
+@require_permissions("accounts.vendors.write")
 def accounts_vendor_payments_delete(payment_id):
     deleted = delete_vendor_payment(payment_id, actor=g.current_user.get("username"))
     if not deleted:
@@ -139,7 +139,7 @@ def accounts_doctor_payouts_list():
 
 
 @accounts_bp.post("/api/accounts/doctors")
-@require_permissions("accounts.write")
+@require_permissions("accounts.doctors.write")
 def accounts_doctor_payouts_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["doctor_name", "payout_month", "amount"])
@@ -152,7 +152,7 @@ def accounts_doctor_payouts_create():
 
 
 @accounts_bp.put("/api/accounts/doctors/<int:payout_id>")
-@require_permissions("accounts.write")
+@require_permissions("accounts.doctors.write")
 def accounts_doctor_payouts_update(payout_id):
     payload = request.get_json(force=True)
     updated = update_doctor_payout(payout_id, payload)
@@ -164,7 +164,7 @@ def accounts_doctor_payouts_update(payout_id):
 
 
 @accounts_bp.delete("/api/accounts/doctors/<int:payout_id>")
-@require_permissions("accounts.write")
+@require_permissions("accounts.doctors.write")
 def accounts_doctor_payouts_delete(payout_id):
     deleted = delete_doctor_payout(payout_id, actor=g.current_user.get("username"))
     if not deleted:

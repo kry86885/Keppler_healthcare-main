@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, FormEvent, ReactNode, SetStateAction } from "react";
 import { FiSettings, FiMenu } from "react-icons/fi";
 import AuthView from "./components/AuthView";
@@ -6,45 +6,50 @@ import SettingsModal from "./components/SettingsModal";
 import Toast from "./components/ui/Toast";
 import ConfirmDialog from "./components/ui/ConfirmDialog";
 import { Button, Container } from "./components/ui";
-import AddPatientPage from "./pages/AddPatientPage";
-import OcrPage from "./pages/OcrPage";
-import AdminPage from "./pages/AdminPage";
-import DoctorSchedulingPage from "./pages/DoctorSchedulingPage";
-import DashboardPage from "./pages/DashboardPage";
-import EmployeesPage from "./pages/EmployeesPage";
-import PatientExperiencePage from "./pages/PatientExperiencePage";
-import BillingAgingPage from "./pages/BillingAgingPage";
-import BillingReconciliationPage from "./pages/BillingReconciliationPage";
-import BillingCreateInvoicePage from "./pages/BillingCreateInvoicePage";
-import BillingRecordPaymentPage from "./pages/BillingRecordPaymentPage";
-import BillingClaimsPage from "./pages/BillingClaimsPage";
-import BillingInvoicesPage from "./pages/BillingInvoicesPage";
-import BillingPaymentModesPage from "./pages/BillingPaymentModesPage";
-import BillingCollectionsPage from "./pages/BillingCollectionsPage";
-import PharmacyPage from "./pages/PharmacyPage";
-import LabPage from "./pages/LabPage";
-import HrmsPage from "./pages/HrmsPage";
-import OtPage from "./pages/OtPage";
-import AccountsOverviewPage from "./pages/AccountsOverviewPage";
-import AccountsLedgerPage from "./pages/AccountsLedgerPage";
-import AccountsVendorPaymentsPage from "./pages/AccountsVendorPaymentsPage";
-import AccountsDoctorPayoutsPage from "./pages/AccountsDoctorPayoutsPage";
-import PatientsPage from "./pages/PatientsPage";
-import ReadmitPage from "./pages/ReadmitPage";
-import ReportsPage from "./pages/ReportsPage";
-import SettingsPage from "./pages/SettingsPage";
-import SymptomAiPage from "./pages/SymptomAiPage";
-import PlatformAdminPage from "./pages/PlatformAdminPage";
-import BedManagementPage from "./pages/BedManagementPage";
-import IcuPage from "./pages/IcuPage";
-import QueuePage from "./pages/QueuePage";
-import DoctorPrescriptionPage from "./pages/DoctorPrescriptionPage";
-import EmrPage from "./pages/EmrPage";
-import EmergencyPage from "./pages/EmergencyPage";
-import AmbulancePage from "./pages/AmbulancePage";
-import NurseStationPage from "./pages/NurseStationPage";
-import RegistrationDeskPage from "./pages/RegistrationDeskPage";
-import BulkPatientAiPage from "./pages/BulkPatientAiPage";
+// Page components are code-split via lazy() -- previously all 36 pages were
+// eagerly imported here, so every module's JS (billing, HR, OT, ICU, EMR,
+// pharmacy, etc.) shipped in the initial bundle no matter which page the
+// user actually opened first. Each now loads only when its `page === "..."`
+// branch below is reached.
+const AddPatientPage = lazy(() => import("./pages/AddPatientPage"));
+const OcrPage = lazy(() => import("./pages/OcrPage"));
+const AdminPage = lazy(() => import("./pages/AdminPage"));
+const DoctorSchedulingPage = lazy(() => import("./pages/DoctorSchedulingPage"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const EmployeesPage = lazy(() => import("./pages/EmployeesPage"));
+const PatientExperiencePage = lazy(() => import("./pages/PatientExperiencePage"));
+const BillingAgingPage = lazy(() => import("./pages/BillingAgingPage"));
+const BillingReconciliationPage = lazy(() => import("./pages/BillingReconciliationPage"));
+const BillingCreateInvoicePage = lazy(() => import("./pages/BillingCreateInvoicePage"));
+const BillingRecordPaymentPage = lazy(() => import("./pages/BillingRecordPaymentPage"));
+const BillingClaimsPage = lazy(() => import("./pages/BillingClaimsPage"));
+const BillingInvoicesPage = lazy(() => import("./pages/BillingInvoicesPage"));
+const BillingPaymentModesPage = lazy(() => import("./pages/BillingPaymentModesPage"));
+const BillingCollectionsPage = lazy(() => import("./pages/BillingCollectionsPage"));
+const PharmacyPage = lazy(() => import("./pages/PharmacyPage"));
+const LabPage = lazy(() => import("./pages/LabPage"));
+const HrmsPage = lazy(() => import("./pages/HrmsPage"));
+const OtPage = lazy(() => import("./pages/OtPage"));
+const AccountsOverviewPage = lazy(() => import("./pages/AccountsOverviewPage"));
+const AccountsLedgerPage = lazy(() => import("./pages/AccountsLedgerPage"));
+const AccountsVendorPaymentsPage = lazy(() => import("./pages/AccountsVendorPaymentsPage"));
+const AccountsDoctorPayoutsPage = lazy(() => import("./pages/AccountsDoctorPayoutsPage"));
+const PatientsPage = lazy(() => import("./pages/PatientsPage"));
+const ReadmitPage = lazy(() => import("./pages/ReadmitPage"));
+const ReportsPage = lazy(() => import("./pages/ReportsPage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const SymptomAiPage = lazy(() => import("./pages/SymptomAiPage"));
+const PlatformAdminPage = lazy(() => import("./pages/PlatformAdminPage"));
+const BedManagementPage = lazy(() => import("./pages/BedManagementPage"));
+const IcuPage = lazy(() => import("./pages/IcuPage"));
+const QueuePage = lazy(() => import("./pages/QueuePage"));
+const DoctorPrescriptionPage = lazy(() => import("./pages/DoctorPrescriptionPage"));
+const EmrPage = lazy(() => import("./pages/EmrPage"));
+const EmergencyPage = lazy(() => import("./pages/EmergencyPage"));
+const AmbulancePage = lazy(() => import("./pages/AmbulancePage"));
+const NurseStationPage = lazy(() => import("./pages/NurseStationPage"));
+const RegistrationDeskPage = lazy(() => import("./pages/RegistrationDeskPage"));
+const BulkPatientAiPage = lazy(() => import("./pages/BulkPatientAiPage"));
 import { API_BASE, EMPTY_STATS, NAV_ITEMS, EMPTY_PATIENT_FORM } from "./lib/constants";
 import { apiFetch, getHospitalCode, reportError, setHospitalCode } from "./lib/api";
 import { resolvePermissions } from "./lib/format";
@@ -661,7 +666,7 @@ function App() {
       setNotice({ type: "warning", message: activeNav.deniedHint || "You do not have access to this module." });
       return;
     }
-    if (!isAdminRoutePath && page === "admin" && !hasPermission("employees.write")) {
+    if (!isAdminRoutePath && page === "admin" && !isAdmin) {
       setPage(getDefaultPage(user));
       if (typeof window !== "undefined") {
         window.history.replaceState({}, "", "/");
@@ -1153,6 +1158,7 @@ function App() {
           </div>
         </header>
 
+        <Suspense fallback={<p className="muted">Loading...</p>}>
         {page === "dashboard" && (
           <DashboardPage
             stats={stats}
@@ -1167,12 +1173,12 @@ function App() {
         {page === "add" && (
           <AddPatientPage onCreate={handleCreatePatient} setNotice={setNotice} onNavigate={navigateToPage} />
         )}
-        {page === "ocr" && hasPermission("patients.write") && <OcrPage setNotice={setNotice} />}
+        {page === "ocr" && hasPermission("patients.documents.write") && <OcrPage setNotice={setNotice} />}
 
         {page === "appointment-in" && hasPermission("patients.read") && (
           <RegistrationDeskPage mode="appointment-in" selectedPatient={selectedPatient} setNotice={setNotice} onNavigate={navigateToPage} prefillData={appointmentPrefill} />
         )}
-        {page === "appointment-out" && hasPermission("patients.write") && (
+        {page === "appointment-out" && hasPermission("patients.appointments.write") && (
           <RegistrationDeskPage mode="appointment-out" selectedPatient={selectedPatient} setNotice={setNotice} onNavigate={navigateToPage} prefillData={appointmentPrefill} />
         )}
         {page === "queue" && hasPermission("patients.read") && (
@@ -1181,15 +1187,20 @@ function App() {
         {page === "doctor-prescription" && hasPermission("patients.read") && <DoctorPrescriptionPage setNotice={setNotice} onNavigate={navigateToPage} isAdmin={isAdmin} user={user} />}
         {page === "emr" && hasPermission("patients.read") && <EmrPage setNotice={setNotice} />}
 
-        {page === "consent-desk" && hasPermission("patients.write") && (
+        {page === "consent-desk" && hasPermission("patients.consent.write") && (
           <RegistrationDeskPage mode="consent" selectedPatient={selectedPatient} setNotice={setNotice} />
         )}
 
-        {page === "insurance-desk" && hasPermission("patients.write") && (
+        {page === "insurance-desk" && hasPermission("patients.insurance.write") && (
           <RegistrationDeskPage mode="insurance" selectedPatient={selectedPatient} setNotice={setNotice} />
         )}
 
-        {page === "op-desk" && hasPermission("patients.read") && <DoctorSchedulingPage setNotice={setNotice} canEdit={hasPermission("patients.write")} />}
+        {page === "op-desk" && hasPermission("op.read") && (
+          <DoctorSchedulingPage
+            setNotice={setNotice}
+            canEdit={hasPermission("op.schedules.write") || hasPermission("op.doctors.write")}
+          />
+        )}
 
         {page === "patients" && (
           <PatientsPage
@@ -1216,13 +1227,13 @@ function App() {
         )}
 
         {page === "symptom-ai" && <SymptomAiPage setNotice={setNotice} onNavigate={navigateToPage} />}
-        {page === "bulk-ai" && hasPermission("patients.write") && <BulkPatientAiPage setNotice={setNotice} />}
+        {page === "bulk-ai" && hasPermission("patients.bulk_ai.write") && <BulkPatientAiPage setNotice={setNotice} />}
 
         {page === "billing-aging" && hasPermission("billing.read") && <BillingAgingPage setNotice={setNotice} />}
         {page === "billing-reconciliation" && hasPermission("billing.read") && <BillingReconciliationPage setNotice={setNotice} />}
-        {page === "billing-create-invoice" && hasPermission("billing.write") && <BillingCreateInvoicePage setNotice={setNotice} />}
-        {page === "billing-record-payment" && hasPermission("billing.write") && <BillingRecordPaymentPage setNotice={setNotice} />}
-        {page === "billing-insurance-claims" && hasPermission("billing.write") && <BillingClaimsPage setNotice={setNotice} />}
+        {page === "billing-create-invoice" && hasPermission("billing.invoices.write") && <BillingCreateInvoicePage setNotice={setNotice} />}
+        {page === "billing-record-payment" && hasPermission("billing.invoices.write") && <BillingRecordPaymentPage setNotice={setNotice} />}
+        {page === "billing-insurance-claims" && hasPermission("billing.claims.write") && <BillingClaimsPage setNotice={setNotice} />}
         {page === "billing-invoices" && hasPermission("billing.read") && <BillingInvoicesPage setNotice={setNotice} />}
         {page === "billing-mode-breakdown" && hasPermission("billing.read") && <BillingPaymentModesPage setNotice={setNotice} />}
         {page === "billing-module-collections" && hasPermission("billing.read") && <BillingCollectionsPage setNotice={setNotice} />}
@@ -1243,13 +1254,21 @@ function App() {
 
         {page === "reports" && hasPermission("reports.read") && <ReportsPage setNotice={setNotice} />}
 
-        {page === "employees" && hasPermission("employees.read") && <EmployeesPage setNotice={setNotice} canWriteEmployees={hasPermission("employees.write")} />}
+        {page === "employees" && hasPermission("employees.read") && (
+          <EmployeesPage
+            setNotice={setNotice}
+            canEditProfile={hasPermission("employees.profile.write")}
+            canManageAccess={hasPermission("employees.access.write")}
+            canCreateOrDelete={isAdmin}
+          />
+        )}
 
-        {page === "patient-experience" && hasPermission("admin.use") && <PatientExperiencePage setNotice={setNotice} />}
+        {page === "patient-experience" && hasPermission("patient_experience.read") && <PatientExperiencePage setNotice={setNotice} />}
 
-        {page === "admin" && hasPermission("employees.write") && <AdminPage setNotice={setNotice} />}
+        {page === "admin" && isAdmin && <AdminPage setNotice={setNotice} />}
 
         {page === "settings" && <SettingsPage stats={stats} user={user} canReadAudit={hasPermission("audit.read")} />}
+        </Suspense>
         </Container>
       </main>
       <SettingsModal

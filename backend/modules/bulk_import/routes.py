@@ -34,7 +34,7 @@ OP_SQL = {
 
 
 @bulk_import_bp.post("/api/bulk-import/upload")
-@require_permissions("patients.write")
+@require_permissions("patients.bulk_ai.write")
 def bulk_import_upload():
     if "file" not in request.files:
         return jsonify({"error": "Missing file"}), 400
@@ -63,7 +63,7 @@ def bulk_import_upload():
 
 
 @bulk_import_bp.get("/api/bulk-import/jobs/<int:job_id>")
-@require_permissions("patients.write")
+@require_permissions("patients.bulk_ai.write")
 def bulk_import_job_status(job_id):
     hospital_id = current_hospital_id()
     job = get_bulk_import_job(job_id, hospital_id)
@@ -85,7 +85,7 @@ def bulk_import_job_status(job_id):
 
 
 @bulk_import_bp.post("/api/bulk-import/jobs/<int:job_id>/mapping")
-@require_permissions("patients.write")
+@require_permissions("patients.bulk_ai.write")
 def bulk_import_confirm_mapping(job_id):
     hospital_id = current_hospital_id()
     job = get_bulk_import_job(job_id, hospital_id)
@@ -144,7 +144,7 @@ def _build_filter_clause(conditions, logic):
 
 
 @bulk_import_bp.post("/api/bulk-import/query")
-@require_permissions("patients.write")
+@require_permissions("patients.bulk_ai.write")
 def bulk_import_query():
     payload = request.get_json(silent=True) or {}
     prompt = (payload.get("prompt") or "").strip()
@@ -167,7 +167,7 @@ def bulk_import_query():
 
 
 @bulk_import_bp.post("/api/bulk-import/jobs/<int:job_id>/ask")
-@require_permissions("patients.write")
+@require_permissions("patients.bulk_ai.write")
 def bulk_import_ask_document(job_id):
     hospital_id = current_hospital_id()
     job = get_bulk_import_job(job_id, hospital_id)

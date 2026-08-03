@@ -67,7 +67,7 @@ def document_file(document_id):
 
 
 @documents_bp.delete("/api/documents/<int:document_id>")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def document_delete(document_id):
     hospital_id = current_hospital_id()
     document = get_document(document_id, hospital_id=hospital_id)
@@ -85,7 +85,7 @@ def document_delete(document_id):
 
 
 @documents_bp.post("/api/documents/<int:document_id>/ocr")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def document_process_ocr(document_id):
     hospital_id = current_hospital_id()
     document = get_document(document_id, hospital_id=hospital_id)
@@ -142,7 +142,7 @@ def document_process_ocr(document_id):
 
 
 @documents_bp.delete("/api/certificates/<int:certificate_id>")
-@require_permissions("patients.write")
+@require_permissions("patients.clinical.write")
 def patient_certificates_delete(certificate_id):
     deleted = delete_certificate(certificate_id, actor=g.current_user.get("username"))
     if not deleted:

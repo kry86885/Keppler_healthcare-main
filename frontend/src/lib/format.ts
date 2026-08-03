@@ -1,5 +1,5 @@
 import type { User } from "../types";
-import { ADMIN_PERMISSIONS, MODULE_PERMISSIONS } from "./constants";
+import { ADMIN_PERMISSIONS, MODULE_PERMISSIONS, SUB_MODULE_PERMISSIONS } from "./constants";
 
 const IST_TIMEZONE = "Asia/Kolkata";
 
@@ -142,9 +142,18 @@ export function resolvePermissions(user: User | null): string[] {
   }
   const modules = Array.isArray(user?.module_access) && user.module_access.length > 0 ? user.module_access : [];
   const permissions = new Set<string>();
-  for (const moduleName of modules) {
-    for (const permission of MODULE_PERMISSIONS[moduleName] || []) {
-      permissions.add(permission);
+  for (const entry of modules) {
+    if (entry.includes(".")) {
+      // Dotted "module.subitem" entry -- grants just that sub-item's
+      // permission(s), mirroring backend/core/auth.py's get_permissions().
+      const [moduleName, subKey] = entry.split(".", 2);
+      for (const permission of SUB_MODULE_PERMISSIONS[moduleName as keyof typeof SUB_MODULE_PERMISSIONS]?.[subKey] || []) {
+        permissions.add(permission);
+      }
+    } else {
+      for (const permission of MODULE_PERMISSIONS[entry as keyof typeof MODULE_PERMISSIONS] || []) {
+        permissions.add(permission);
+      }
     }
   }
   return Array.from(permissions);

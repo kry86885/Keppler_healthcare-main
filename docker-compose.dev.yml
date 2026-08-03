@@ -1,4 +1,25 @@
 services:
+  # Dedicated local Postgres for the main HospAI app DB -- separate container,
+  # separate port, separate named volume from every other Postgres on this
+  # host (native :5432, ocr-postgres, other projects' containers), so this
+  # never shares data with or gets confused for one of those.
+  main-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hospai
+      POSTGRES_PASSWORD: hospai_local_dev
+      POSTGRES_DB: hospai
+    ports:
+      - "5434:5432"
+    volumes:
+      - main_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hospai -d hospai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -212,6 +233,7 @@ volumes:
   frontend_node_modules:
   site_node_modules:
   redis_data:
+  main_postgres_data:
   ocr_postgres_data:
   ocr_qdrant_data:
   ocr_uploads:

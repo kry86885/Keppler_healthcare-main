@@ -26,63 +26,130 @@ ADMIN_ROUTE_AUTH_TTL_SECONDS = int(os.getenv("ADMIN_ROUTE_AUTH_TTL_SECONDS", "36
 ADMIN_ROUTE_AUTH_SECRET = os.getenv("ADMIN_ROUTE_AUTH_SECRET", "") or SESSION_PEPPER or "hospai-admin-route-auth"
 
 USER_TYPES = ("admin", "normal")
-ASSIGNABLE_MODULES = ("dashboard", "patients", "billing", "pharmacy", "lab", "hrms", "ot", "accounts", "reports", "symptom_ai", "emergency", "icu", "ambulance", "nurse", "queue", "beds")
+
+# Modules a normal (non-admin) user can be granted. Each maps to a base "view"
+# permission (its read/GET routes) plus zero or more sub-items that gate a
+# specific write/delete action within it (see SUB_MODULES below). This stays
+# out of "emergency"/"icu"/"ambulance"/"nurse"/"queue"/"beds" deliberately --
+# those backend blueprints are stub scaffolding (Phase A/E/F/G/H) with no real
+# pages behind them yet; there's nothing to protect there.
+ASSIGNABLE_MODULES = (
+    "dashboard", "patients", "op", "billing", "pharmacy", "lab", "hrms", "ot",
+    "accounts", "reports", "symptom_ai", "employees", "patient_experience",
+)
 DEFAULT_NORMAL_MODULES = ("dashboard", "patients", "symptom_ai")
 
-MODULE_PERMISSION_MAP = {
-    "dashboard": {"patients.read"},
-    "patients": {"patients.read", "patients.write"},
-    "billing": {"billing.read", "billing.write"},
-    "pharmacy": {"pharmacy.read", "pharmacy.write"},
-    "lab": {"lab.read", "lab.write"},
-    "hrms": {"hr.read", "hr.write"},
-    "ot": {"ot.read", "ot.write"},
-    "accounts": {"accounts.read", "accounts.write"},
-    "reports": {"reports.read"},
-    "symptom_ai": {"symptom_ai.use"},
-    "emergency": {"emergency.read", "emergency.write"},
-    "icu": {"icu.read", "icu.write"},
-    "ambulance": {"ambulance.read", "ambulance.write"},
-    "nurse": {"nurse.read", "nurse.write"},
-    "queue": {"queue.read", "queue.write"},
-    "beds": {"beds.read", "beds.write"},
+MODULE_BASE_PERMISSION = {
+    "dashboard": "patients.read",
+    "patients": "patients.read",
+    "op": "op.read",
+    "billing": "billing.read",
+    "pharmacy": "pharmacy.read",
+    "lab": "lab.read",
+    "hrms": "hr.read",
+    "ot": "ot.read",
+    "accounts": "accounts.read",
+    "reports": "reports.read",
+    "symptom_ai": "symptom_ai.use",
+    "employees": "employees.read",
+    "patient_experience": "patient_experience.read",
 }
 
-ADMIN_PERMISSIONS = {
-    "patients.read",
-    "patients.write",
-    "patients.delete",
-    "symptom_ai.use",
-    "employees.read",
-    "employees.write",
-    "billing.read",
-    "billing.write",
-    "pharmacy.read",
-    "pharmacy.write",
-    "lab.read",
-    "lab.write",
-    "hr.read",
-    "hr.write",
-    "ot.read",
-    "ot.write",
-    "accounts.read",
-    "accounts.write",
-    "emergency.read",
-    "emergency.write",
-    "icu.read",
-    "icu.write",
-    "ambulance.read",
-    "ambulance.write",
-    "nurse.read",
-    "nurse.write",
-    "queue.read",
-    "queue.write",
-    "beds.read",
-    "beds.write",
-    "reports.read",
-    "audit.read",
-    "admin.use",
+# module_access entries are stored as a flat JSON array of strings, same as
+# before sub-modules existed -- but an entry is now either a bare module key
+# ("billing" -> the module's base/read permission PLUS every sub-item's write
+# permission, i.e. full access to that module -- identical to the old
+# all-or-nothing behavior, so existing stored data keeps working unchanged)
+# or a dotted "module.subitem" key (grants just that one sub-item's write
+# permission, and implies the module's base/read permission so it becomes
+# visible). This lets an admin grant e.g. "billing" broadly, or narrow it to
+# just "billing.invoices" while withholding "billing.claims".
+SUB_MODULES = {
+    "patients": {
+        "directory": {"label": "Patient Directory (edit/delete)", "permissions": ["patients.write", "patients.delete"]},
+        "registration": {"label": "Patient Registration", "permissions": ["patients.registration.write"]},
+        "consent_desk": {"label": "Consent Desk", "permissions": ["patients.consent.write"]},
+        "insurance_desk": {"label": "Insurance Desk", "permissions": ["patients.insurance.write"]},
+        "appointments": {"label": "Appointments", "permissions": ["patients.appointments.write"]},
+        "documents": {"label": "Documents & OCR", "permissions": ["patients.documents.write"]},
+        "clinical_records": {"label": "Clinical Records (encounters/notes/certificates)", "permissions": ["patients.clinical.write"]},
+        "bulk_ai": {"label": "Bulk Patient AI", "permissions": ["patients.bulk_ai.write"]},
+    },
+    # Standalone, matching the sidebar's "Operations" grouping (Doctor
+    # Scheduling / Pharmacy / Lab & Diagnostics / OT) -- NOT nested under
+    # "patients", even though its routes are patient-adjacent.
+    "op": {
+        "schedules": {"label": "Doctor Schedules", "permissions": ["op.schedules.write"]},
+        "doctors": {"label": "Doctor Directory", "permissions": ["op.doctors.write"]},
+    },
+    "billing": {
+        "invoices": {"label": "Invoices & Payments", "permissions": ["billing.invoices.write"]},
+        "claims": {"label": "Insurance Claims", "permissions": ["billing.claims.write"]},
+    },
+    "pharmacy": {
+        "inventory": {"label": "Inventory", "permissions": ["pharmacy.inventory.write"]},
+        "sales": {"label": "Sales", "permissions": ["pharmacy.sales.write"]},
+        "suppliers": {"label": "Suppliers", "permissions": ["pharmacy.suppliers.write"]},
+        "purchases": {"label": "Purchases", "permissions": ["pharmacy.purchases.write"]},
+        "prescriptions": {"label": "Prescriptions", "permissions": ["pharmacy.prescriptions.write"]},
+    },
+    "lab": {
+        "vendors": {"label": "Lab Vendors", "permissions": ["lab.vendors.write"]},
+        "diagnostics": {"label": "Diagnostic Orders", "permissions": ["lab.diagnostics.write"]},
+    },
+    "hrms": {
+        "departments": {"label": "Departments", "permissions": ["hr.departments.write"]},
+        "attendance": {"label": "Attendance", "permissions": ["hr.attendance.write"]},
+        "payroll": {"label": "Payroll", "permissions": ["hr.payroll.write"]},
+        "leaves": {"label": "Leave Requests", "permissions": ["hr.leaves.write"]},
+    },
+    "ot": {
+        "theatres": {"label": "Theatres", "permissions": ["ot.theatres.write"]},
+        "surgeries": {"label": "Surgeries", "permissions": ["ot.surgeries.write"]},
+    },
+    "accounts": {
+        "ledger": {"label": "Ledger", "permissions": ["accounts.ledger.write"]},
+        "vendor_payments": {"label": "Vendor Payments", "permissions": ["accounts.vendors.write"]},
+        "doctor_payouts": {"label": "Doctor Payouts", "permissions": ["accounts.doctors.write"]},
+    },
+    "symptom_ai": {
+        "documents": {"label": "Knowledge Vault Documents", "permissions": ["symptom_ai.documents.write"]},
+    },
+    "employees": {
+        "profile": {"label": "Edit Profile Fields", "permissions": ["employees.profile.write"]},
+        # Deliberately separate from "profile": this is the permission that lets
+        # someone change a colleague's user_type/access_role/module_access, i.e.
+        # actually grant or revoke access -- see signup_employee/update_employee
+        # for the server-side clamp that stops a holder of this from granting
+        # more than they themselves have.
+        "access": {"label": "Manage Roles & Module Access", "permissions": ["employees.access.write"]},
+    },
+    "patient_experience": {
+        "feedback": {"label": "Respond to Feedback", "permissions": ["patient_experience.write"]},
+    },
 }
+
+
+def _all_sub_permissions(module: str) -> set[str]:
+    result: set[str] = set()
+    for sub in SUB_MODULES.get(module, {}).values():
+        result.update(sub["permissions"])
+    return result
+
+
+MODULE_PERMISSION_MAP = {
+    module: {base_permission} | _all_sub_permissions(module)
+    for module, base_permission in MODULE_BASE_PERMISSION.items()
+}
+
+_VALID_MODULE_ACCESS_KEYS = set(ASSIGNABLE_MODULES) | {
+    f"{module}.{sub_key}" for module, subs in SUB_MODULES.items() for sub_key in subs
+}
+
+# Admin always gets literally everything any module/sub-item can grant, plus
+# the two permissions with no module-level equivalent (derived, not
+# hand-listed, so it can never drift out of sync with MODULE_PERMISSION_MAP).
+ADMIN_PERMISSIONS = set().union(*MODULE_PERMISSION_MAP.values()) | {"audit.read", "admin.use"}
 
 
 def hash_password(password: str) -> str:
@@ -187,10 +254,9 @@ def _parse_modules(raw_modules) -> list[str]:
         candidates = []
 
     normalized = []
-    allowed = set(ASSIGNABLE_MODULES)
     for module_name in candidates:
         module_key = str(module_name).strip().lower()
-        if module_key in allowed and module_key not in normalized:
+        if module_key in _VALID_MODULE_ACCESS_KEYS and module_key not in normalized:
             normalized.append(module_key)
     return normalized
 
@@ -241,10 +307,37 @@ def get_permissions(user_type: Optional[str], module_access=None, access_role: O
         return sorted(ADMIN_PERMISSIONS)
 
     permissions: set[str] = set()
-    for module_name in normalize_module_access(module_access, normalized_type, access_role, legacy_role):
-        permissions.update(MODULE_PERMISSION_MAP.get(module_name, set()))
+    for entry in normalize_module_access(module_access, normalized_type, access_role, legacy_role):
+        if "." in entry:
+            module_name, sub_key = entry.split(".", 1)
+            sub = SUB_MODULES.get(module_name, {}).get(sub_key)
+            if not sub:
+                continue
+            permissions.update(sub["permissions"])
+            base_permission = MODULE_BASE_PERMISSION.get(module_name)
+            if base_permission:
+                # Granting a sub-item's write access implies the module itself
+                # is visible, even if the bare module key wasn't also selected.
+                permissions.add(base_permission)
+        else:
+            permissions.update(MODULE_PERMISSION_MAP.get(entry, set()))
 
     return sorted(permissions)
+
+
+def module_access_tree(module_access: list[str]) -> dict[str, list[str]]:
+    """Expand a stored module_access array into {module: [granted sub-item keys]}
+    for the Employee Management UI -- a bare module entry expands to ALL of its
+    sub-item keys (full access), a dotted entry contributes just that one."""
+    tree: dict[str, set[str]] = {}
+    for entry in module_access or []:
+        if "." in entry:
+            module_name, sub_key = entry.split(".", 1)
+            if module_name in SUB_MODULES and sub_key in SUB_MODULES[module_name]:
+                tree.setdefault(module_name, set()).add(sub_key)
+        elif entry in ASSIGNABLE_MODULES:
+            tree.setdefault(entry, set()).update(SUB_MODULES.get(entry, {}).keys())
+    return {module: sorted(subs) for module, subs in tree.items()}
 
 
 def resolve_user_profile(user_row) -> dict:
@@ -285,6 +378,50 @@ def resolve_user_permissions(user: dict) -> set[str]:
             user.get("role"),
         )
     )
+
+
+def _entry_is_within(entry: str, granter_permissions: set[str]) -> bool:
+    if "." in entry:
+        module_name, sub_key = entry.split(".", 1)
+        sub = SUB_MODULES.get(module_name, {}).get(sub_key)
+        perms = set(sub["permissions"]) if sub else set()
+    else:
+        perms = MODULE_PERMISSION_MAP.get(entry, set())
+    return bool(perms) and perms.issubset(granter_permissions)
+
+
+def authorize_employee_access_change(requested_user_type, requested_module_access, granter_user: dict):
+    """Guard against privilege escalation via the employee-management "manage
+    roles & module access" permission (employees.access.write). Without this,
+    anyone holding that permission -- not just a full admin -- could set an
+    arbitrary user_type="admin" or module_access list on themselves or any
+    other account, since update_employee/signup_employee otherwise write
+    whatever the request body contains straight to the users table.
+
+    Returns (ok: bool, error_message: Optional[str]). Full admins are always
+    unrestricted (matches existing behavior). A non-admin granter can never
+    set user_type to "admin", and can never grant a module/sub-item whose
+    permissions exceed what the granter's own account currently holds.
+    """
+    granter_is_admin = normalize_user_type(
+        granter_user.get("user_type"), granter_user.get("access_role"), granter_user.get("role")
+    ) == "admin"
+    if granter_is_admin:
+        return True, None
+
+    if requested_user_type is not None and (requested_user_type or "").strip().lower() == "admin":
+        return False, "Only an existing admin can grant admin access."
+
+    if requested_module_access is not None:
+        granter_permissions = resolve_user_permissions(granter_user)
+        disallowed = [
+            entry for entry in _parse_modules(requested_module_access)
+            if not _entry_is_within(entry, granter_permissions)
+        ]
+        if disallowed:
+            return False, f"Cannot grant access you do not have yourself: {', '.join(disallowed)}"
+
+    return True, None
 
 
 def validate_password(password: str) -> Optional[str]:
@@ -367,24 +504,25 @@ def create_default_users():
         ]
 
         for user in defaults:
+            # Only touches login-usability fields (password/email/active status) on an
+            # already-existing row -- NOT role/access_role/user_type/module_access.
+            # These four usernames (employee/admin/staff/doctor) are demo seed accounts,
+            # but once a hospital admin has configured real permissions for one of them
+            # via Employee Management, this function re-running on every app startup
+            # (app.py's init path runs it unconditionally) must not silently overwrite
+            # that configuration back to the hardcoded seed defaults. Full defaults
+            # (including module_access) only apply when the row doesn't exist yet, via
+            # the INSERT branch below.
             cursor.execute(
                 """
                 UPDATE users
                 SET password_hash = ?,
-                    role = ?,
-                    access_role = ?,
-                    user_type = ?,
-                    module_access = ?,
                     email = ?,
                     status = 'active'
                 WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)
                 """,
                 (
                     user["password_hash"],
-                    user["role"],
-                    user["access_role"],
-                    user["user_type"],
-                    modules_to_storage(user["module_access"]),
                     user["email"],
                     user["username"],
                     user["email"],

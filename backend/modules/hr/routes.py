@@ -4,7 +4,7 @@ from app import (
     require_permissions, log_audit_event, row_to_dict, rows_to_dicts, current_hospital_id, 
     normalize_department_name, validate_required_fields
 )
-from core.auth import signup_employee, resolve_user_permissions
+from core.auth import signup_employee, resolve_user_permissions, authorize_employee_access_change
 from utils.database import (
     get_all_employees, get_employee, update_employee, list_attendance,
     get_employee_stats, search_employees, delete_employee, activate_employee, deactivate_employee,
@@ -17,13 +17,19 @@ from utils.database import (
 hr_bp = Blueprint('hr', __name__)
 
 @hr_bp.get("/api/employees")
-@require_permissions("admin.use")
+@require_permissions("employees.read")
 def employees_list():
     employees = get_all_employees(hospital_id=current_hospital_id())
     return jsonify({"employees": rows_to_dicts(employees)})
 
 
 
+# Creating brand-new accounts stays strictly admin-only -- unlike editing an
+# existing employee's access (see employees_detail's PUT branch below, which
+# is clamped via authorize_employee_access_change), account creation has no
+# pre-existing row to clamp against, so it's the highest-risk operation to
+# hand to a non-admin "employees" module grant. Not part of this redesign's
+# scope.
 @hr_bp.post("/api/employees")
 @require_permissions("admin.use")
 def employees_create():
@@ -35,14 +41,14 @@ def employees_create():
 
 
 @hr_bp.get("/api/employees/stats")
-@require_permissions("admin.use")
+@require_permissions("employees.read")
 def employees_stats():
     return jsonify(get_employee_stats(hospital_id=current_hospital_id()))
 
 
 
 @hr_bp.get("/api/employees/search")
-@require_permissions("admin.use")
+@require_permissions("employees.read")
 def employees_search():
     query = request.args.get("q")
     if not query:
@@ -52,8 +58,11 @@ def employees_search():
 
 
 
+_ACCESS_FIELDS = ("user_type", "access_role", "module_access")
+
+
 @hr_bp.route("/api/employees/<employee_id>", methods=["GET", "PUT", "DELETE"])
-@require_permissions("admin.use")
+@require_permissions("employees.read")
 def employees_detail(employee_id):
     hospital_id = current_hospital_id()
     if request.method == "GET":
@@ -64,21 +73,38 @@ def employees_detail(employee_id):
 
     if request.method == "PUT":
         user_permissions = resolve_user_permissions(g.current_user)
-        if "employees.write" not in user_permissions:
-            return jsonify(
-                {"error": "Forbidden", "required_permissions": ["employees.write"]}
-            ), 403
         payload = request.get_json(force=True)
+        wants_access_change = any(field in payload for field in _ACCESS_FIELDS)
+
+        if wants_access_change:
+            # Changing user_type/access_role/module_access is a distinct,
+            # higher-privilege action from editing name/email/phone/etc --
+            # requires its own permission, separately grantable from basic
+            # profile editing.
+            if "employees.access.write" not in user_permissions:
+                return jsonify(
+                    {"error": "Forbidden", "required_permissions": ["employees.access.write"]}
+                ), 403
+            ok, error = authorize_employee_access_change(
+                payload.get("user_type"), payload.get("module_access"), g.current_user
+            )
+            if not ok:
+                return jsonify({"error": error}), 403
+        elif "employees.profile.write" not in user_permissions:
+            return jsonify(
+                {"error": "Forbidden", "required_permissions": ["employees.profile.write"]}
+            ), 403
+
         updated = update_employee(employee_id, payload, hospital_id=hospital_id)
         if not updated:
             return jsonify({"error": "Employee not found"}), 404
         return jsonify({"status": "ok"})
 
-    # DELETE
+    # DELETE -- destructive/irreversible, stays admin-only like creation.
     user_permissions = resolve_user_permissions(g.current_user)
-    if "employees.write" not in user_permissions:
+    if "admin.use" not in user_permissions:
         return jsonify(
-            {"error": "Forbidden", "required_permissions": ["employees.write"]}
+            {"error": "Forbidden", "required_permissions": ["admin.use"]}
         ), 403
     deleted = delete_employee(employee_id)
     if not deleted:
@@ -88,7 +114,7 @@ def employees_detail(employee_id):
 
 
 @hr_bp.post("/api/employees/<employee_id>/activate")
-@require_permissions("admin.use")
+@require_permissions("employees.profile.write")
 def employees_activate(employee_id):
     activated = activate_employee(employee_id, hospital_id=current_hospital_id())
     if not activated:
@@ -98,7 +124,7 @@ def employees_activate(employee_id):
 
 
 @hr_bp.post("/api/employees/<employee_id>/deactivate")
-@require_permissions("admin.use")
+@require_permissions("employees.profile.write")
 def employees_deactivate(employee_id):
     deactivated = deactivate_employee(employee_id, hospital_id=current_hospital_id())
     if not deactivated:
@@ -115,7 +141,7 @@ def hr_departments_list():
 
 
 @hr_bp.post("/api/hr/departments")
-@require_permissions("hr.write")
+@require_permissions("hr.departments.write")
 def hr_departments_create():
     payload = request.get_json(force=True)
     try:
@@ -152,7 +178,7 @@ def hr_departments_create():
 
 
 @hr_bp.put("/api/hr/departments/<int:department_id>")
-@require_permissions("hr.write")
+@require_permissions("hr.departments.write")
 def hr_departments_update(department_id):
     payload = request.get_json(force=True)
     if "department_name" in payload:
@@ -184,7 +210,7 @@ def hr_departments_update(department_id):
 
 
 @hr_bp.delete("/api/hr/departments/<int:department_id>")
-@require_permissions("hr.write")
+@require_permissions("hr.departments.write")
 def hr_departments_delete(department_id):
     deleted = delete_department(
         department_id, hospital_id=current_hospital_id(), actor=g.current_user.get("username")
@@ -209,7 +235,7 @@ def hr_attendance_list():
 
 
 @hr_bp.post("/api/hr/attendance")
-@require_permissions("hr.write")
+@require_permissions("hr.attendance.write")
 def hr_attendance_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(
@@ -229,7 +255,7 @@ def hr_attendance_create():
 
 
 @hr_bp.put("/api/hr/attendance/<int:attendance_id>")
-@require_permissions("hr.write")
+@require_permissions("hr.attendance.write")
 def hr_attendance_update(attendance_id):
     payload = request.get_json(force=True)
     updated = update_attendance_record(attendance_id, payload)
@@ -243,7 +269,7 @@ def hr_attendance_update(attendance_id):
 
 
 @hr_bp.delete("/api/hr/attendance/<int:attendance_id>")
-@require_permissions("hr.write")
+@require_permissions("hr.attendance.write")
 def hr_attendance_delete(attendance_id):
     deleted = delete_attendance_record(attendance_id, actor=g.current_user.get("username"))
     if not deleted:
@@ -264,7 +290,7 @@ def hr_payroll_list():
 
 
 @hr_bp.post("/api/hr/payroll")
-@require_permissions("hr.write")
+@require_permissions("hr.payroll.write")
 def hr_payroll_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(
@@ -284,7 +310,7 @@ def hr_payroll_create():
 
 
 @hr_bp.put("/api/hr/payroll/<int:payroll_id>")
-@require_permissions("hr.write")
+@require_permissions("hr.payroll.write")
 def hr_payroll_update(payroll_id):
     payload = request.get_json(force=True)
     updated = update_payroll_record(payroll_id, payload)
@@ -296,7 +322,7 @@ def hr_payroll_update(payroll_id):
 
 
 @hr_bp.delete("/api/hr/payroll/<int:payroll_id>")
-@require_permissions("hr.write")
+@require_permissions("hr.payroll.write")
 def hr_payroll_delete(payroll_id):
     deleted = delete_payroll_record(payroll_id, actor=g.current_user.get("username"))
     if not deleted:
@@ -317,7 +343,7 @@ def hr_leaves_list():
 
 
 @hr_bp.post("/api/hr/leaves")
-@require_permissions("hr.write")
+@require_permissions("hr.leaves.write")
 def hr_leaves_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(
@@ -337,7 +363,7 @@ def hr_leaves_create():
 
 
 @hr_bp.post("/api/hr/leaves/<int:leave_id>/status")
-@require_permissions("hr.write")
+@require_permissions("hr.leaves.write")
 def hr_leave_status_update(leave_id):
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["status"])
@@ -356,7 +382,7 @@ def hr_leave_status_update(leave_id):
 
 
 @hr_bp.delete("/api/hr/leaves/<int:leave_id>")
-@require_permissions("hr.write")
+@require_permissions("hr.leaves.write")
 def hr_leaves_delete(leave_id):
     deleted = delete_leave_request(leave_id, actor=g.current_user.get("username"))
     if not deleted:

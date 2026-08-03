@@ -39,7 +39,7 @@ def ot_theatres_list():
 
 
 @ot_bp.post("/api/ot/theatres")
-@require_permissions("ot.write")
+@require_permissions("ot.theatres.write")
 def ot_theatres_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["theatre_code", "theatre_name"])
@@ -52,7 +52,7 @@ def ot_theatres_create():
 
 
 @ot_bp.put("/api/ot/theatres/<int:theatre_id>")
-@require_permissions("ot.write")
+@require_permissions("ot.theatres.write")
 def ot_theatres_update(theatre_id):
     payload = request.get_json(force=True)
     updated = update_ot_theatre(theatre_id, payload)
@@ -64,7 +64,7 @@ def ot_theatres_update(theatre_id):
 
 
 @ot_bp.delete("/api/ot/theatres/<int:theatre_id>")
-@require_permissions("ot.write")
+@require_permissions("ot.theatres.write")
 def ot_theatres_delete(theatre_id):
     deleted = delete_ot_theatre(theatre_id, actor=g.current_user.get("username"))
     if not deleted:
@@ -84,7 +84,7 @@ def ot_surgeries_list():
 
 
 @ot_bp.post("/api/ot/surgeries")
-@require_permissions("ot.write")
+@require_permissions("ot.surgeries.write")
 def ot_surgeries_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["theatre_id", "procedure_name", "surgeon_name", "scheduled_start"])
@@ -97,7 +97,7 @@ def ot_surgeries_create():
 
 
 @ot_bp.put("/api/ot/surgeries/<int:surgery_id>")
-@require_permissions("ot.write")
+@require_permissions("ot.surgeries.write")
 def ot_surgeries_update(surgery_id):
     payload = request.get_json(force=True)
     updated = update_ot_surgery(surgery_id, payload)
@@ -109,7 +109,7 @@ def ot_surgeries_update(surgery_id):
 
 
 @ot_bp.delete("/api/ot/surgeries/<int:surgery_id>")
-@require_permissions("ot.write")
+@require_permissions("ot.surgeries.write")
 def ot_surgeries_delete(surgery_id):
     deleted = delete_ot_surgery(surgery_id, actor=g.current_user.get("username"))
     if not deleted:

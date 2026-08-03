@@ -27,7 +27,8 @@ describe("resolvePermissions", () => {
     expect(permissions).toContain("patients.read");
     expect(permissions).toContain("patients.write");
     expect(permissions).toContain("billing.read");
-    expect(permissions).toContain("billing.write");
+    expect(permissions).toContain("billing.invoices.write");
+    expect(permissions).toContain("billing.claims.write");
     expect(permissions).not.toContain("employees.read");
   });
 

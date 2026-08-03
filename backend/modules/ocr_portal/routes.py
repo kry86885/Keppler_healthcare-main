@@ -29,14 +29,14 @@ def _identity():
 # ---- OCR: upload / job status / result / export ----------------------------
 
 @ocr_portal_bp.get("/api/ocr-portal/blueprints")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def ocr_portal_blueprints():
     hospital_id, username = _identity()
     return jsonify({"blueprints": ocr.list_ocr_blueprints(hospital_id, username)})
 
 
 @ocr_portal_bp.post("/api/ocr-portal/upload")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def ocr_portal_upload():
     if "file" not in request.files:
         return jsonify({"error": "Missing file"}), 400
@@ -63,7 +63,7 @@ def ocr_portal_upload():
 
 
 @ocr_portal_bp.get("/api/ocr-portal/jobs/<job_id>")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def ocr_portal_job_status(job_id):
     if job_id.startswith("mock-job-"):
         return jsonify({"status": "COMPLETED"})
@@ -72,7 +72,7 @@ def ocr_portal_job_status(job_id):
 
 
 @ocr_portal_bp.get("/api/ocr-portal/jobs/<job_id>/result")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def ocr_portal_job_result(job_id):
     if job_id.startswith("mock-job-"):
         return jsonify({"combined_markdown": "MOCK PRESCRIPTION TEXT:\n- Paracetamol 500mg 1-0-1\n- Amoxicillin 250mg 1-1-1"})
@@ -81,7 +81,7 @@ def ocr_portal_job_result(job_id):
 
 
 @ocr_portal_bp.get("/api/ocr-portal/jobs/<job_id>/export")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def ocr_portal_job_export(job_id):
     fmt = request.args.get("format", "md")
     hospital_id, username = _identity()
@@ -96,21 +96,21 @@ def ocr_portal_job_export(job_id):
 # ---- Vault -------------------------------------------------------------------
 
 @ocr_portal_bp.get("/api/ocr-portal/vault")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def ocr_portal_vault_list():
     hospital_id, username = _identity()
     return jsonify(ocr.list_vault_documents(hospital_id, username))
 
 
 @ocr_portal_bp.get("/api/ocr-portal/vault/<int:doc_id>")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def ocr_portal_vault_detail(doc_id):
     hospital_id, username = _identity()
     return jsonify(ocr.get_vault_document(hospital_id, username, doc_id))
 
 
 @ocr_portal_bp.delete("/api/ocr-portal/vault/<int:doc_id>")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def ocr_portal_vault_delete(doc_id):
     hospital_id, username = _identity()
     ocr.delete_vault_document(hospital_id, username, doc_id)
@@ -119,7 +119,7 @@ def ocr_portal_vault_delete(doc_id):
 
 
 @ocr_portal_bp.get("/api/ocr-portal/vault/<int:doc_id>/export/<fmt>")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def ocr_portal_vault_export(doc_id, fmt):
     hospital_id, username = _identity()
     content, content_type = ocr.export_vault_document(hospital_id, username, doc_id, fmt)
@@ -133,7 +133,7 @@ def ocr_portal_vault_export(doc_id, fmt):
 # ---- Assistant (RAG chat) -----------------------------------------------------
 
 @ocr_portal_bp.post("/api/ocr-portal/assistant/ingest")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def ocr_portal_assistant_ingest():
     doc_ids = (request.get_json(silent=True) or {}).get("doc_ids", [])
     hospital_id, username = _identity()
@@ -141,14 +141,14 @@ def ocr_portal_assistant_ingest():
 
 
 @ocr_portal_bp.get("/api/ocr-portal/assistant/kb")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def ocr_portal_assistant_kb():
     hospital_id, username = _identity()
     return jsonify(ocr.list_kb_documents(hospital_id, username))
 
 
 @ocr_portal_bp.delete("/api/ocr-portal/assistant/kb/<int:doc_id>")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def ocr_portal_assistant_kb_delete(doc_id):
     hospital_id, username = _identity()
     ocr.remove_kb_document(hospital_id, username, doc_id)
@@ -156,7 +156,7 @@ def ocr_portal_assistant_kb_delete(doc_id):
 
 
 @ocr_portal_bp.post("/api/ocr-portal/assistant/chat")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def ocr_portal_assistant_chat():
     payload = request.get_json(silent=True) or {}
     message = (payload.get("message") or "").strip()
@@ -169,7 +169,7 @@ def ocr_portal_assistant_chat():
 
 
 @ocr_portal_bp.get("/api/ocr-portal/assistant/history")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def ocr_portal_assistant_history():
     session_id = request.args.get("session_id", "default")
     hospital_id, username = _identity()
@@ -177,7 +177,7 @@ def ocr_portal_assistant_history():
 
 
 @ocr_portal_bp.delete("/api/ocr-portal/assistant/history")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def ocr_portal_assistant_history_clear():
     session_id = request.args.get("session_id", "default")
     hospital_id, username = _identity()
@@ -188,7 +188,7 @@ def ocr_portal_assistant_history_clear():
 # ---- AI Parser for Prescriptions ----
 
 @ocr_portal_bp.post("/api/ocr-portal/parse-prescription")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def parse_prescription():
     payload = request.get_json(silent=True) or {}
     text = payload.get("text", "")

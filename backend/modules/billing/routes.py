@@ -29,7 +29,7 @@ def billing_invoices():
 
 
 @billing_bp.post("/api/billing/invoices")
-@require_permissions("billing.write")
+@require_permissions("billing.invoices.write")
 def billing_create_invoice():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["module", "total_amount"])
@@ -66,7 +66,7 @@ def billing_create_invoice():
 
 
 @billing_bp.put("/api/billing/invoices/<int:invoice_id>")
-@require_permissions("billing.write")
+@require_permissions("billing.invoices.write")
 def billing_update_invoice(invoice_id):
     payload = request.get_json(force=True)
     updated = update_invoice(invoice_id, payload)
@@ -80,7 +80,7 @@ def billing_update_invoice(invoice_id):
 
 
 @billing_bp.delete("/api/billing/invoices/<int:invoice_id>")
-@require_permissions("billing.write")
+@require_permissions("billing.invoices.write")
 def billing_delete_invoice(invoice_id):
     deleted = delete_invoice(invoice_id, actor=g.current_user.get("username"))
     if not deleted:
@@ -93,7 +93,7 @@ def billing_delete_invoice(invoice_id):
 
 
 @billing_bp.post("/api/billing/razorpay/order")
-@require_permissions("billing.write")
+@require_permissions("billing.invoices.write")
 @limiter.limit("10 per minute")
 def billing_razorpay_order():
     config_error = require_razorpay_configured()
@@ -144,7 +144,7 @@ def billing_razorpay_order():
 
 
 @billing_bp.post("/api/billing/razorpay/verify")
-@require_permissions("billing.write")
+@require_permissions("billing.invoices.write")
 def billing_razorpay_verify():
     config_error = require_razorpay_configured()
     if config_error:
@@ -206,7 +206,7 @@ def billing_razorpay_verify():
 
 
 @billing_bp.post("/api/billing/invoices/<int:invoice_id>/payments")
-@require_permissions("billing.write")
+@require_permissions("billing.invoices.write")
 def billing_record_payment(invoice_id):
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["amount", "payment_mode"])
@@ -250,7 +250,7 @@ def billing_claims():
 
 
 @billing_bp.post("/api/billing/claims")
-@require_permissions("billing.write")
+@require_permissions("billing.claims.write")
 def billing_create_claim():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["invoice_id", "insurer_name", "claim_amount"])
@@ -263,7 +263,7 @@ def billing_create_claim():
 
 
 @billing_bp.put("/api/billing/claims/<int:claim_id>")
-@require_permissions("billing.write")
+@require_permissions("billing.claims.write")
 def billing_update_claim(claim_id):
     payload = request.get_json(force=True)
     updated = update_insurance_claim(claim_id, payload)
@@ -275,7 +275,7 @@ def billing_update_claim(claim_id):
 
 
 @billing_bp.delete("/api/billing/claims/<int:claim_id>")
-@require_permissions("billing.write")
+@require_permissions("billing.claims.write")
 def billing_delete_claim(claim_id):
     deleted = delete_insurance_claim(claim_id, actor=g.current_user.get("username"))
     if not deleted:

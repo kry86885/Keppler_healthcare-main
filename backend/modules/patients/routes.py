@@ -124,7 +124,7 @@ def registration_departments_list():
 
 
 @patients_bp.post("/api/registration/departments")
-@require_permissions("patients.write")
+@require_permissions("patients.registration.write")
 def registration_departments_create():
     payload = request.get_json(force=True)
     try:
@@ -166,7 +166,7 @@ def registration_consents_list():
 
 
 @patients_bp.post("/api/registration/consents")
-@require_permissions("patients.write")
+@require_permissions("patients.consent.write")
 def registration_consents_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["patient_name", "consent_type", "signed_by"])
@@ -179,7 +179,7 @@ def registration_consents_create():
 
 
 @patients_bp.put("/api/registration/consents/<int:consent_id>")
-@require_permissions("patients.write")
+@require_permissions("patients.consent.write")
 def registration_consents_update(consent_id):
     payload = request.get_json(force=True)
     updated = update_patient_consent(consent_id, payload)
@@ -199,7 +199,7 @@ def registration_insurance_list():
 
 
 @patients_bp.post("/api/registration/insurance")
-@require_permissions("patients.write")
+@require_permissions("patients.insurance.write")
 def registration_insurance_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["patient_name", "insurer_name"])
@@ -217,7 +217,7 @@ def registration_insurance_create():
 
 
 @patients_bp.put("/api/registration/insurance/<int:verification_id>")
-@require_permissions("patients.write")
+@require_permissions("patients.insurance.write")
 def registration_insurance_update(verification_id):
     payload = request.get_json(force=True)
     updated = update_insurance_verification(verification_id, payload)
@@ -234,7 +234,7 @@ def registration_insurance_update(verification_id):
 
 
 @patients_bp.get("/api/patients/next-id")
-@require_permissions("patients.write")
+@require_permissions("patients.registration.write")
 def patients_next_id():
     return jsonify(
         {"patient_id": generate_patient_id(hospital_id=current_hospital_id())}
@@ -243,7 +243,7 @@ def patients_next_id():
 
 
 @patients_bp.post("/api/patients")
-@require_permissions("patients.write")
+@require_permissions("patients.registration.write")
 def patients_create():
     payload = request.get_json(force=True)
     hospital_id = current_hospital_id()
@@ -360,7 +360,7 @@ def admissions_list(patient_id):
 
 
 @patients_bp.post("/api/patients/<patient_id>/admissions")
-@require_permissions("patients.write")
+@require_permissions("patients.clinical.write")
 def admissions_create(patient_id):
     hospital_id = current_hospital_id()
     patient = get_patient(patient_id, hospital_id=hospital_id)
@@ -389,7 +389,7 @@ def documents_list(patient_id):
 
 
 @patients_bp.post("/api/patients/<patient_id>/documents")
-@require_permissions("patients.write")
+@require_permissions("patients.documents.write")
 def documents_create(patient_id):
     hospital_id = current_hospital_id()
     patient = get_patient(patient_id, hospital_id=hospital_id)
@@ -439,7 +439,7 @@ def patient_encounters(patient_id):
 
 
 @patients_bp.post("/api/patients/<patient_id>/encounters")
-@require_permissions("patients.write")
+@require_permissions("patients.clinical.write")
 def patient_encounter_create(patient_id):
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["encounter_type"])
@@ -481,7 +481,7 @@ def patient_beds(patient_id):
 
 
 @patients_bp.post("/api/patients/<patient_id>/beds")
-@require_permissions("patients.write")
+@require_permissions("patients.clinical.write")
 def patient_bed_assign(patient_id):
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(
@@ -521,7 +521,7 @@ def patient_medications(patient_id):
 
 
 @patients_bp.post("/api/patients/<patient_id>/medications")
-@require_permissions("patients.write")
+@require_permissions("patients.clinical.write")
 def patient_medications_create(patient_id):
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["medicine_name"])
@@ -554,7 +554,7 @@ def patient_notes(patient_id):
 
 
 @patients_bp.post("/api/patients/<patient_id>/notes")
-@require_permissions("patients.write")
+@require_permissions("patients.clinical.write")
 def patient_notes_create(patient_id):
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["note"])
@@ -584,7 +584,7 @@ def patient_certificates(patient_id):
 
 
 @patients_bp.post("/api/patients/<patient_id>/certificates")
-@require_permissions("patients.write")
+@require_permissions("patients.clinical.write")
 def patient_certificates_create(patient_id):
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(
@@ -630,7 +630,7 @@ def patient_journey(patient_id):
 
 
 @patients_bp.post("/api/patients/<patient_id>/movements")
-@require_permissions("patients.write")
+@require_permissions("patients.clinical.write")
 def patient_movements_create(patient_id):
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["to_department"])

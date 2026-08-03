@@ -1176,7 +1176,7 @@ def ensure_user_columns(conn):
             WHEN user_type = 'admin' THEN ?
             ELSE ?
         END
-        WHERE module_access IS NULL OR TRIM(module_access) = '' OR TRIM(module_access) = '[]'
+        WHERE module_access IS NULL OR TRIM(module_access) = ''
     """,
         (default_modules_admin, default_modules_normal),
     )
@@ -1777,6 +1777,10 @@ def ensure_hospai_module_tables(conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_module ON audit_logs(module_name)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(appointment_date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status)")
+    # get_all_patients/search_patients run a correlated subquery against this
+    # table (latest appointment status) for every patient row -- without this
+    # index each patients-list request was a full appointments scan per row.
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_appointments_patient_created ON appointments(patient_id, created_at DESC)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_doctor_schedules_date ON doctor_schedules(schedule_date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_doctor_schedules_doctor ON doctor_schedules(doctor_name)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_patient_consents_patient ON patient_consents(patient_id)")

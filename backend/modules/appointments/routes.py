@@ -139,7 +139,7 @@ def appointments_list():
 
 
 @appointments_bp.post("/api/appointments")
-@require_permissions("patients.write")
+@require_permissions("patients.appointments.write")
 def appointments_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(
@@ -159,7 +159,7 @@ def appointments_create():
 
 
 @appointments_bp.put("/api/appointments/<int:appointment_id>")
-@require_permissions("patients.write")
+@require_permissions("patients.appointments.write")
 def appointments_update(appointment_id):
     payload = request.get_json(force=True)
     updated = update_appointment(appointment_id, payload)
@@ -179,7 +179,7 @@ def appointments_update(appointment_id):
 
 
 @appointments_bp.post("/api/appointments/razorpay/order")
-@require_permissions("patients.write")
+@require_permissions("patients.appointments.write")
 def appointments_razorpay_order():
     config_error = require_razorpay_configured()
     if config_error:
@@ -223,7 +223,7 @@ def appointments_razorpay_order():
 
 
 @appointments_bp.post("/api/appointments/razorpay/verify")
-@require_permissions("patients.write")
+@require_permissions("patients.appointments.write")
 def appointments_razorpay_verify():
     config_error = require_razorpay_configured()
     if config_error:

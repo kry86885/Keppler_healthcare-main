@@ -149,8 +149,6 @@ def get_template(key, default):
     return default
 
 @whatsapp_bp.route("/init_feedback", methods=["POST"])
-# @require_session (removed to fix circular import if any, or we can use another decorator. 
-# actually wait, let me just remove require_session for now or import it correctly. Wait, I deleted the import for require_session. Let me put it back!)
 @require_session
 def init_feedback():
     data = request.json
@@ -177,14 +175,14 @@ def init_feedback():
     return jsonify({"success": True}), 200
 
 @whatsapp_bp.route("/templates", methods=["GET"])
-# @require_session
+@require_permissions("patient_experience.read")
 def list_templates():
     with get_connection() as conn:
         rows = conn.execute("SELECT * FROM whatsapp_templates ORDER BY id ASC").fetchall()
     return jsonify({"templates": [dict(r) for r in rows]})
 
 @whatsapp_bp.route("/templates", methods=["PUT"])
-# @require_session
+@require_permissions("patient_experience.write")
 def update_template():
     data = request.json
     key = data.get("template_key")
@@ -203,7 +201,7 @@ def update_template():
     return jsonify({"success": True}), 200
 
 @whatsapp_bp.route("/feedback", methods=["GET"])
-@require_session
+@require_permissions("patient_experience.read")
 def list_feedback():
     with get_connection() as conn:
         rows = conn.execute("""
@@ -216,8 +214,7 @@ def list_feedback():
     return jsonify({"feedback": [dict(r) for r in rows]}), 200
 
 @whatsapp_bp.route("/feedback/<int:feedback_id>/status", methods=["PUT"])
-@require_session
-@require_permissions("admin.use")
+@require_permissions("patient_experience.write")
 def update_feedback_status(feedback_id):
     status = request.json.get("status")
     if not status:
@@ -228,7 +225,7 @@ def update_feedback_status(feedback_id):
     return jsonify({"success": True}), 200
 
 @whatsapp_bp.route("/feedback/summary", methods=["GET"])
-@require_session
+@require_permissions("patient_experience.read")
 def feedback_summary():
     with get_connection() as conn:
         total = conn.execute("SELECT COUNT(*) as c FROM patient_feedback WHERE rating IS NOT NULL OR comment IS NOT NULL").fetchone()['c']

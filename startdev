@@ -68,6 +68,7 @@ echo "Installing symptom backend dependencies..."
 "${BACKEND_VENV}/bin/pip" install -r "${ROOT_DIR}/symptom_backend/requirements.txt"
 
 OCR_PORTAL_STARTED=false
+MAIN_DB_STARTED=false
 
 cleanup() {
   echo
@@ -86,6 +87,9 @@ cleanup() {
     echo "Stopping OCR backend containers..."
     (cd "${ROOT_DIR}" && docker compose -f docker-compose.dev.yml stop ocr-api ocr-worker ocr-qdrant ocr-postgres) 2>/dev/null || true
   fi
+  # main-postgres deliberately left running on cleanup (unlike the OCR
+  # containers) -- it holds the app's persistent local data, and stopping it
+  # on every Ctrl+C would defeat the point of it being a real durable DB.
   wait 2>/dev/null || true
 }
 
@@ -98,6 +102,13 @@ trap cleanup INT TERM EXIT
 # the browser talks to it directly. Its own published debug port is 7621;
 # OCR_BACKEND_URL below is what the Flask backend actually uses.
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  echo "Starting local Postgres (main app DB) via Docker..."
+  if (cd "${ROOT_DIR}" && docker compose -f docker-compose.dev.yml up -d main-postgres); then
+    MAIN_DB_STARTED=true
+  else
+    echo "Warning: failed to start main-postgres. The backend will fail to connect unless DATABASE_URL/DB_ENGINE point elsewhere."
+  fi
+
   echo "Starting OCR backend (Postgres/Qdrant/FastAPI/Celery) via Docker..."
   if (cd "${ROOT_DIR}" && docker compose -f docker-compose.dev.yml up -d ocr-postgres ocr-qdrant ocr-api ocr-worker); then
     OCR_PORTAL_STARTED=true
@@ -105,50 +116,58 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
     echo "Warning: failed to start the OCR backend containers. Continuing without it (OCR Scanner will show errors)."
   fi
 else
-  echo "Docker not available: skipping the OCR backend. OCR Scanner will show errors until it's reachable."
+  echo "Docker not available: skipping the OCR backend and local Postgres. Set DB_ENGINE=sqlite or point DATABASE_URL at a reachable Postgres."
 fi
 
+# NOTE: these are intentionally NOT wrapped in `( ... )` subshells. A
+# background job started inside a `(...)` subshell belongs to that subshell's
+# job table, not this script's -- once the subshell exits (immediately after
+# backgrounding it), the process is orphaned from this shell's perspective.
+# `$!`/PID-file writes still "worked" but the PID was never a real child of
+# this shell, so the `wait` at the bottom of this script returned instantly
+# instead of blocking, `cleanup()` couldn't actually kill anything by PID, and
+# this script printed "Stopping dev services..." right after "started" even
+# though the (now-orphaned, still-running) nohup'd processes lived on --
+# extremely easy to mistake for a crash and re-run, piling up duplicate
+# backend/frontend processes fighting over the same ports.
 echo "Starting backend..."
-(
-  cd "${ROOT_DIR}/backend"
-  export PORT=5011
-  export FLASK_ENV=development
-  export CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}"
-  export SESSION_COOKIE_SECURE=false
-  export OCR_BACKEND_URL="${OCR_BACKEND_URL:-http://localhost:7621}"
-  nohup "${BACKEND_VENV}/bin/python" app.py \
-    > >(tee -a "${BACKEND_LOG}") \
-    2> >(tee -a "${BACKEND_LOG}" >&2) &
-  BACKEND_PID=$!
-  echo "${BACKEND_PID}" > "${BACKEND_PID_FILE}"
-)
+cd "${ROOT_DIR}/backend"
+CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}" \
+OCR_BACKEND_URL="${OCR_BACKEND_URL:-http://localhost:7621}" \
+PORT="${BACKEND_PORT:-5011}" \
+FLASK_ENV=development \
+SESSION_COOKIE_SECURE=false \
+nohup "${BACKEND_VENV}/bin/python" app.py \
+  > >(tee -a "${BACKEND_LOG}") \
+  2> >(tee -a "${BACKEND_LOG}" >&2) &
+BACKEND_PID=$!
+echo "${BACKEND_PID}" > "${BACKEND_PID_FILE}"
+cd "${ROOT_DIR}"
 
 echo "Starting symptom backend..."
-(
-  cd "${ROOT_DIR}/symptom_backend"
-  export PORT=5002
-  export FLASK_ENV=development
-  nohup "${BACKEND_VENV}/bin/python" app.py \
-    > >(tee -a "${SYMPTOM_LOG}") \
-    2> >(tee -a "${SYMPTOM_LOG}" >&2) &
-  SYMPTOM_PID=$!
-  echo "${SYMPTOM_PID}" > "${SYMPTOM_PID_FILE}"
-)
+cd "${ROOT_DIR}/symptom_backend"
+PORT="${SYMPTOM_PORT:-5002}" \
+FLASK_ENV=development \
+nohup "${BACKEND_VENV}/bin/python" app.py \
+  > >(tee -a "${SYMPTOM_LOG}") \
+  2> >(tee -a "${SYMPTOM_LOG}" >&2) &
+SYMPTOM_PID=$!
+echo "${SYMPTOM_PID}" > "${SYMPTOM_PID_FILE}"
+cd "${ROOT_DIR}"
 
 echo "Starting frontend..."
-(
-  cd "${ROOT_DIR}/frontend"
-  export VITE_API_BASE="${VITE_API_BASE:-http://localhost:5011}"
-  export VITE_API_URL="${VITE_API_URL:-http://localhost:5011}"
-  export VITE_SYMPTOM_API_BASE="${VITE_SYMPTOM_API_BASE:-http://localhost:5002}"
-  export CHOKIDAR_USEPOLLING=true
-  export WATCHPACK_POLLING=true
-  nohup npm run dev -- --host \
-    > >(tee -a "${FRONTEND_LOG}") \
-    2> >(tee -a "${FRONTEND_LOG}" >&2) &
-  FRONTEND_PID=$!
-  echo "${FRONTEND_PID}" > "${FRONTEND_PID_FILE}"
-)
+cd "${ROOT_DIR}/frontend"
+VITE_API_BASE="${VITE_API_BASE:-http://localhost:5011}" \
+VITE_API_URL="${VITE_API_URL:-http://localhost:5011}" \
+VITE_SYMPTOM_API_BASE="${VITE_SYMPTOM_API_BASE:-http://localhost:${SYMPTOM_PORT:-5002}}" \
+CHOKIDAR_USEPOLLING=true \
+WATCHPACK_POLLING=true \
+nohup npm run dev -- --host \
+  > >(tee -a "${FRONTEND_LOG}") \
+  2> >(tee -a "${FRONTEND_LOG}" >&2) &
+FRONTEND_PID=$!
+echo "${FRONTEND_PID}" > "${FRONTEND_PID_FILE}"
+cd "${ROOT_DIR}"
 
 echo
 echo "Dev services started:"
@@ -161,8 +180,11 @@ echo "Frontend log: ${FRONTEND_LOG}"
 
 echo
 echo "Frontend: http://localhost:5173"
-echo "Backend:  http://localhost:5011"
-echo "Symptom:  http://localhost:5002"
+echo "Backend:  http://localhost:${BACKEND_PORT:-5011}"
+echo "Symptom:  http://localhost:${SYMPTOM_PORT:-5002}"
+if [[ "${MAIN_DB_STARTED}" == "true" ]]; then
+  echo "Main DB:  local Postgres on localhost:5434 (docker container, not shared with the team)"
+fi
 if [[ "${OCR_PORTAL_STARTED}" == "true" ]]; then
   echo "OCR backend: http://localhost:7621 (proxied through the main backend, no direct browser access)"
 fi

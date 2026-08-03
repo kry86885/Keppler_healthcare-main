@@ -17,7 +17,7 @@ def lab_vendors_list():
 
 
 @diagnostics_bp.post("/api/lab/vendors")
-@require_permissions("lab.write")
+@require_permissions("lab.vendors.write")
 def lab_vendors_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["vendor_name"])
@@ -35,7 +35,7 @@ def lab_vendors_create():
 
 
 @diagnostics_bp.put("/api/lab/vendors/<int:vendor_id>")
-@require_permissions("lab.write")
+@require_permissions("lab.vendors.write")
 def lab_vendors_update(vendor_id):
     payload = request.get_json(force=True)
     updated = update_lab_vendor(vendor_id, payload)
@@ -47,7 +47,7 @@ def lab_vendors_update(vendor_id):
 
 
 @diagnostics_bp.delete("/api/lab/vendors/<int:vendor_id>")
-@require_permissions("lab.write")
+@require_permissions("lab.vendors.write")
 def lab_vendors_delete(vendor_id):
     deleted = delete_lab_vendor(vendor_id, actor=g.current_user.get("username"))
     if not deleted:
@@ -73,7 +73,7 @@ def lab_diagnostics_list():
 
 
 @diagnostics_bp.post("/api/lab/diagnostics")
-@require_permissions("lab.write")
+@require_permissions("lab.diagnostics.write")
 def lab_diagnostics_create():
     payload = request.get_json(force=True)
     validation_error = validate_required_fields(payload, ["test_name", "amount"])
@@ -91,7 +91,7 @@ def lab_diagnostics_create():
 
 
 @diagnostics_bp.put("/api/lab/diagnostics/<int:diagnostic_id>")
-@require_permissions("lab.write")
+@require_permissions("lab.diagnostics.write")
 def lab_diagnostics_update(diagnostic_id):
     payload = request.get_json(force=True)
     updated = update_diagnostic_record(diagnostic_id, payload)
@@ -105,7 +105,7 @@ def lab_diagnostics_update(diagnostic_id):
 
 
 @diagnostics_bp.delete("/api/lab/diagnostics/<int:diagnostic_id>")
-@require_permissions("lab.write")
+@require_permissions("lab.diagnostics.write")
 def lab_diagnostics_delete(diagnostic_id):
     deleted = delete_diagnostic_record(diagnostic_id, actor=g.current_user.get("username"))
     if not deleted:
