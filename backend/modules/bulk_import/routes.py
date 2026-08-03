@@ -8,8 +8,8 @@ from ai.service import translate_patient_filter_prompt, answer_bulk_document_pro
 from utils.database import (
     create_bulk_import_job,
     get_bulk_import_job,
-    update_bulk_import_job,
     query_bulk_patients,
+    update_bulk_import_job,
     BULK_IMPORT_PATIENT_FIELDS,
 )
 

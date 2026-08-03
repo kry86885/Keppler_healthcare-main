@@ -11,11 +11,12 @@ import re
 from utils.ocr import _detect_mime_type
 from utils.database import search_similar_documents
 
-from .gemini_provider import GeminiOCRProvider, GeminiLLMProvider
+from .local_ocr_provider import EasyOCRProvider
+from .ollama_provider import OllamaLLMProvider
 from .preprocessing import preprocess_image_bytes
 
-ocr_provider = GeminiOCRProvider()
-llm_provider = GeminiLLMProvider()
+ocr_provider = EasyOCRProvider()
+llm_provider = OllamaLLMProvider()
 
 
 def extract_text_from_image(file_bytes, language="en", doc_type="document", filename=None):
@@ -58,7 +59,7 @@ def classify_and_extract_entities(ocr_text: str, doc_type: str = "document"):
     if not text or not llm_provider.is_configured():
         return None
     prompt = _ENTITY_EXTRACTION_PROMPT.format(doc_type=doc_type, text=text[:8000])
-    raw_response = llm_provider.generate(prompt)
+    raw_response = llm_provider.generate(prompt, json_mode=True)
     if not raw_response:
         return None
     return _parse_json_response(raw_response)
@@ -117,7 +118,7 @@ def translate_patient_filter_prompt(prompt: str, available_fields):
     if not prompt or not llm_provider.is_configured():
         return None
     rendered = _PATIENT_FILTER_PROMPT.format(fields=", ".join(available_fields), prompt=prompt)
-    raw_response = llm_provider.generate(rendered)
+    raw_response = llm_provider.generate(rendered, json_mode=True)
     if not raw_response:
         return None
     return _parse_json_response(raw_response)
@@ -154,7 +155,7 @@ def answer_bulk_document_prompt(prompt: str, document_text: str):
     if not prompt or not document_text or not llm_provider.is_configured():
         return None
     rendered = _DOCUMENT_PROMPT_TEMPLATE.format(prompt=prompt, document_text=document_text)
-    raw_response = llm_provider.generate(rendered)
+    raw_response = llm_provider.generate(rendered, json_mode=True)
     if not raw_response:
         return None
     return _parse_json_response(raw_response)

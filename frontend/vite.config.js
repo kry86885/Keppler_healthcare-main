@@ -10,7 +10,7 @@ export default defineConfig({
       // This runs same-origin from the browser's perspective,
       // so session cookies are always sent correctly.
       "/api": {
-        target: process.env.BACKEND_PROXY_TARGET || "http://127.0.0.1:5011",
+        target: process.env.BACKEND_PROXY_TARGET || "http://127.0.0.1:5001",
         changeOrigin: true,
         secure: false,
       },

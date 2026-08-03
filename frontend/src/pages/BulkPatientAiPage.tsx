@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { FaWhatsapp } from "react-icons/fa";
-import { FiArrowRight, FiCheck, FiLoader, FiSearch, FiUploadCloud, FiUsers } from "react-icons/fi";
+import { FiCheck, FiLoader, FiSearch, FiUploadCloud, FiUsers } from "react-icons/fi";
 import DocumentUploadDropzone from "../components/DocumentUploadDropzone";
-import { Button, Modal, Select, Table, TableCell, TableHead, TableRow, Textarea } from "../components/ui";
+import { Button, Modal, Table, TableCell, TableHead, TableRow, Textarea } from "../components/ui";
 import { apiFetch, getHospitalCode, getCsrfToken, reportError } from "../lib/api";
 import { API_BASE } from "../lib/constants";
 import type { Notice } from "../types";
@@ -11,21 +11,12 @@ type Props = {
   setNotice: (notice: Notice | null) => void;
 };
 
-type StepKey = "upload" | "mapping" | "processing" | "query";
+type StepKey = "upload" | "processing" | "query";
 
 type JobStatus = {
   id: number;
-  status:
-    | "PENDING_MAPPING"
-    | "AWAITING_MAPPING"
-    | "IMPORTING"
-    | "EXTRACTING"
-    | "AWAITING_PROMPT"
-    | "DONE"
-    | "FAILED";
+  status: "IMPORTING" | "EXTRACTING" | "AWAITING_PROMPT" | "DONE" | "FAILED";
   kind?: "spreadsheet" | "document";
-  detected_columns?: string[];
-  suggested_mapping?: Record<string, string>;
   processed_rows?: number;
   imported_count?: number;
   skipped_count?: number;
@@ -47,21 +38,9 @@ const JOB_ID_STORAGE_KEY = "hospai_bulk_import_job_id";
 const POLL_INTERVAL_MS = 2000;
 const PAGE_SIZE = 150;
 
-const TARGET_FIELDS = [
-  { value: "", label: "Ignore this column" },
-  { value: "name", label: "First Name" },
-  { value: "last_name", label: "Last Name" },
-  { value: "phone", label: "Phone (required)" },
-  { value: "age", label: "Age" },
-  { value: "gender", label: "Gender" },
-  { value: "area", label: "Area / City" },
-  { value: "medical_condition", label: "Medical Condition" },
-];
-
 const SPREADSHEET_STEPS: { key: StepKey; label: string; hint: string }[] = [
   { key: "upload", label: "Upload", hint: "Add your file" },
-  { key: "mapping", label: "Map Columns", hint: "Confirm fields" },
-  { key: "processing", label: "Import", hint: "Processing rows" },
+  { key: "processing", label: "Import", hint: "AI reads & imports" },
   { key: "query", label: "Search", hint: "Find & contact" },
 ];
 
@@ -83,7 +62,6 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
   const [jobId, setJobId] = useState<number | null>(null);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [jobKind, setJobKind] = useState<"spreadsheet" | "document">("spreadsheet");
-  const [mapping, setMapping] = useState<Record<string, string>>({});
   const [prompt, setPrompt] = useState("");
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<BulkPatientRow[]>([]);
@@ -107,12 +85,6 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
           const data = await apiFetch<JobStatus>(`/api/bulk-import/jobs/${id}`);
           setJob(data);
           if (data.kind) setJobKind(data.kind);
-          if (data.status === "AWAITING_MAPPING") {
-            setMapping(data.suggested_mapping || {});
-            setStep("mapping");
-            pollingRef.current = false;
-            return;
-          }
           if (data.status === "AWAITING_PROMPT") {
             setStep("query");
             pollingRef.current = false;
@@ -194,27 +166,6 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
     xhr.send(formData);
   };
 
-  const mappedPhoneHeader = Object.entries(mapping).find(([, field]) => field === "phone")?.[0];
-
-  const handleConfirmMapping = async () => {
-    if (!jobId) return;
-    const filteredMapping = Object.fromEntries(Object.entries(mapping).filter(([, field]) => field));
-    if (!Object.values(filteredMapping).includes("phone")) {
-      setNotice({ type: "warning", message: "Map at least one column to Phone -- it's required to contact or dedupe patients." });
-      return;
-    }
-    try {
-      await apiFetch(`/api/bulk-import/jobs/${jobId}/mapping`, {
-        method: "POST",
-        body: JSON.stringify({ mapping: filteredMapping }),
-      });
-      setStep("processing");
-      startPolling(jobId);
-    } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to confirm column mapping.");
-    }
-  };
-
   const runSearch = async (targetPage: number, append: boolean) => {
     try {
       const data = await apiFetch<{ results: BulkPatientRow[]; total: number }>("/api/bulk-import/query", {
@@ -270,7 +221,6 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
     setJob(null);
     setJobKind("spreadsheet");
     setFile(null);
-    setMapping({});
     setPrompt("");
     setResults([]);
     setAnswer("");
@@ -301,9 +251,10 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
       <div className="module-panel-head">
         <h3>AI Mode: Bulk Patient Search</h3>
         <p className="muted">
-          Upload a large patient list (.xlsx or .csv, up to 200MB) and search it with a plain-English
-          prompt like "diabetic patients in Koramangala" -- or upload a PDF/DOCX document (discharge
-          summary, referral letter, etc.) and ask questions about what's in it.
+          Upload a large patient list (.xlsx or .csv, up to 200MB) -- the AI automatically detects
+          which column is phone/name/age/etc. and imports it, no manual setup needed -- then search it
+          with a plain-English prompt like "diabetic patients in Koramangala". Or upload a PDF/DOCX
+          document (discharge summary, referral letter, etc.) and ask questions about what's in it.
         </p>
       </div>
 
@@ -361,42 +312,6 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
         </div>
       )}
 
-      {step === "mapping" && job && (
-        <div className="panel">
-          <div className="module-panel-head">
-            <h4>2. Confirm column mapping</h4>
-            <p className="muted">We've guessed how your columns map to patient fields. Adjust anything that's wrong.</p>
-          </div>
-          <div className="ai-mapping-list">
-            {(job.detected_columns || []).map((header) => (
-              <div className="ai-mapping-row" key={header}>
-                <span className="ai-mapping-source" title={header}>{header}</span>
-                <FiArrowRight className="ai-mapping-arrow" aria-hidden />
-                <Select
-                  value={mapping[header] || ""}
-                  onChange={(event) => setMapping((prev) => ({ ...prev, [header]: event.target.value }))}
-                  aria-label={`Map column ${header}`}
-                >
-                  {TARGET_FIELDS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            ))}
-          </div>
-          <div className="ai-mapping-footer">
-            <p className={mappedPhoneHeader ? "notice success" : "notice warning"}>
-              {mappedPhoneHeader
-                ? `"${mappedPhoneHeader}" is mapped to Phone -- contact and dedupe will use this column.`
-                : "Map at least one column to Phone before continuing -- it's required to contact or dedupe patients."}
-            </p>
-            <Button onClick={handleConfirmMapping}>Confirm &amp; Import</Button>
-          </div>
-        </div>
-      )}
-
       {step === "processing" && (
         <div className="panel ai-processing-panel">
           <div className="ai-processing-spinner">
@@ -415,10 +330,11 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
           ) : (
             <>
               <div className="module-panel-head">
-                <h4>3. Importing patient records...</h4>
+                <h4>2. Reading columns &amp; importing patient records...</h4>
               </div>
               <p className="muted">
-                Processed {job?.processed_rows ?? 0} rows so far ({job?.imported_count ?? 0} contactable,{" "}
+                The AI is detecting which column is phone/name/age/etc. and importing automatically -- no manual
+                setup needed. Processed {job?.processed_rows ?? 0} rows so far ({job?.imported_count ?? 0} contactable,{" "}
                 {job?.skipped_count ?? 0} skipped for missing phone numbers). This can take a while for large files --
                 feel free to leave this page and come back.
               </p>

@@ -5,6 +5,7 @@
 .opencode/
 
 healthcare.db
+backend/test.db
 uploads/
 
 **/__pycache__/

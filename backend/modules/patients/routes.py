@@ -104,8 +104,9 @@ def patients_list():
     
     # Enforce isolation for clinicians
     doctor_name = None
-    if getattr(g, "current_user", {}).get("access_role") == "clinician":
-        doctor_name = g.current_user.get("full_name") or g.current_user.get("username")
+    current_user = getattr(g, "current_user", {})
+    if current_user.get("access_role") == "clinician" or (current_user.get("job_role") or "").strip().lower() == "doctor":
+        doctor_name = current_user.get("full_name") or current_user.get("username")
         
     patients = (
         search_patients(query, hospital_id=hospital_id, doctor_name=doctor_name)

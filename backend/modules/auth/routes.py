@@ -103,7 +103,9 @@ def auth_session():
     token = request.cookies.get(SESSION_COOKIE_NAME)
     user = get_session_user(token)
     if not user:
-        return jsonify({"error": "Authentication required"}), 401
+        response = jsonify({"user": None, "error": "Authentication required"})
+        response.headers["Cache-Control"] = "no-store"
+        return response, 200
     response = jsonify({"user": {k: v for k, v in user.items() if k != "id"}})
     response.headers["Cache-Control"] = "no-store"
     return response

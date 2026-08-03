@@ -1,11 +1,12 @@
-import requests
+import json
+
 from flask import Blueprint, g, jsonify, request, Response
 from werkzeug.utils import secure_filename
 
 from app import require_permissions, current_hospital_id, log_audit_event
 
-from ai.ocr_portal_client import OcrPortalError
-from ai import ocr_portal_client as ocr
+from ai.local_ocr_portal import OcrPortalError
+from ai import local_ocr_portal as ocr
 
 ocr_portal_bp = Blueprint("ocr_portal", __name__)
 
@@ -15,11 +16,6 @@ MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50MB -- these are scanned multi-page medi
 @ocr_portal_bp.errorhandler(OcrPortalError)
 def _handle_ocr_portal_error(exc: OcrPortalError):
     return jsonify({"error": exc.message}), exc.status_code
-
-
-@ocr_portal_bp.errorhandler(requests.exceptions.RequestException)
-def _handle_connection_error(exc: requests.exceptions.RequestException):
-    return jsonify({"error": "The OCR service is unreachable right now. Please try again shortly."}), 502
 
 
 def _identity():
@@ -50,23 +46,16 @@ def ocr_portal_upload():
 
     blueprint = request.form.get("blueprint", "Universal OCR (Any Text)")
     hospital_id, username = _identity()
-    try:
-        result = ocr.upload_ocr_document(
-            hospital_id, username, filename, file_bytes, uploaded_file.mimetype, blueprint
-        )
-        log_audit_event("create", "ocr_portal_jobs", result.get("job_id"), {"filename": filename})
-        return jsonify(result)
-    except Exception as e:
-        import uuid
-        job_id = f"mock-job-{uuid.uuid4().hex[:8]}"
-        return jsonify({"job_id": job_id})
+    result = ocr.upload_ocr_document(
+        hospital_id, username, filename, file_bytes, uploaded_file.mimetype, blueprint
+    )
+    log_audit_event("create", "ocr_portal_jobs", result.get("job_id"), {"filename": filename})
+    return jsonify(result)
 
 
 @ocr_portal_bp.get("/api/ocr-portal/jobs/<job_id>")
 @require_permissions("patients.documents.write")
 def ocr_portal_job_status(job_id):
-    if job_id.startswith("mock-job-"):
-        return jsonify({"status": "COMPLETED"})
     hospital_id, username = _identity()
     return jsonify(ocr.get_ocr_job(hospital_id, username, job_id))
 
@@ -74,8 +63,6 @@ def ocr_portal_job_status(job_id):
 @ocr_portal_bp.get("/api/ocr-portal/jobs/<job_id>/result")
 @require_permissions("patients.documents.write")
 def ocr_portal_job_result(job_id):
-    if job_id.startswith("mock-job-"):
-        return jsonify({"combined_markdown": "MOCK PRESCRIPTION TEXT:\n- Paracetamol 500mg 1-0-1\n- Amoxicillin 250mg 1-1-1"})
     hospital_id, username = _identity()
     return jsonify(ocr.get_ocr_job_result(hospital_id, username, job_id))
 
@@ -187,26 +174,7 @@ def ocr_portal_assistant_history_clear():
 
 # ---- AI Parser for Prescriptions ----
 
-@ocr_portal_bp.post("/api/ocr-portal/parse-prescription")
-@require_permissions("patients.documents.write")
-def parse_prescription():
-    payload = request.get_json(silent=True) or {}
-    text = payload.get("text", "")
-    if not text:
-        return jsonify({"error": "No text provided"}), 400
-        
-    try:
-        if text.startswith("MOCK PRESCRIPTION TEXT:"):
-            return jsonify({"medicines": [
-                {"name": "Paracetamol 500mg", "quantity": 10, "dosage": "1-0-1", "unit_price": 0},
-                {"name": "Amoxicillin 250mg", "quantity": 15, "dosage": "1-1-1", "unit_price": 0}
-            ]})
-            
-        from ai.gemini_provider import GeminiLLMProvider
-        import json
-        llm = GeminiLLMProvider()
-        prompt = f"""
-You are a medical AI assistant. Extract the prescribed medicines from the following OCR text of a doctor's prescription.
+_PRESCRIPTION_PARSE_PROMPT = """You are a medical AI assistant. Extract the prescribed medicines from the following OCR text of a doctor's prescription.
 Return ONLY a JSON array of objects, with each object containing:
 - "name": Medicine name
 - "quantity": Number to dispense (default to 1 if not specified but implies a course)
@@ -218,14 +186,22 @@ OCR Text:
 
 Output ONLY valid JSON.
 """
-        response_text = llm.generate(prompt)
-        # Clean up any potential markdown code blocks
-        if response_text.startswith("```json"):
-            response_text = response_text.replace("```json", "", 1)
-        if response_text.endswith("```"):
-            response_text = response_text[::-1].replace("```", "", 1)[::-1]
-        
-        medicines = json.loads(response_text.strip())
+
+
+@ocr_portal_bp.post("/api/ocr-portal/parse-prescription")
+@require_permissions("patients.documents.write")
+def parse_prescription():
+    payload = request.get_json(silent=True) or {}
+    text = payload.get("text", "")
+    if not text:
+        return jsonify({"error": "No text provided"}), 400
+
+    if not ocr.llm_provider.is_configured():
+        return jsonify({"error": "The local AI model is not reachable right now.", "medicines": []}), 503
+
+    try:
+        response_text = ocr.llm_provider.generate(_PRESCRIPTION_PARSE_PROMPT.format(text=text), json_mode=True)
+        medicines = json.loads((response_text or "").strip())
         return jsonify({"medicines": medicines})
     except Exception as exc:
         return jsonify({"error": str(exc), "medicines": []}), 500

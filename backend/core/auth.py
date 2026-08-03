@@ -353,6 +353,7 @@ def resolve_user_profile(user_row) -> dict:
         "username": user_row.get("username"),
         "role": user_row.get("role"),
         "access_role": user_row.get("access_role"),
+        "job_role": user_row.get("job_role"),
         "user_type": user_type,
         "module_access": module_access,
         "permissions": get_permissions(user_type, module_access, user_row.get("access_role"), user_row.get("role")),
@@ -528,10 +529,10 @@ def create_default_users():
                     user["email"],
                 ),
             )
-            # Commit immediately to release the SQLite write lock before calling
-            # add_employee(), which acquires its own connection and writes.
+            # Commit before add_employee(), which opens its own connection --
+            # otherwise this connection's still-open UPDATE transaction
+            # self-deadlocks against it ("database is locked").
             conn.commit()
-
             if cursor.rowcount == 0:
                 user["employee_id"] = generate_employee_id(hospital_id=hospital_id)
                 try:
@@ -553,7 +554,7 @@ def authenticate(username: str, password: str, hospital_id: Optional[int] = None
             cursor.execute(
                 """
                 SELECT u.id, u.hospital_id, u.password_hash, u.role, u.access_role, u.user_type,
-                       u.module_access, u.full_name, u.email, u.phone, u.employee_id, u.status,
+                       u.module_access, u.job_role, u.full_name, u.email, u.phone, u.employee_id, u.status,
                        h.code as hospital_code, h.status as hospital_status
                 FROM users u
                 LEFT JOIN hospitals h ON h.id = u.hospital_id
@@ -567,7 +568,7 @@ def authenticate(username: str, password: str, hospital_id: Optional[int] = None
             if "no such column: hospital_id" in msg or "incorrect number of bindings supplied" in msg:
                 cursor.execute(
                     """
-                    SELECT id, password_hash, role, access_role, user_type, module_access, full_name, email, phone, employee_id, status
+                    SELECT id, password_hash, role, access_role, job_role, user_type, module_access, full_name, email, phone, employee_id, status
                     FROM users WHERE (LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?))
                 """,
                     (clean_identifier, clean_identifier),
@@ -589,6 +590,7 @@ def authenticate(username: str, password: str, hospital_id: Optional[int] = None
                     "role": user_map.get("role"),
                     "access_role": user_map.get("access_role"),
                     "user_type": user_map.get("user_type"),
+                    "job_role": user_map.get("job_role"),
                     "module_access": user_map.get("module_access"),
                     "full_name": user_map.get("full_name"),
                     "email": user_map.get("email"),
@@ -805,6 +807,7 @@ def get_session_user(token: Optional[str]):
                    u.username,
                    u.role,
                    u.access_role,
+                   u.job_role,
                    u.user_type,
                    u.module_access,
                    u.full_name,
@@ -863,6 +866,7 @@ def get_session_user(token: Optional[str]):
             "username": row["username"],
             "role": row["role"],
             "access_role": row["access_role"],
+            "job_role": row["job_role"],
             "user_type": row["user_type"],
             "module_access": row["module_access"],
             "full_name": row["full_name"],

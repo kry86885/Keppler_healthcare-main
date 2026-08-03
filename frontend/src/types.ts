@@ -34,6 +34,7 @@ export interface User {
   username: string;
   full_name?: string;
   role?: string;
+  job_role?: string;
   access_role?: string;
   user_type?: UserType;
   module_access?: ModuleAccessEntry[];
@@ -221,6 +222,7 @@ export interface PharmacySale {
   id: number;
   invoice_id?: string | number | null;
   patient_id?: string | null;
+  patient_name?: string | null;
   prescription_ref?: string | null;
   medicine_name: string;
   quantity?: number;

@@ -19,7 +19,7 @@ class GeminiLLMProvider:
     def is_configured(self) -> bool:
         return get_genai_model() is not None
 
-    def generate(self, prompt: str, context: str = ""):
+    def generate(self, prompt: str, context: str = "", **kwargs):
         client = get_genai_model()
         if client is None:
             return None

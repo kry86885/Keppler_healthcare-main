@@ -290,21 +290,23 @@ function App() {
   const isAdmin = hasPermission("admin.use");
   const canAccessNavItem = (item: typeof NAV_ITEMS[0], permission?: string) => {
     if (item.id === "employees") return isAdmin;
-    
-    // Clinicians should only see a restricted set of pages, even if they have module access
-    if (user?.access_role === "clinician") {
-      if (!["queue", "doctor-prescription", "patients", "emr", "dashboard", "symptom-ai"].includes(item.id)) {
-        return false;
+
+    // Clinicians should only see a restricted set of pages WITHIN the patients and symptom_ai modules.
+    // If the admin gives them access to other modules (like pharmacy or lab), they will see those pages.
+    if (user?.access_role === "clinician" || (user?.job_role || "").toLowerCase() === "doctor") {
+      if (item.module === "patients" || item.module === "dashboard" || item.module === "symptom_ai") {
+        const allowedForClinician = ["queue", "emr", "dashboard", "patients", "symptom-ai", "doctor-prescription"];
+        if (!allowedForClinician.includes(item.id)) return false;
       }
     }
-    
+
     // Normal users must explicitly have the module in their module_access array (if the nav item belongs to a module).
     if (user?.user_type !== "admin") {
       if (item.module && !(user?.module_access || []).includes(item.module)) {
         return false;
       }
     }
-    
+
     return hasPermission(permission);
   };
   const sidebarNavItems = useMemo(
@@ -327,7 +329,7 @@ function App() {
       const target = groups.find((group) => group.key === (item.group || "overview"));
       target?.items.push(item);
     });
-    
+
     // Custom sort for doctors: Doctor Prescription before Queue Management
     if (user?.access_role === "clinician") {
       const opGroup = groups.find((g) => g.key === "registration");
@@ -347,7 +349,7 @@ function App() {
         });
       }
     }
-    
+
     return groups.filter((group) => group.items.length > 0);
   }, [sidebarNavItems]);
   const groupKeyForPage = (pageId: string) => NAV_ITEMS.find((item) => item.id === pageId)?.group || "overview";
@@ -360,7 +362,7 @@ function App() {
   }, [page]);
 
   const getDefaultPage = (currentUser: User | null) => {
-    if (currentUser?.access_role === "clinician") {
+    if (currentUser?.access_role === "clinician" || (currentUser?.job_role || "").toLowerCase() === "doctor") {
       return "queue";
     }
     const candidatePages = [
@@ -397,10 +399,10 @@ function App() {
     for (const candidate of candidatePages) {
       const navItem = NAV_ITEMS.find((item) => item.id === candidate);
       if (!navItem) continue;
-      
+
       // We must mock canAccessNavItem logic here because canAccessNavItem relies on state (user, permissions)
       // which might be stale during login, so we re-evaluate it with currentUser.
-      
+
       let hasAccess = false;
       const isAdminCheck = resolvePermissions(currentUser).includes("admin.use");
       if (navItem.id === "employees") {
@@ -445,7 +447,7 @@ function App() {
           }
         }
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => {
         if (active) setAuthChecked(true);
       });
@@ -469,11 +471,11 @@ function App() {
 
   // Global Polling (Doctor & Staff Notifications)
   const previousStatusesRef = useRef<Record<number, string>>({});
-  
+
   useEffect(() => {
     // Only poll if user is logged in
     if (!user) return;
-    
+
     let active = true;
     const pollQueue = async () => {
       if (!active) return;
@@ -482,15 +484,15 @@ function App() {
         const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const data = await apiFetch<{ appointments?: any[] }>(`/api/appointments?date=${today}`);
         const appointments = data.appointments || [];
-        
+
         const currentStatuses: Record<number, string> = {};
         appointments.forEach(a => {
           currentStatuses[a.id] = a.status;
         });
-        
+
         const isClinician = user.access_role === "clinician";
         const isStaff = user.access_role === "receptionist" || user.access_role === "admin";
-        
+
         const playAlertSound = () => {
           try {
             const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
@@ -516,11 +518,11 @@ function App() {
         if (Object.keys(previousStatusesRef.current).length > 0) {
           if (isClinician) {
             // Find new appointments that are checked_in
-            const newPatients = appointments.filter(a => 
-              (a.status === "checked_in" || a.status === "scheduled") && 
+            const newPatients = appointments.filter(a =>
+              (a.status === "checked_in" || a.status === "scheduled") &&
               !previousStatusesRef.current[a.id]
             );
-            
+
             if (newPatients.length > 0) {
               const newPatient = newPatients[0];
               // Play sound and show notice
@@ -551,32 +553,32 @@ function App() {
                   // fallback if AudioContext fails
                 }
               }
-              setNotice({ 
-                type: "success", 
-                message: `New Patient Arrived: ${newPatient.patient_name} (Token #${newPatient.token_no})` 
+              setNotice({
+                type: "success",
+                message: `New Patient Arrived: ${newPatient.patient_name} (Token #${newPatient.token_no})`
               });
             }
           }
-          
+
           if (isStaff) {
             // Find newly completed appointments
-            const completedPatients = appointments.filter(a => 
-              a.status === "completed" && 
+            const completedPatients = appointments.filter(a =>
+              a.status === "completed" &&
               previousStatusesRef.current[a.id] &&
               previousStatusesRef.current[a.id] !== "completed"
             );
-            
+
             if (completedPatients.length > 0) {
               const patient = completedPatients[0];
               playAlertSound();
-              setNotice({ 
-                type: "success", 
-                message: `Consultation Completed: ${patient.patient_name} with Dr. ${patient.doctor_name || "Unknown"}` 
+              setNotice({
+                type: "success",
+                message: `Consultation Completed: ${patient.patient_name} with Dr. ${patient.doctor_name || "Unknown"}`
               });
             }
           }
         }
-        
+
         previousStatusesRef.current = currentStatuses;
       } catch (e) {
         // silently fail polling
@@ -586,7 +588,7 @@ function App() {
     // Poll immediately, then every 15 seconds
     void pollQueue();
     const interval = setInterval(pollQueue, 15000);
-    
+
     return () => {
       active = false;
       clearInterval(interval);
@@ -839,7 +841,7 @@ function App() {
   };
 
   const handleLogout = () => {
-    void apiFetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    void apiFetch("/api/auth/logout", { method: "POST" }).catch(() => { });
     if (typeof window !== "undefined" && window.location.pathname === "/admin") {
       window.history.replaceState({}, "", "/");
     }
@@ -853,7 +855,7 @@ function App() {
     if (nextPage === "registration") {
       nextPage = "appointment-in";
     }
-    
+
     if (nextPage === "patients") {
       setPatientsPageKey((prev) => prev + 1);
     }
@@ -1045,51 +1047,51 @@ function App() {
             {sidebarGroups.map((group) => {
               const isOpen = openSidebarGroup === group.key;
               return (
-              <section key={group.key} className="sidebar-nav-group">
-                <button
-                  type="button"
-                  className="sidebar-nav-toggle"
-                  onClick={() => setOpenSidebarGroup((current) => (current === group.key ? "" : group.key))}
-                  aria-expanded={isOpen}
-                >
-                  <span className="sidebar-nav-heading">
-                    <span className="sidebar-nav-title">{group.label}</span>
-                    <span className="sidebar-nav-count">{group.items.length}</span>
-                  </span>
-                  <span className={isOpen ? "sidebar-nav-chevron" : "sidebar-nav-chevron collapsed"} aria-hidden="true">
-                    <span className="sidebar-nav-chevron-chip">
-                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M6 9l6 6 6-6" />
-                      </svg>
+                <section key={group.key} className="sidebar-nav-group">
+                  <button
+                    type="button"
+                    className="sidebar-nav-toggle"
+                    onClick={() => setOpenSidebarGroup((current) => (current === group.key ? "" : group.key))}
+                    aria-expanded={isOpen}
+                  >
+                    <span className="sidebar-nav-heading">
+                      <span className="sidebar-nav-title">{group.label}</span>
+                      <span className="sidebar-nav-count">{group.items.length}</span>
                     </span>
-                  </span>
-                </button>
-                {isOpen && (
-                  <div className="sidebar-nav-items">
-                    {group.items.map((item) => {
-                      const blocked = !!item.permission && !hasPermission(item.permission);
-                      const isActive = page === item.id;
-                      return (
-                        <SidebarTab
-                          key={item.id}
-                          label={item.label}
-                          icon={NAV_ICON_MAP[item.id] || "dashboard"}
-                          active={isActive}
-                          disabled={blocked}
-                          hint={blocked ? item.deniedHint : ""}
-                          onClick={() => {
-                            if (blocked) {
-                              setNotice({ type: "warning", message: item.deniedHint || "Access denied." });
-                              return;
-                            }
-                            navigateToPage(item.id);
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
+                    <span className={isOpen ? "sidebar-nav-chevron" : "sidebar-nav-chevron collapsed"} aria-hidden="true">
+                      <span className="sidebar-nav-chevron-chip">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M6 9l6 6 6-6" />
+                        </svg>
+                      </span>
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div className="sidebar-nav-items">
+                      {group.items.map((item) => {
+                        const blocked = !!item.permission && !hasPermission(item.permission);
+                        const isActive = page === item.id;
+                        return (
+                          <SidebarTab
+                            key={item.id}
+                            label={item.label}
+                            icon={NAV_ICON_MAP[item.id] || "dashboard"}
+                            active={isActive}
+                            disabled={blocked}
+                            hint={blocked ? item.deniedHint : ""}
+                            onClick={() => {
+                              if (blocked) {
+                                setNotice({ type: "warning", message: item.deniedHint || "Access denied." });
+                                return;
+                              }
+                              navigateToPage(item.id);
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
               );
             })}
           </nav>
@@ -1146,17 +1148,17 @@ function App() {
       </aside>
       <main>
         <Container size="full">
-        <header className="topbar">
-          <div className="topbar-header-content">
-            <button className="mobile-menu-btn" onClick={() => setIsMobileMenuOpen(true)} aria-label="Open menu">
-              <FiMenu size={24} />
-            </button>
-            <div>
-              <h2>{page === "admin" ? "Admin" : NAV_ITEMS.find((item) => item.id === page)?.label || "Dashboard"}</h2>
-              <p className="muted">Stay ahead with real-time care intelligence.</p>
+          <header className="topbar">
+            <div className="topbar-header-content">
+              <button className="mobile-menu-btn" onClick={() => setIsMobileMenuOpen(true)} aria-label="Open menu">
+                <FiMenu size={24} />
+              </button>
+              <div>
+                <h2>{page === "admin" ? "Admin" : NAV_ITEMS.find((item) => item.id === page)?.label || "Dashboard"}</h2>
+                <p className="muted">Stay ahead with real-time care intelligence.</p>
+              </div>
             </div>
-          </div>
-        </header>
+          </header>
 
         <Suspense fallback={<p className="muted">Loading...</p>}>
         {page === "dashboard" && (
@@ -1167,6 +1169,7 @@ function App() {
             hospitalSummary={hospitalSummary}
             analyticsLoading={dashboardAnalyticsLoading}
             onNavigate={navigateToPage}
+            permissions={permissions}
           />
         )}
 
@@ -1202,29 +1205,29 @@ function App() {
           />
         )}
 
-        {page === "patients" && (
-          <PatientsPage
-            key={patientsPageKey}
-            patients={patients}
-            onSelect={handleSelectPatient}
-            onDelete={handleDeletePatient}
-            onPatientUpdated={refreshPatientData}
-            onExportCsv={handleExportPatientsCsv}
-            selectedPatient={selectedPatient}
-            setNotice={setNotice}
-            canEdit={hasPermission("patients.write")}
-            canDelete={hasPermission("patients.delete")}
-            canReadBilling={hasPermission("billing.read")}
-            canReadLab={hasPermission("lab.read")}
-            ocrLanguage={ocrLanguage}
-            languages={languages}
-            refreshToken={patientDetailRefreshToken}
-          />
-        )}
+          {page === "patients" && (
+            <PatientsPage
+              key={patientsPageKey}
+              patients={patients}
+              onSelect={handleSelectPatient}
+              onDelete={handleDeletePatient}
+              onPatientUpdated={refreshPatientData}
+              onExportCsv={handleExportPatientsCsv}
+              selectedPatient={selectedPatient}
+              setNotice={setNotice}
+              canEdit={hasPermission("patients.write")}
+              canDelete={hasPermission("patients.delete")}
+              canReadBilling={hasPermission("billing.read")}
+              canReadLab={hasPermission("lab.read")}
+              ocrLanguage={ocrLanguage}
+              languages={languages}
+              refreshToken={patientDetailRefreshToken}
+            />
+          )}
 
-        {page === "readmit" && (
-          <ReadmitPage onSelect={handleSelectPatient} setNotice={setNotice} onReadmitComplete={refreshPatientData} ocrLanguage={ocrLanguage} />
-        )}
+          {page === "readmit" && (
+            <ReadmitPage onSelect={handleSelectPatient} setNotice={setNotice} onReadmitComplete={refreshPatientData} ocrLanguage={ocrLanguage} />
+          )}
 
         {page === "symptom-ai" && <SymptomAiPage setNotice={setNotice} onNavigate={navigateToPage} />}
         {page === "bulk-ai" && hasPermission("patients.bulk_ai.write") && <BulkPatientAiPage setNotice={setNotice} />}
@@ -1238,21 +1241,21 @@ function App() {
         {page === "billing-mode-breakdown" && hasPermission("billing.read") && <BillingPaymentModesPage setNotice={setNotice} />}
         {page === "billing-module-collections" && hasPermission("billing.read") && <BillingCollectionsPage setNotice={setNotice} />}
 
-        {page === "pharmacy" && hasPermission("pharmacy.read") && <PharmacyPage setNotice={setNotice} />}
+          {page === "pharmacy" && hasPermission("pharmacy.read") && <PharmacyPage setNotice={setNotice} />}
 
-        {page === "lab" && hasPermission("lab.read") && <LabPage setNotice={setNotice} />}
+          {page === "lab" && hasPermission("lab.read") && <LabPage setNotice={setNotice} />}
 
-        {page === "hrms" && hasPermission("hr.read") && <HrmsPage setNotice={setNotice} />}
+          {page === "hrms" && hasPermission("hr.read") && <HrmsPage setNotice={setNotice} />}
 
-        {page === "ot" && hasPermission("ot.read") && <OtPage setNotice={setNotice} />}
+          {page === "ot" && hasPermission("ot.read") && <OtPage setNotice={setNotice} />}
 
-        {page === "accounts" && hasPermission("accounts.read") && <AccountsOverviewPage setNotice={setNotice} />}
-        {page === "accounts-overview" && hasPermission("accounts.read") && <AccountsOverviewPage setNotice={setNotice} />}
-        {page === "accounts-ledger" && hasPermission("accounts.read") && <AccountsLedgerPage setNotice={setNotice} />}
-        {page === "accounts-vendor-payments" && hasPermission("accounts.read") && <AccountsVendorPaymentsPage setNotice={setNotice} />}
-        {page === "accounts-doctor-payouts" && hasPermission("accounts.read") && <AccountsDoctorPayoutsPage setNotice={setNotice} />}
+          {page === "accounts" && hasPermission("accounts.read") && <AccountsOverviewPage setNotice={setNotice} />}
+          {page === "accounts-overview" && hasPermission("accounts.read") && <AccountsOverviewPage setNotice={setNotice} />}
+          {page === "accounts-ledger" && hasPermission("accounts.read") && <AccountsLedgerPage setNotice={setNotice} />}
+          {page === "accounts-vendor-payments" && hasPermission("accounts.read") && <AccountsVendorPaymentsPage setNotice={setNotice} />}
+          {page === "accounts-doctor-payouts" && hasPermission("accounts.read") && <AccountsDoctorPayoutsPage setNotice={setNotice} />}
 
-        {page === "reports" && hasPermission("reports.read") && <ReportsPage setNotice={setNotice} />}
+          {page === "reports" && hasPermission("reports.read") && <ReportsPage setNotice={setNotice} />}
 
         {page === "employees" && hasPermission("employees.read") && (
           <EmployeesPage

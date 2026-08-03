@@ -116,9 +116,11 @@ def appointments_list():
     visit_type = request.args.get("visit_type")
     doctor_name = request.args.get("doctor_name")
     
-    # Enforce isolation for clinicians
-    if getattr(g, "current_user", {}).get("access_role") == "clinician":
-        doctor_name = g.current_user.get("full_name") or g.current_user.get("username")
+    # Clinician Isolation
+    doctor_name = None
+    current_user = getattr(g, "current_user", {})
+    if current_user.get("access_role") == "clinician" or (current_user.get("job_role") or "").strip().lower() == "doctor":
+        doctor_name = current_user.get("full_name") or current_user.get("username")
 
     patient_id = request.args.get("patient_id")
     return jsonify(
@@ -147,7 +149,37 @@ def appointments_create():
     )
     if validation_error:
         return validation_error
+        
     appointment_id, token_no = create_appointment(payload, hospital_id=current_hospital_id())
+    
+    # Handle consultation fee invoice if provided
+    consultation_fee = float(payload.get("consultation_fee") or 0)
+    if consultation_fee > 0:
+        invoice_no = f"INV-OP-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        invoice_id = create_invoice(
+            {
+                "invoice_no": invoice_no,
+                "patient_id": payload.get("patient_id"),
+                "module": "OP",
+                "doctor_name": payload.get("doctor_name"),
+                "total_amount": consultation_fee,
+                "paid_amount": consultation_fee,
+                "advance_amount": 0,
+                "refunded_amount": 0,
+                "payment_status": "paid",
+                "created_by": g.current_user.get("username") if hasattr(g, "current_user") else "",
+            },
+            hospital_id=current_hospital_id(),
+        )
+        payment_mode = normalize_payment_mode(payload.get("payment_mode", "cash"))
+        record_invoice_payment(
+            invoice_id,
+            consultation_fee,
+            payment_mode,
+            gateway_ref=None,
+            hospital_id=current_hospital_id()
+        )
+
     log_audit_event(
         "create",
         "appointments",

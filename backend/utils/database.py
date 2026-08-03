@@ -2279,7 +2279,222 @@ def ensure_ocr_portal_tables(conn):
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_ocr_service_accounts_owner "
         "ON ocr_service_accounts(hospital_id, username)"
     )
+
+    # Local OCR Portal vault + chat -- the separate ocr_portal/ microservice this
+    # module used to proxy to (Docker + Postgres + Qdrant + a GPU vLLM model) isn't
+    # available in this deployment, so upload/vault/knowledge-base/chat are all
+    # served locally instead (EasyOCR + Ollama, see ai/local_ocr_portal.py).
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS ocr_portal_documents (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            doc_category TEXT,
+            mime_type TEXT,
+            ocr_text TEXT,
+            confidence_score REAL,
+            status TEXT DEFAULT 'COMPLETED',
+            error_message TEXT,
+            in_kb INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ocr_portal_documents_owner "
+        "ON ocr_portal_documents(hospital_id, username)"
+    )
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS ocr_portal_chat_messages (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            citations TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ocr_portal_chat_owner "
+        "ON ocr_portal_chat_messages(hospital_id, username, session_id)"
+    )
     conn.commit()
+
+
+def create_ocr_portal_document(
+    hospital_id, username, filename, doc_category, mime_type, ocr_text,
+    confidence_score=None, status="COMPLETED", error_message=None,
+):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO ocr_portal_documents
+                (hospital_id, username, filename, doc_category, mime_type, ocr_text,
+                 confidence_score, status, error_message)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+            """,
+            (hospital_id, username, filename, doc_category, mime_type, ocr_text,
+             confidence_score, status, error_message),
+        )
+        document_id = cursor.fetchone()[0]
+        conn.commit()
+        return document_id
+
+
+def list_ocr_portal_documents(hospital_id, username):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, filename, doc_category, confidence_score, status, in_kb, created_at
+            FROM ocr_portal_documents
+            WHERE hospital_id = ? AND username = ?
+            ORDER BY created_at DESC
+            """,
+            (hospital_id, username),
+        )
+        return cursor.fetchall()
+
+
+def get_ocr_portal_document(document_id, hospital_id, username):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM ocr_portal_documents
+            WHERE id = ? AND hospital_id = ? AND username = ?
+            """,
+            (document_id, hospital_id, username),
+        )
+        return cursor.fetchone()
+
+
+def delete_ocr_portal_document(document_id, hospital_id, username):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM ocr_portal_documents WHERE id = ? AND hospital_id = ? AND username = ?",
+            (document_id, hospital_id, username),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def set_ocr_portal_document_kb_flag(document_id, hospital_id, username, in_kb: bool):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE ocr_portal_documents SET in_kb = ? WHERE id = ? AND hospital_id = ? AND username = ?",
+            (1 if in_kb else 0, document_id, hospital_id, username),
+        )
+        conn.commit()
+
+
+def list_ocr_portal_kb_documents(hospital_id, username):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, filename, doc_category FROM ocr_portal_documents
+            WHERE hospital_id = ? AND username = ? AND in_kb = 1
+            ORDER BY created_at DESC
+            """,
+            (hospital_id, username),
+        )
+        return cursor.fetchall()
+
+
+def save_ocr_portal_chat_message(hospital_id, username, session_id, role, content, citations=None):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO ocr_portal_chat_messages (hospital_id, username, session_id, role, content, citations)
+            VALUES (?, ?, ?, ?, ?, ?) RETURNING id
+            """,
+            (hospital_id, username, session_id, role, content, citations),
+        )
+        message_id = cursor.fetchone()[0]
+        conn.commit()
+        return message_id
+
+
+def list_ocr_portal_chat_history(hospital_id, username, session_id="default"):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT role, content, citations, created_at FROM ocr_portal_chat_messages
+            WHERE hospital_id = ? AND username = ? AND session_id = ?
+            ORDER BY created_at ASC
+            """,
+            (hospital_id, username, session_id),
+        )
+        return cursor.fetchall()
+
+
+def delete_ocr_portal_chat_history(hospital_id, username, session_id="default"):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM ocr_portal_chat_messages WHERE hospital_id = ? AND username = ? AND session_id = ?",
+            (hospital_id, username, session_id),
+        )
+        conn.commit()
+
+
+def search_ocr_portal_chunks(hospital_id, doc_ids, query_text, k=5):
+    """Cosine-similarity search restricted to this user's ingested OCR-portal chunks
+    (source_table='ocr_portal_documents', source_id in doc_ids) -- reuses the same
+    clinical_document_embeddings store as patient history search, just scoped
+    differently, so no new vector store is needed."""
+    from .embeddings import generate_embedding, decode_vector, cosine_similarity
+
+    if not doc_ids:
+        return []
+    query_vector = generate_embedding(query_text)
+    if query_vector is None:
+        return []
+    placeholders = ", ".join(["?"] * len(doc_ids))
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT source_id, content_text, embedding FROM clinical_document_embeddings
+            WHERE hospital_id = ? AND source_table = 'ocr_portal_documents'
+            AND source_id IN ({placeholders}) AND embedding IS NOT NULL
+            """,
+            (hospital_id, *doc_ids),
+        )
+        rows = cursor.fetchall()
+
+    scored = []
+    for row in rows:
+        candidate_vector = decode_vector(row["embedding"])
+        if not candidate_vector:
+            continue
+        similarity = cosine_similarity(query_vector, candidate_vector)
+        scored.append({"source_id": row["source_id"], "content_text": row["content_text"], "similarity": similarity})
+    scored.sort(key=lambda item: item["similarity"], reverse=True)
+    return scored[:k]
+
+
+def delete_ocr_portal_chunks(hospital_id, document_id):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM clinical_document_embeddings "
+            "WHERE hospital_id = ? AND source_table = 'ocr_portal_documents' AND source_id = ?",
+            (hospital_id, document_id),
+        )
+        conn.commit()
 
 
 def get_ocr_service_account(hospital_id, username):
@@ -3430,19 +3645,24 @@ def create_appointment(data, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT COALESCE(MAX(token_no), 0) AS value FROM appointments "
-            "WHERE DATE(appointment_date) = DATE(?) AND hospital_id = ?",
+            _to_sql_params("SELECT COALESCE(MAX(token_no), 0) AS value FROM appointments "
+            "WHERE DATE(appointment_date) = DATE(?) AND hospital_id = ?"),
             (appointment_day, scoped_hospital_id),
         )
         token_no = int((cursor.fetchone() or {"value": 0})["value"] or 0) + 1
-        cursor.execute(
-            """
+        
+        insert_sql = """
             INSERT INTO appointments (
                 patient_id, patient_name, visit_type, department, doctor_name,
                 appointment_date, token_no, status, notes, appointment_kind, follow_up_for,
                 reminder_sent_at, no_show_marked, hospital_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+        """
+        if IS_POSTGRES:
+            insert_sql += " RETURNING id"
+            
+        cursor.execute(
+            _to_sql_params(insert_sql),
             (
                 data.get("patient_id"),
                 data["patient_name"],
@@ -3460,7 +3680,12 @@ def create_appointment(data, hospital_id=None):
                 scoped_hospital_id,
             ),
         )
-        appointment_id = cursor.lastrowid
+        
+        if IS_POSTGRES:
+            appointment_id = cursor.fetchone()[0]
+        else:
+            appointment_id = cursor.lastrowid
+            
         conn.commit()
         return appointment_id, token_no
 
@@ -5711,7 +5936,13 @@ def list_pharmacy_sales(medicine_name=None, invoice_id=None, patient_id=None, ho
             params.append(patient_id)
         where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         cursor.execute(
-            f"SELECT * FROM pharmacy_sales{where_clause} ORDER BY sold_at DESC",
+            f"""
+            SELECT s.*, p.name as patient_name 
+            FROM pharmacy_sales s 
+            LEFT JOIN patients p ON s.patient_id = p.patient_id 
+            {where_clause.replace("hospital_id", "s.hospital_id").replace("medicine_name", "s.medicine_name").replace("invoice_id", "s.invoice_id").replace("patient_id", "s.patient_id")} 
+            ORDER BY s.sold_at DESC
+            """,
             tuple(params),
         )
         return cursor.fetchall()

@@ -190,16 +190,10 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
             nextFee = targetDoc.consultation_fee != null ? String(targetDoc.consultation_fee) : "0";
           }
         } else if (inDeptDocs.length === 0 && dept !== "General") {
-          // If the AI returned a department that has no doctors, fallback to General
-          const generalDocs = doctors.filter(d => (d.department || "").toLowerCase() === "general");
-          if (generalDocs.length > 0) {
-            const availableDocs = generalDocs.filter(d => d.status === "available");
-            const targetDoc = availableDocs.length > 0 ? availableDocs[0] : generalDocs[0];
-            if (targetDoc) {
-              nextDoctor = targetDoc.doctor_name || "";
-              nextFee = targetDoc.consultation_fee != null ? String(targetDoc.consultation_fee) : "0";
-            }
-          }
+          // If the AI or user selected a department that has no doctors, 
+          // leave the doctor field blank so they can type a guest doctor name.
+          nextDoctor = "";
+          nextFee = "0";
         }
       }
 
@@ -259,9 +253,10 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
     }
     setTriageLoading(true);
     try {
-      // Build list of departments that actually have registered doctors
+      // Pass all registered departments, even if no doctors are currently available.
       const availableDepartments = Array.from(
         new Set([
+          ...departments.map((d) => d.department_name),
           ...doctors.map((doc) => doc.department)
         ])
       ).filter(Boolean) as string[];
@@ -360,6 +355,8 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
           appointment_date: appointmentForm.appointment_date,
           status: "checked_in",
           notes: appointmentForm.notes.trim() || undefined,
+          consultation_fee: Number(appointmentForm.consultation_fee) || 0,
+          payment_mode: appointmentForm.payment_mode,
         }),
       });
       setAppointmentForm((prev) => ({

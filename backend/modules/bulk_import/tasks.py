@@ -109,10 +109,9 @@ def _heuristic_mapping(headers):
 
 
 def _suggest_mapping_via_llm(headers, sample_rows):
-    from ai.gemini_provider import GeminiLLMProvider
+    from ai.service import llm_provider
 
-    llm = GeminiLLMProvider()
-    if not llm.is_configured():
+    if not llm_provider.is_configured():
         return None
     sample_text = "\n".join(", ".join(str(v) for v in row) for row in sample_rows[:5])
     prompt = f"""You are mapping spreadsheet columns to a fixed set of patient-record fields.
@@ -128,7 +127,9 @@ field to that field name, e.g. {{"Patient Name": "name", "Mobile No": "phone"}}.
 that don't map to any target field. Do not invent target fields outside the list above.
 """
     try:
-        raw = llm.generate(prompt)
+        raw = llm_provider.generate(prompt, json_mode=True)
+        if not raw:
+            return None
         if raw.startswith("```"):
             raw = raw.strip("`").lstrip("json").strip()
         parsed = json.loads(raw)
@@ -140,6 +141,12 @@ that don't map to any target field. Do not invent target fields outside the list
 
 @shared_task
 def suggest_mapping_task(job_id):
+    """Guess the column mapping (LLM, falling back to keyword heuristics) and, as long as a
+    phone column was found, import immediately -- no manual per-column review step. A file
+    with hundreds/thousands of rows and unclear headers isn't something a user can usefully
+    hand-check row by row anyway; they search/filter the imported data with a prompt afterward
+    (see bulk_import_query), which is where "did this row actually match what I meant" is
+    actually decidable."""
     job = get_bulk_import_job_internal(job_id)
     if not job:
         return
@@ -151,14 +158,31 @@ def suggest_mapping_task(job_id):
         headers, row_iter = _read_header_and_rows(file_bytes, job["original_filename"], max_rows=SAMPLE_ROWS)
         sample_rows = list(row_iter)
 
-        suggested = _suggest_mapping_via_llm(headers, sample_rows) or _heuristic_mapping(headers)
+        # Start from the keyword heuristic, then let the LLM's guess override per-header --
+        # this way a partial/imperfect LLM response (e.g. it identifies name/area/condition
+        # but misses an oddly-named phone column) still keeps the heuristic's match for
+        # whatever it skipped, instead of an all-or-nothing choice between the two.
+        suggested = dict(_heuristic_mapping(headers))
+        suggested.update(_suggest_mapping_via_llm(headers, sample_rows) or {})
 
         update_bulk_import_job(
             job_id,
-            status="AWAITING_MAPPING",
             detected_columns=json.dumps(headers, separators=(",", ":")),
             suggested_mapping=json.dumps(suggested, separators=(",", ":")),
         )
+
+        if "phone" not in suggested.values():
+            update_bulk_import_job(
+                job_id,
+                status="FAILED",
+                error=(
+                    "Could not automatically find a phone number column in this file. "
+                    "Make sure it has a clearly labeled phone/mobile/contact column, then re-upload."
+                ),
+            )
+            return
+
+        import_rows_task(job_id, suggested)
     except Exception as exc:
         logger.exception("suggest_mapping_task failed for job %s", job_id)
         update_bulk_import_job(job_id, status="FAILED", error=str(exc))
