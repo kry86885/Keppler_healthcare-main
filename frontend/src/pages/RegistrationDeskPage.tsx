@@ -290,7 +290,7 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
       ).filter(Boolean) as string[];
 
       const availableDoctors = Array.from(
-        new Set(doctors.map((doc) => doc.doctor_name))
+        new Set(doctors.map((doc) => `${doc.doctor_name} (${doc.department || 'General'})`))
       ).filter(Boolean) as string[];
 
       const res = await apiFetch<{ department?: string; urgency?: string; reasoning?: string; doctor?: string }>("/api/symptom-ai/triage", {

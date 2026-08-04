@@ -229,17 +229,10 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
               >
                 <option value="">Select department...</option>
                 {departments.map((dept) => (
-                  <option key={dept.id} value={dept.department_name}>
+                  <option key={dept.id || dept.department_name} value={dept.department_name}>
                     {dept.department_name}
                   </option>
                 ))}
-                <option value="Cardiology">Cardiology</option>
-                <option value="Neurology">Neurology</option>
-                <option value="General Medicine">General Medicine</option>
-                <option value="Orthopedics">Orthopedics</option>
-                <option value="Dermatology">Dermatology</option>
-                <option value="ENT">ENT</option>
-                <option value="Pediatrics">Pediatrics</option>
               </Select>
             </div>
 

@@ -384,7 +384,12 @@ export default function PaymentCollectionPage({ setNotice, onNavigate }: Props) 
               </TableRow>
             </thead>
             <tbody>
-              {filteredTransactions.map((tx, i) => (
+              {Object.values(filteredTransactions.reduce((acc, tx) => {
+                const key = tx.patientId || tx.patientName;
+                if (!acc[key]) acc[key] = { ...tx, amount: 0 };
+                acc[key].amount += Number(tx.amount);
+                return acc;
+              }, {} as Record<string, typeof filteredTransactions[0]>)).map((tx, i) => (
                 <TableRow key={tx.id}>
                   <TableCell style={{ color: "#94a3b8", fontSize: "0.8rem" }}>{i + 1}</TableCell>
                   <TableCell style={{ fontWeight: 600 }}>{tx.patientName}</TableCell>

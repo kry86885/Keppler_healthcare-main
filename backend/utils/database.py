@@ -723,26 +723,8 @@ def ensure_department_master_scope(conn):
         """
     )
 
-    # Seed standard multi-specialty hospital departments
-    standard_departments = [
-        "Cardiology", "Neurology", "Orthopedics", "General Medicine", 
-        "Pediatrics", "Gynecology", "Dermatology", "Oncology", 
-        "ENT", "Ophthalmology", "Psychiatry", "Urology", 
-        "Gastroenterology", "Pulmonology", "Endocrinology", 
-        "Nephrology", "Rheumatology", "General Surgery"
-    ]
-    
-    insert_conflict = "ON CONFLICT DO NOTHING"
-    insert_prefix = "INSERT INTO"
-    
-    for dept in standard_departments:
-        cursor.execute(
-            f"""
-            {insert_prefix} department_master (hospital_id, department_name)
-            VALUES (?, ?) {insert_conflict}
-            """,
-            (default_hospital_id, dept)
-        )
+    # No longer seed default departments here as per user request.
+    # Departments should only be created explicitly by admin or inferred from employee directory.
     return
 
     cursor.execute("PRAGMA table_info(department_master)")
@@ -5775,8 +5757,17 @@ def list_departments(hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM department_master WHERE hospital_id = ? AND deleted_at IS NULL ORDER BY department_name ASC",
-            (scoped_hospital_id,),
+            """
+            SELECT id, department_name, created_at, hospital_id
+            FROM department_master
+            WHERE hospital_id = ?
+            UNION
+            SELECT NULL as id, department as department_name, NULL as created_at, hospital_id
+            FROM users
+            WHERE hospital_id = ? AND department IS NOT NULL AND department != '' AND status = 'active' AND LOWER(job_role) = 'doctor'
+            ORDER BY department_name ASC
+            """,
+            (scoped_hospital_id, scoped_hospital_id),
         )
         return cursor.fetchall()
 

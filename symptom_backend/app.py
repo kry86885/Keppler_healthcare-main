@@ -875,18 +875,19 @@ def triage():
         "Based on this, determine the most appropriate hospital department, the urgency, a brief reasoning, and the specific doctor if mentioned or clearly applicable.\n\n"
         f"Available departments: [{departments_str}]\n"
         f"Available doctors: [{doctors_str}]\n\n"
+        "Important Rule for 'doctor': If you select a doctor, ONLY return their exact name. Strip out any department in parentheses (e.g. return 'Dr Srinu' instead of 'Dr Srinu (Cardiology)').\n\n"
         "Respond ONLY with a valid JSON object in this exact format:\n"
         "{\n"
         '  "department": "Must EXACTLY match one of the Available departments",\n'
         '  "urgency": "Routine | Urgent | Emergency",\n'
-        '  "reasoning": "Brief explanation (1-2 sentences)",\n'
-        '  "doctor": "Specific doctor name if requested or highly relevant, else empty string"\n'
+        '  "reasoning": "Brief explanation",\n'
+        '  "doctor": "Doctor name or empty string"\n'
         "}"
     )
 
     try:
         _rate_limit()
-        text, error = _gemini_generate(prompt, json_mode=True, temperature=0, max_tokens=300)
+        text, error = _gemini_generate(prompt, json_mode=True, temperature=0)
         if error or not text:
             raise RuntimeError(error or "Empty response from model")
         import json
@@ -907,7 +908,7 @@ def triage():
         fallback_triage = {
             "department": fallback_dept,
             "urgency": "Routine",
-            "reasoning": f"AI Triage fallback due to error. Defaulting to {fallback_dept}."
+            "reasoning": f"AI Triage fallback due to error. {str(exc)}"
         }
         return jsonify(fallback_triage), 200
 

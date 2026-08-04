@@ -394,7 +394,12 @@ export default function DailyMonthlyReportsPage({ setNotice, onNavigate }: Props
               </TableRow>
             </thead>
             <tbody>
-              {filteredRecords.map((r, i) => (
+              {Object.values(filteredRecords.reduce((acc, r) => {
+                const key = r.patientId || r.patientName;
+                if (!acc[key]) acc[key] = { ...r, amount: 0 };
+                acc[key].amount += Number(r.amount);
+                return acc;
+              }, {} as Record<string, typeof filteredRecords[0]>)).map((r, i) => (
                 <TableRow key={r.id}>
                   <TableCell style={{ color: "#94a3b8", fontSize: "0.8rem" }}>{i + 1}</TableCell>
                   <TableCell style={{ fontWeight: 600 }}>{r.patientName}</TableCell>
