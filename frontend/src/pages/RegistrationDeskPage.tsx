@@ -168,9 +168,24 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
 
   const handleDepartmentChange = (dept: string) => {
     setAppointmentForm((prev) => {
-      // Match case-insensitively against departments list and doctors list
-      const matchedDeptObj = departments.find(d => (d.department_name || "").toLowerCase() === (dept || "").toLowerCase());
-      const matchedDocDept = doctors.find(d => (d.department || "").toLowerCase() === (dept || "").toLowerCase());
+      const safeDept = (dept || "").trim().toLowerCase();
+      // Match case-insensitively against departments list and doctors list, fallback to fuzzy substring match
+      let matchedDeptObj = departments.find(d => (d.department_name || "").trim().toLowerCase() === safeDept);
+      if (!matchedDeptObj) {
+        matchedDeptObj = departments.find(d => {
+          const dbName = (d.department_name || "").trim().toLowerCase();
+          return dbName.includes(safeDept) || safeDept.includes(dbName);
+        });
+      }
+
+      let matchedDocDept = doctors.find(d => (d.department || "").trim().toLowerCase() === safeDept);
+      if (!matchedDocDept) {
+        matchedDocDept = doctors.find(d => {
+          const dbName = (d.department || "").trim().toLowerCase();
+          return dbName.includes(safeDept) || safeDept.includes(dbName);
+        });
+      }
+
       const targetDeptName = matchedDeptObj ? matchedDeptObj.department_name : (matchedDocDept?.department || dept);
 
       let nextDoctor = prev.doctor_name;
@@ -205,16 +220,29 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
     setAppointmentForm((prev) => {
       let nextDept = prev.department;
       let nextFee = prev.consultation_fee;
+      let targetDocName = docName;
 
       if (docName && doctors.length > 0) {
-        const foundDoc = doctors.find(d => (d.doctor_name || "").toLowerCase() === docName.toLowerCase());
+        const cleanDocName = docName.trim().toLowerCase();
+        // 1. Try exact match
+        let foundDoc = doctors.find(d => (d.doctor_name || "").trim().toLowerCase() === cleanDocName);
+        
+        // 2. Try substring match (e.g. "Emily Chen" matches "Dr. Emily Chen")
+        if (!foundDoc) {
+          foundDoc = doctors.find(d => {
+            const dbName = (d.doctor_name || "").trim().toLowerCase();
+            return dbName.includes(cleanDocName) || cleanDocName.includes(dbName);
+          });
+        }
+
         if (foundDoc) {
+          targetDocName = foundDoc.doctor_name || docName;
           nextDept = foundDoc.department || prev.department;
           nextFee = foundDoc.consultation_fee != null ? String(foundDoc.consultation_fee) : prev.consultation_fee;
         }
       }
 
-      return { ...prev, doctor_name: docName, department: nextDept, consultation_fee: nextFee };
+      return { ...prev, doctor_name: targetDocName, department: nextDept, consultation_fee: nextFee };
     });
   };
 
@@ -261,12 +289,19 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
         ])
       ).filter(Boolean) as string[];
 
-      const res = await apiFetch<{ department?: string; urgency?: string; reasoning?: string }>("/api/symptom-ai/triage", {
+      const availableDoctors = Array.from(
+        new Set(doctors.map((doc) => doc.doctor_name))
+      ).filter(Boolean) as string[];
+
+      const res = await apiFetch<{ department?: string; urgency?: string; reasoning?: string; doctor?: string }>("/api/symptom-ai/triage", {
         method: "POST",
-        body: JSON.stringify({ symptoms: symptomsText, available_departments: availableDepartments }),
+        body: JSON.stringify({ symptoms: symptomsText, available_departments: availableDepartments, available_doctors: availableDoctors }),
       });
       if (res.department) {
         handleDepartmentChange(res.department);
+      }
+      if (res.doctor && res.doctor.trim()) {
+        handleDoctorChange(res.doctor.trim());
       }
       setTriageResult({ urgency: res.urgency, reasoning: res.reasoning });
     } catch (error) {

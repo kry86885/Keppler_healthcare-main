@@ -131,7 +131,7 @@ export default function DailyMonthlyReportsPage({ setNotice, onNavigate }: Props
             Track day-wise and month-wise collections across all modules.
           </p>
         </div>
-        <Button variant="outline" onClick={() => onNavigate && onNavigate("dashboard")}>
+        <Button variant="secondary" onClick={() => onNavigate && onNavigate("dashboard")}>
           ← Back to Dashboard
         </Button>
       </div>

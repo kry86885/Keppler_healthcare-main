@@ -1,11 +1,10 @@
 import os
-import sqlite3
 import json
 import uuid as uuid_lib
 from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 
-from .embeddings import generate_embedding, cosine_similarity, encode_vector, decode_vector, EMBEDDING_MODEL
+from .embeddings import generate_embedding, cosine_similarity, encode_vector, decode_vector, VLLM_EMBEDDING_MODEL
 
 from dotenv import load_dotenv
 
@@ -13,45 +12,31 @@ try:
     import psycopg2
     from psycopg2 import pool as psycopg2_pool
     from psycopg2.extras import DictCursor
-except Exception:  # pragma: no cover - optional when using sqlite only
+except Exception:
     psycopg2 = None
     psycopg2_pool = None
     DictCursor = None
 
 try:
     import psycopg
-except Exception:  # pragma: no cover - optional fallback
+except Exception:
     psycopg = None
 
-# Use project-level database so Streamlit and Flask share data
-DEFAULT_DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "healthcare.db"))
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"), override=False)
 DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip()
-DB_PATH_ENV = os.getenv("DB_PATH")
-DB_PATH = DB_PATH_ENV or DEFAULT_DB_PATH
-DB_ENGINE = (os.getenv("DB_ENGINE") or "sqlite").strip().lower()
 IST_TIMEZONE = timezone(timedelta(hours=5, minutes=30))
 DEFAULT_HOSPITAL_CODE = (os.getenv("DEFAULT_HOSPITAL_CODE") or "hosp-default").strip().lower()
-IS_POSTGRES = (
-    DB_ENGINE == "postgres" or
-    DATABASE_URL.startswith("postgres://") or
-    DATABASE_URL.startswith("postgresql://")
-)
-
 
 def current_ist_datetime():
     return datetime.now(IST_TIMEZONE)
 
-
 def current_ist_timestamp():
     return current_ist_datetime().isoformat(timespec="seconds")
-
 
 def normalize_hospital_code(code):
     value = (code or DEFAULT_HOSPITAL_CODE).strip().lower()
     return value or DEFAULT_HOSPITAL_CODE
-
 
 def _normalize_database_url(url: str) -> str:
     if url.startswith("postgres://"):
@@ -61,42 +46,14 @@ def _normalize_database_url(url: str) -> str:
         url += f"{sep}connect_timeout=5"
     return url
 
-
 def _to_sql_params(sql: str):
-    if IS_POSTGRES:
-        return sql.replace("?", "%s")
-    return sql
-
-
-def _resolve_sqlite_db_path():
-    # Re-read from environment every call so that test fixtures (which set
-    # os.environ["DB_PATH"] before importing app code) take effect even though
-    # the module-level DB_PATH constant is captured at import time.
-    _db_path = os.environ.get("DB_PATH") or DB_PATH
-    preferred_path = os.path.abspath(_db_path)
-    preferred_dir = os.path.dirname(preferred_path) or "."
-    try:
-        os.makedirs(preferred_dir, exist_ok=True)
-        if os.access(preferred_dir, os.W_OK):
-            return preferred_path
-    except OSError:
-        pass
-
-    fallback_path = os.path.abspath(DEFAULT_DB_PATH)
-    fallback_dir = os.path.dirname(fallback_path) or "."
-    os.makedirs(fallback_dir, exist_ok=True)
-    return fallback_path
-
+    return sql.replace("?", "%s")
 
 _PG_POOL = None
 _PG_POOL_MINCONN = int(os.getenv("PG_POOL_MIN", "1"))
 _PG_POOL_MAXCONN = int(os.getenv("PG_POOL_MAX", "20"))
 
-
 def _get_pg_pool():
-    # Lazily created (not at import time) so sqlite-only setups never touch this,
-    # and so gunicorn's `-w 3` worker *processes* each build their own pool after
-    # forking rather than sharing one pool object across process boundaries.
     global _PG_POOL
     if _PG_POOL is None:
         try:
@@ -111,98 +68,62 @@ def _get_pg_pool():
             raise
     return _PG_POOL
 
-
 @contextmanager
 def get_connection(autocommit: bool = False):
-    if IS_POSTGRES:
-        if psycopg2 is not None:
-            # Pooled: previously every call opened a brand-new TCP+TLS+auth
-            # connection and threw it away on exit, which is the dominant cost
-            # of a request against a remote/serverless Postgres (e.g. Neon) and
-            # becomes the real bottleneck well before CPU or storage do under
-            # concurrent load. Reusing pooled connections avoids paying that
-            # handshake on every single request.
-            pool = _get_pg_pool()
-            conn = None
-            for attempt in range(3):
-                try:
-                    conn = pool.getconn()
-                    # Ping the connection to ensure it's alive
-                    with conn.cursor() as cur:
-                        cur.execute("SELECT 1")
-                    # psycopg2 automatically starts a transaction for the SELECT 1.
-                    # We must rollback so we can safely change autocommit mode later.
-                    conn.rollback()
-                    break
-                except (psycopg2.OperationalError, psycopg2.InterfaceError):
-                    # Connection is dead, throw it away
-                    if conn:
-                        pool.putconn(conn, close=True)
-                        conn = None
-                    # If this is the last attempt, it might mean the DB is completely unreachable
-                    if attempt == 2:
-                        raise
-            
-            if not conn:
-                raise RuntimeError("Failed to get a working connection from pool")
-
-            # A pooled connection may have been left in a different autocommit
-            # mode by whichever request used it last -- always set explicitly.
-            conn.autocommit = autocommit
+    if psycopg2 is not None:
+        pool = _get_pg_pool()
+        conn = None
+        for attempt in range(3):
             try:
-                yield _CompatConnection(conn, postgres=True)
-            except Exception:
-                if not autocommit:
-                    try:
-                        conn.rollback()
-                    except (psycopg2.OperationalError, psycopg2.InterfaceError):
-                        pass # Ignore rollback errors on already closed/broken connections
-                raise
-            finally:
-                pool.putconn(conn)
-            return
-        elif psycopg is not None:
-            # Rare fallback driver, only used if psycopg2 isn't installed --
-            # pooling it would need the separate psycopg_pool package, not
-            # worth adding for a path that's not the primary one.
-            conn = psycopg.connect(_normalize_database_url(DATABASE_URL))
-            if autocommit:
-                conn.autocommit = True
-            try:
-                yield _CompatConnection(conn, postgres=True)
-            finally:
-                conn.close()
-            return
-        else:
-            raise RuntimeError(
-                "PostgreSQL driver missing for DATABASE_URL. "
-                "Install dependencies with `pip install -r backend/requirements.txt` "
-                "or install either `psycopg2-binary` or `psycopg[binary]`. "
-                "If you want SQLite locally, set DB_ENGINE=sqlite."
-            )
+                conn = pool.getconn()
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+                conn.rollback()
+                break
+            except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                if conn:
+                    pool.putconn(conn, close=True)
+                    conn = None
+                if attempt == 2:
+                    raise
+        
+        if not conn:
+            raise RuntimeError("Failed to get a working connection from pool")
 
-    sqlite_path = _resolve_sqlite_db_path()
-    isolation = None if autocommit else ""
-    conn = sqlite3.connect(sqlite_path, check_same_thread=False, timeout=30.0, isolation_level=isolation)
-    if not os.environ.get("SQLITE_NO_WAL"):
+        conn.autocommit = autocommit
         try:
-            conn.execute("PRAGMA journal_mode=WAL")
+            yield _CompatConnection(conn)
         except Exception:
-            pass
-    conn.row_factory = sqlite3.Row
-    try:
-        yield _CompatConnection(conn, postgres=False)
-    finally:
-        conn.close()
-
+            if not autocommit:
+                try:
+                    conn.rollback()
+                except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                    pass
+            raise
+        finally:
+            pool.putconn(conn)
+        return
+    elif psycopg is not None:
+        conn = psycopg.connect(_normalize_database_url(DATABASE_URL))
+        if autocommit:
+            conn.autocommit = True
+        try:
+            yield _CompatConnection(conn)
+        finally:
+            conn.close()
+        return
+    else:
+        raise RuntimeError(
+            "PostgreSQL driver missing for DATABASE_URL. "
+            "Install dependencies with `pip install -r backend/requirements.txt`"
+        )
 
 class _CompatConnection:
-    def __init__(self, conn, postgres=False):
+    def __init__(self, conn):
         self._conn = conn
-        self._postgres = postgres
 
     def cursor(self):
-        return _CompatCursor(self._conn.cursor(), self._postgres)
+        return _CompatCursor(self._conn.cursor())
 
     def commit(self):
         return self._conn.commit()
@@ -220,9 +141,8 @@ class _CompatConnection:
 
 
 class _CompatCursor:
-    def __init__(self, cursor, postgres=False):
+    def __init__(self, cursor):
         self._cursor = cursor
-        self._postgres = postgres
 
     def execute(self, query, params=None):
         sql = _to_sql_params(query)
@@ -242,14 +162,13 @@ class _CompatCursor:
 
     @property
     def lastrowid(self):
-        if self._postgres:
-            try:
-                self._cursor.execute("SELECT lastval()")
-                val = self._cursor.fetchone()
-                return val[0] if val else None
-            except Exception:
-                # If lastval() fails (e.g. no sequence was touched), safely ignore
-                pass
+        try:
+            self._cursor.execute("SELECT lastval()")
+            val = self._cursor.fetchone()
+            return val[0] if val else None
+        except Exception:
+            # If lastval() fails (e.g. no sequence was touched), safely ignore
+            pass
         return getattr(self._cursor, "lastrowid", None)
 
     @property
@@ -257,7 +176,7 @@ class _CompatCursor:
         return self._cursor.rowcount
 
     def _wrap_row(self, row):
-        if row is None or not self._postgres:
+        if row is None:
             return row
         if hasattr(row, "keys"):
             return row
@@ -323,25 +242,15 @@ def create_hospital(hospital_code, name=None):
         existing = cursor.fetchone()
         if existing:
             return existing["id"], False
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                INSERT INTO hospitals (code, name, status)
-                VALUES (?, ?, 'active')
-                RETURNING id
-                """,
-                (code, hospital_name),
-            )
-            hospital_id = cursor.fetchone()[0]
-        else:
-            cursor.execute(
-                """
-                INSERT INTO hospitals (code, name, status)
-                VALUES (?, ?, 'active')
-                """,
-                (code, hospital_name),
-            )
-            hospital_id = cursor.lastrowid
+        cursor.execute(
+            """
+            INSERT INTO hospitals (code, name, status)
+            VALUES (?, ?, 'active')
+            RETURNING id
+            """,
+            (code, hospital_name),
+        )
+        hospital_id = cursor.fetchone()[0]
         conn.commit()
         return hospital_id, True
 
@@ -407,316 +316,146 @@ def init_database():
     with get_connection(autocommit=True) as conn:
         cursor = conn.cursor()
 
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS hospitals (
-                    id SERIAL PRIMARY KEY,
-                    code TEXT UNIQUE NOT NULL,
-                    name TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
-                    disabled_at TIMESTAMP,
-                    disabled_reason TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS hospitals (
+                id SERIAL PRIMARY KEY,
+                code TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
+                disabled_at TIMESTAMP,
+                disabled_reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        else:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS hospitals (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    code TEXT UNIQUE NOT NULL,
-                    name TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
-                    disabled_at TIMESTAMP,
-                    disabled_reason TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS patient_feedback (
+                id SERIAL PRIMARY KEY,
+                patient_id INTEGER,
+                emr_id INTEGER,
+                rating INTEGER,
+                comment TEXT,
+                status TEXT DEFAULT 'New',
+                received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                whatsapp_message_id TEXT,
+                phone_number TEXT
             )
-
-        if not IS_POSTGRES:
-            migrate_users_table_if_needed(conn)
-
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS patient_feedback (
-                    id SERIAL PRIMARY KEY,
-                    patient_id INTEGER,
-                    emr_id INTEGER,
-                    rating INTEGER,
-                    comment TEXT,
-                    status TEXT DEFAULT 'New',
-                    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    whatsapp_message_id TEXT,
-                    phone_number TEXT
-                )
-                """
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS whatsapp_templates (
+                id SERIAL PRIMARY KEY,
+                template_key TEXT UNIQUE NOT NULL,
+                content TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        else:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS patient_feedback (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    patient_id INTEGER,
-                    emr_id INTEGER,
-                    rating INTEGER,
-                    comment TEXT,
-                    status TEXT DEFAULT 'New',
-                    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    whatsapp_message_id TEXT,
-                    phone_number TEXT
-                )
-                """
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL CHECK(role IN ('employee', 'staff')),
+                access_role TEXT DEFAULT 'receptionist' CHECK(access_role IN ('receptionist', 'clinician', 'hr_manager', 'owner')),
+                user_type TEXT DEFAULT 'normal' CHECK(user_type IN ('admin', 'normal')),
+                module_access TEXT DEFAULT '[]',
+                job_role TEXT,
+                full_name TEXT,
+                email TEXT,
+                phone TEXT,
+                department TEXT,
+                employee_id TEXT UNIQUE,
+                date_joined TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
+                address TEXT,
+                emergency_contact TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS whatsapp_templates (
-                    id SERIAL PRIMARY KEY,
-                    template_key TEXT UNIQUE NOT NULL,
-                    content TEXT NOT NULL,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sessions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                ip_address TEXT,
+                user_agent TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id)
             )
-        else:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS whatsapp_templates (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    template_key TEXT UNIQUE NOT NULL,
-                    content TEXT NOT NULL,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS patients (
+                id SERIAL PRIMARY KEY,
+                patient_id TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                middle_name TEXT,
+                last_name TEXT NOT NULL,
+                dob DATE,
+                age INTEGER,
+                weight REAL,
+                height REAL,
+                gender TEXT,
+                pregnant INTEGER DEFAULT 0,
+                allergies TEXT,
+                symptoms TEXT,
+                phone TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
-                    username TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    role TEXT NOT NULL CHECK(role IN ('employee', 'staff')),
-                    access_role TEXT DEFAULT 'receptionist' CHECK(access_role IN ('receptionist', 'clinician', 'hr_manager', 'owner')),
-                    user_type TEXT DEFAULT 'normal' CHECK(user_type IN ('admin', 'normal')),
-                    module_access TEXT DEFAULT '[]',
-                    job_role TEXT,
-                    full_name TEXT,
-                    email TEXT,
-                    phone TEXT,
-                    department TEXT,
-                    employee_id TEXT UNIQUE,
-                    date_joined TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    status TEXT DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
-                    address TEXT,
-                    emergency_contact TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admissions (
+                id SERIAL PRIMARY KEY,
+                patient_id TEXT NOT NULL,
+                admission_date TIMESTAMP NOT NULL,
+                discharge_date DATE,
+                notes TEXT,
+                FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
             )
-        else:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    role TEXT NOT NULL CHECK(role IN ('employee', 'staff')),
-                    access_role TEXT DEFAULT 'receptionist' CHECK(access_role IN ('receptionist', 'clinician', 'hr_manager', 'owner')),
-                    user_type TEXT DEFAULT 'normal' CHECK(user_type IN ('admin', 'normal')),
-                    module_access TEXT DEFAULT '[]',
-                    job_role TEXT,
-                    full_name TEXT,
-                    email TEXT,
-                    phone TEXT,
-                    department TEXT,
-                    employee_id TEXT UNIQUE,
-                    date_joined TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    status TEXT DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
-                    address TEXT,
-                    emergency_contact TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS documents (
+                id SERIAL PRIMARY KEY,
+                patient_id TEXT NOT NULL,
+                admission_id INTEGER,
+                doc_type TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                file_name TEXT,
+                mime_type TEXT,
+                file_data BYTEA,
+                ocr_text TEXT,
+                ocr_language TEXT DEFAULT 'en',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+                FOREIGN KEY (admission_id) REFERENCES admissions(id)
             )
-
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS sessions (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL,
-                    token_hash TEXT NOT NULL UNIQUE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    expires_at TIMESTAMP NOT NULL,
-                    ip_address TEXT,
-                    user_agent TEXT,
-                    FOREIGN KEY (user_id) REFERENCES users(id)
-                )
-                """
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS whatsapp_media (
+                token TEXT PRIMARY KEY,
+                content BYTEA NOT NULL,
+                mime_type TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        else:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS sessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    token_hash TEXT NOT NULL UNIQUE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    expires_at TIMESTAMP NOT NULL,
-                    ip_address TEXT,
-                    user_agent TEXT,
-                    FOREIGN KEY (user_id) REFERENCES users(id)
-                )
-                """
-            )
-
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS patients (
-                    id SERIAL PRIMARY KEY,
-                    patient_id TEXT UNIQUE NOT NULL,
-                    name TEXT NOT NULL,
-                    middle_name TEXT,
-                    last_name TEXT NOT NULL,
-                    dob DATE,
-                    age INTEGER,
-                    weight REAL,
-                    height REAL,
-                    gender TEXT,
-                    pregnant INTEGER DEFAULT 0,
-                    allergies TEXT,
-                    symptoms TEXT,
-                    phone TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-        else:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS patients (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    patient_id TEXT UNIQUE NOT NULL,
-                    name TEXT NOT NULL,
-                    middle_name TEXT,
-                    last_name TEXT NOT NULL,
-                    dob DATE,
-                    age INTEGER,
-                    weight REAL,
-                    height REAL,
-                    gender TEXT,
-                    pregnant INTEGER DEFAULT 0,
-                    allergies TEXT,
-                    symptoms TEXT,
-                    phone TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS admissions (
-                    id SERIAL PRIMARY KEY,
-                    patient_id TEXT NOT NULL,
-                    admission_date TIMESTAMP NOT NULL,
-                    discharge_date DATE,
-                    notes TEXT,
-                    FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
-                )
-                """
-            )
-        else:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS admissions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    patient_id TEXT NOT NULL,
-                    admission_date TIMESTAMP NOT NULL,
-                    discharge_date DATE,
-                    notes TEXT,
-                    FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
-                )
-                """
-            )
-
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS documents (
-                    id SERIAL PRIMARY KEY,
-                    patient_id TEXT NOT NULL,
-                    admission_id INTEGER,
-                    doc_type TEXT NOT NULL,
-                    file_path TEXT NOT NULL,
-                    file_name TEXT,
-                    mime_type TEXT,
-                    file_data BYTEA,
-                    ocr_text TEXT,
-                    ocr_language TEXT DEFAULT 'en',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
-                    FOREIGN KEY (admission_id) REFERENCES admissions(id)
-                )
-                """
-            )
-        else:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS documents (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    patient_id TEXT NOT NULL,
-                    admission_id INTEGER,
-                    doc_type TEXT NOT NULL,
-                    file_path TEXT NOT NULL,
-                    file_name TEXT,
-                    mime_type TEXT,
-                    file_data BLOB,
-                    ocr_text TEXT,
-                    ocr_language TEXT DEFAULT 'en',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
-                    FOREIGN KEY (admission_id) REFERENCES admissions(id)
-                )
-                """
-            )
-
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS whatsapp_media (
-                    token TEXT PRIMARY KEY,
-                    content BYTEA NOT NULL,
-                    mime_type TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-        else:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS whatsapp_media (
-                    token TEXT PRIMARY KEY,
-                    content BLOB NOT NULL,
-                    mime_type TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-
+            """
+        )
         ensure_hospital_columns(conn)
         ensure_patient_columns(conn)
         ensure_user_columns(conn)
@@ -745,8 +484,7 @@ def init_database():
 
 def migrate_users_table_if_needed(conn):
     """Migrate legacy users table role constraint (doctor/staff) to employee/staff."""
-    if IS_POSTGRES:
-        return
+    return
     cursor = conn.cursor()
     cursor.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'"
@@ -834,7 +572,7 @@ def migrate_users_table_if_needed(conn):
 def ensure_hospital_columns(conn):
     cursor = conn.cursor()
 
-    id_type = "SERIAL PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    id_type = "SERIAL PRIMARY KEY"
     cursor.execute(
         f"""
         CREATE TABLE IF NOT EXISTS hospitals (
@@ -848,23 +586,14 @@ def ensure_hospital_columns(conn):
         )
         """
     )
-    if IS_POSTGRES:
-        cursor.execute(
-            """
-            INSERT INTO hospitals (code, name, status)
-            VALUES (?, ?, 'active')
-            ON CONFLICT (code) DO NOTHING
-            """,
-            (DEFAULT_HOSPITAL_CODE, "Default Hospital"),
-        )
-    else:
-        cursor.execute(
-            """
-            INSERT OR IGNORE INTO hospitals (code, name, status)
-            VALUES (?, ?, 'active')
-            """,
-            (DEFAULT_HOSPITAL_CODE, "Default Hospital"),
-        )
+    cursor.execute(
+        """
+        INSERT INTO hospitals (code, name, status)
+        VALUES (?, ?, 'active')
+        ON CONFLICT (code) DO NOTHING
+        """,
+        (DEFAULT_HOSPITAL_CODE, "Default Hospital"),
+    )
     cursor.execute("SELECT id FROM hospitals WHERE code = ?", (DEFAULT_HOSPITAL_CODE,))
     default_row = cursor.fetchone()
     if not default_row:
@@ -872,23 +601,17 @@ def ensure_hospital_columns(conn):
     default_hospital_id = default_row[0]
 
     for table_name in ("users", "sessions", "patients", "admissions", "documents"):
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name = ? AND column_name = 'hospital_id'
-                """,
-                (table_name,),
-            )
-            has_hospital_col = cursor.fetchone() is not None
-            if not has_hospital_col:
-                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN hospital_id INTEGER")
-        else:
-            cursor.execute(f"PRAGMA table_info({table_name})")
-            columns = {row[1] for row in cursor.fetchall()}
-            if "hospital_id" not in columns:
-                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN hospital_id INTEGER")
+        cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = ? AND column_name = 'hospital_id'
+            """,
+            (table_name,),
+        )
+        has_hospital_col = cursor.fetchone() is not None
+        if not has_hospital_col:
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN hospital_id INTEGER")
 
         cursor.execute(
             f"UPDATE {table_name} SET hospital_id = ? WHERE hospital_id IS NULL",
@@ -914,20 +637,15 @@ def ensure_financial_hospital_columns(conn):
     default_hospital_id = default_row[0]
 
     for table_name in _FINANCIAL_TABLES_WITH_PATIENT_ID:
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name = ? AND column_name = 'hospital_id'
-                """,
-                (table_name,),
-            )
-            has_hospital_col = cursor.fetchone() is not None
-        else:
-            cursor.execute(f"PRAGMA table_info({table_name})")
-            has_hospital_col = "hospital_id" in {row[1] for row in cursor.fetchall()}
-
+        cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = ? AND column_name = 'hospital_id'
+            """,
+            (table_name,),
+        )
+        has_hospital_col = cursor.fetchone() is not None
         if not has_hospital_col:
             cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN hospital_id INTEGER")
 
@@ -949,18 +667,13 @@ def ensure_financial_hospital_columns(conn):
         )
 
     # invoice_payments has no patient_id of its own -- backfill through the invoice it belongs to.
-    if IS_POSTGRES:
-        cursor.execute(
-            """
-            SELECT column_name FROM information_schema.columns
-            WHERE table_name = 'invoice_payments' AND column_name = 'hospital_id'
-            """
-        )
-        payments_has_hospital_col = cursor.fetchone() is not None
-    else:
-        cursor.execute("PRAGMA table_info(invoice_payments)")
-        payments_has_hospital_col = "hospital_id" in {row[1] for row in cursor.fetchall()}
-
+    cursor.execute(
+        """
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'invoice_payments' AND column_name = 'hospital_id'
+        """
+    )
+    payments_has_hospital_col = cursor.fetchone() is not None
     if not payments_has_hospital_col:
         cursor.execute("ALTER TABLE invoice_payments ADD COLUMN hospital_id INTEGER")
 
@@ -989,28 +702,48 @@ def ensure_department_master_scope(conn):
         return
     default_hospital_id = default_row[0]
 
-    if IS_POSTGRES:
+    cursor.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'department_master'
+        """
+    )
+    columns = {row[0] for row in cursor.fetchall()}
+    if "hospital_id" not in columns:
+        cursor.execute("ALTER TABLE department_master ADD COLUMN hospital_id INTEGER")
+    cursor.execute(
+        "UPDATE department_master SET hospital_id = ? WHERE hospital_id IS NULL",
+        (default_hospital_id,),
+    )
+    cursor.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_department_master_hospital_name
+        ON department_master(hospital_id, department_name)
+        """
+    )
+
+    # Seed standard multi-specialty hospital departments
+    standard_departments = [
+        "Cardiology", "Neurology", "Orthopedics", "General Medicine", 
+        "Pediatrics", "Gynecology", "Dermatology", "Oncology", 
+        "ENT", "Ophthalmology", "Psychiatry", "Urology", 
+        "Gastroenterology", "Pulmonology", "Endocrinology", 
+        "Nephrology", "Rheumatology", "General Surgery"
+    ]
+    
+    insert_conflict = "ON CONFLICT DO NOTHING"
+    insert_prefix = "INSERT INTO"
+    
+    for dept in standard_departments:
         cursor.execute(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = 'department_master'
-            """
+            f"""
+            {insert_prefix} department_master (hospital_id, department_name)
+            VALUES (?, ?) {insert_conflict}
+            """,
+            (default_hospital_id, dept)
         )
-        columns = {row[0] for row in cursor.fetchall()}
-        if "hospital_id" not in columns:
-            cursor.execute("ALTER TABLE department_master ADD COLUMN hospital_id INTEGER")
-        cursor.execute(
-            "UPDATE department_master SET hospital_id = ? WHERE hospital_id IS NULL",
-            (default_hospital_id,),
-        )
-        cursor.execute(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_department_master_hospital_name
-            ON department_master(hospital_id, department_name)
-            """
-        )
-        return
+    return
 
     cursor.execute("PRAGMA table_info(department_master)")
     columns_info = cursor.fetchall()
@@ -1027,7 +760,7 @@ def ensure_department_master_scope(conn):
         old_hospital_expr = "hospital_id" if "hospital_id" in columns else "NULL"
         old_head_expr = "mapped_head_employee_id" if "mapped_head_employee_id" in columns else "NULL"
         old_created_expr = "created_at" if "created_at" in columns else "CURRENT_TIMESTAMP"
-        id_type = "SERIAL PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        id_type = "SERIAL PRIMARY KEY"
         cursor.execute("ALTER TABLE department_master RENAME TO department_master_old")
         cursor.execute(
             f"""
@@ -1041,8 +774,8 @@ def ensure_department_master_scope(conn):
             )
             """
         )
-        insert_conflict = "ON CONFLICT DO NOTHING" if IS_POSTGRES else ""
-        insert_prefix = "INSERT INTO" if IS_POSTGRES else "INSERT OR IGNORE INTO"
+        insert_conflict = "ON CONFLICT DO NOTHING"
+        insert_prefix = "INSERT INTO"
         cursor.execute(
             f"""
             {insert_prefix} department_master (
@@ -1082,8 +815,8 @@ def ensure_department_master_scope(conn):
         "Nephrology", "Rheumatology", "General Surgery"
     ]
     
-    insert_conflict = "ON CONFLICT DO NOTHING" if IS_POSTGRES else ""
-    insert_prefix = "INSERT INTO" if IS_POSTGRES else "INSERT OR IGNORE INTO"
+    insert_conflict = "ON CONFLICT DO NOTHING"
+    insert_prefix = "INSERT INTO"
     
     for dept in standard_departments:
         cursor.execute(
@@ -1105,18 +838,14 @@ def ensure_patient_columns(conn):
 def ensure_user_columns(conn):
     """Add any missing columns to users table for older databases."""
     cursor = conn.cursor()
-    if IS_POSTGRES:
-        cursor.execute(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = 'users'
-            """
-        )
-        existing = {row[0] for row in cursor.fetchall()}
-    else:
-        cursor.execute("PRAGMA table_info(users)")
-        existing = {row[1] for row in cursor.fetchall()}
+    cursor.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'users'
+        """
+    )
+    existing = {row[0] for row in cursor.fetchall()}
     expected = {
         "hospital_id": "INTEGER",
         "username": "TEXT",
@@ -1185,31 +914,27 @@ def ensure_user_columns(conn):
 def ensure_document_columns(conn):
     """Add any missing document storage columns for older databases."""
     cursor = conn.cursor()
-    if IS_POSTGRES:
-        cursor.execute(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = 'documents'
-            """
-        )
-        existing = {row[0] for row in cursor.fetchall()}
-    else:
-        cursor.execute("PRAGMA table_info(documents)")
-        existing = {row[1] for row in cursor.fetchall()}
+    cursor.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'documents'
+        """
+    )
+    existing = {row[0] for row in cursor.fetchall()}
     if "file_name" not in existing:
         cursor.execute("ALTER TABLE documents ADD COLUMN file_name TEXT")
     if "mime_type" not in existing:
         cursor.execute("ALTER TABLE documents ADD COLUMN mime_type TEXT")
     if "file_data" not in existing:
-        cursor.execute("ALTER TABLE documents ADD COLUMN file_data BYTEA" if IS_POSTGRES else "ALTER TABLE documents ADD COLUMN file_data BLOB")
+        cursor.execute("ALTER TABLE documents ADD COLUMN file_data BYTEA")
     if "structured_data" not in existing:
         cursor.execute("ALTER TABLE documents ADD COLUMN structured_data TEXT")
 
 
 def ensure_hospai_module_tables(conn):
     cursor = conn.cursor()
-    id_column = "SERIAL PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    id_column = "SERIAL PRIMARY KEY"
 
     cursor.execute(
         f"""
@@ -1312,18 +1037,14 @@ def ensure_hospai_module_tables(conn):
         """
     )
 
-    if IS_POSTGRES:
-        cursor.execute(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = 'invoices'
-            """
-        )
-        invoice_columns = {row[0] for row in cursor.fetchall()}
-    else:
-        cursor.execute("PRAGMA table_info(invoices)")
-        invoice_columns = {row[1] for row in cursor.fetchall()}
+    cursor.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'invoices'
+        """
+    )
+    invoice_columns = {row[0] for row in cursor.fetchall()}
     if "advance_amount" not in invoice_columns:
         cursor.execute("ALTER TABLE invoices ADD COLUMN advance_amount REAL DEFAULT 0")
     if "refunded_amount" not in invoice_columns:
@@ -1391,18 +1112,14 @@ def ensure_hospai_module_tables(conn):
         """
     )
 
-    if IS_POSTGRES:
-        cursor.execute(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = 'pharmacy_sales'
-            """
-        )
-        pharmacy_sales_columns = {row[0] for row in cursor.fetchall()}
-    else:
-        cursor.execute("PRAGMA table_info(pharmacy_sales)")
-        pharmacy_sales_columns = {row[1] for row in cursor.fetchall()}
+    cursor.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'pharmacy_sales'
+        """
+    )
+    pharmacy_sales_columns = {row[0] for row in cursor.fetchall()}
     if "patient_id" not in pharmacy_sales_columns:
         cursor.execute("ALTER TABLE pharmacy_sales ADD COLUMN patient_id TEXT")
     if "prescription_ref" not in pharmacy_sales_columns:
@@ -1469,18 +1186,14 @@ def ensure_hospai_module_tables(conn):
         """
     )
 
-    if IS_POSTGRES:
-        cursor.execute(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = 'diagnostics'
-            """
-        )
-        diagnostic_columns = {row[0] for row in cursor.fetchall()}
-    else:
-        cursor.execute("PRAGMA table_info(diagnostics)")
-        diagnostic_columns = {row[1] for row in cursor.fetchall()}
+    cursor.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'diagnostics'
+        """
+    )
+    diagnostic_columns = {row[0] for row in cursor.fetchall()}
     if "sample_barcode" not in diagnostic_columns:
         cursor.execute("ALTER TABLE diagnostics ADD COLUMN sample_barcode TEXT")
     if "order_status" not in diagnostic_columns:
@@ -1583,18 +1296,14 @@ def ensure_hospai_module_tables(conn):
         """
     )
 
-    if IS_POSTGRES:
-        cursor.execute(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = 'appointments'
-            """
-        )
-        appointment_columns = {row[0] for row in cursor.fetchall()}
-    else:
-        cursor.execute("PRAGMA table_info(appointments)")
-        appointment_columns = {row[1] for row in cursor.fetchall()}
+    cursor.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'appointments'
+        """
+    )
+    appointment_columns = {row[0] for row in cursor.fetchall()}
     if "appointment_kind" not in appointment_columns:
         cursor.execute("ALTER TABLE appointments ADD COLUMN appointment_kind TEXT DEFAULT 'new'")
     if "follow_up_for" not in appointment_columns:
@@ -1794,24 +1503,7 @@ def ensure_hospai_module_tables(conn):
 
     cursor.execute("SELECT COUNT(*) FROM doctors")
     doc_count = cursor.fetchone()[0]
-    if doc_count == 0:
-        default_docs = [
-            ("Dr. Robert Vance", "Cardiology", 150.0, 75.0, "available"),
-            ("Dr. Emily Chen", "Neurology", 160.0, 80.0, "available"),
-            ("Dr. Michael Ross", "General Medicine", 100.0, 50.0, "available"),
-            ("Dr. Sophia Martinez", "Orthopedics", 140.0, 70.0, "available"),
-            ("Dr. James Wilson", "Dermatology", 120.0, 60.0, "available"),
-            ("Dr. Anita Patel", "ENT", 110.0, 55.0, "available"),
-            ("Dr. David Kim", "Pediatrics", 115.0, 60.0, "available"),
-        ]
-        for name, dept, c_fee, r_fee, status in default_docs:
-            cursor.execute(
-                _to_sql_params("""
-                INSERT INTO doctors (doctor_name, department, consultation_fee, review_fee, status)
-                VALUES (?, ?, ?, ?, ?)
-                """),
-                (name, dept, c_fee, r_fee, status),
-            )
+    # Intentionally leaving doctors table empty instead of seeding hardcoded misleading names
 
 
 # ==================== Schema hardening: uuid + audit/soft-delete columns ====================
@@ -1830,21 +1522,18 @@ OPERATIONAL_TABLES = (
 
 
 def _table_columns(cursor, table_name: str) -> set:
-    if IS_POSTGRES:
-        cursor.execute(
-            "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
-            (table_name,),
-        )
-        return {row[0] for row in cursor.fetchall()}
-    cursor.execute(f"PRAGMA table_info({table_name})")
-    return {row[1] for row in cursor.fetchall()}
+    cursor.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+        (table_name,),
+    )
+    return {row[0] for row in cursor.fetchall()}
 
 
 def _ensure_column(cursor, table_name: str, column_name: str, sqlite_type: str, postgres_type: str):
     existing = _table_columns(cursor, table_name)
     if column_name in existing:
         return
-    column_type = postgres_type if IS_POSTGRES else sqlite_type
+    column_type = postgres_type
     cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
 
 
@@ -1897,29 +1586,10 @@ def ensure_operational_audit_columns(conn):
             f"CREATE INDEX IF NOT EXISTS idx_{table_name}_deleted_at ON {table_name}(deleted_at)"
         )
 
-        if IS_POSTGRES:
-            # Native since Postgres 13, no pgcrypto/uuid-ossp extension required.
-            cursor.execute(
-                f"ALTER TABLE {table_name} ALTER COLUMN uuid SET DEFAULT gen_random_uuid()::text"
-            )
-        else:
-            cursor.execute(
-                f"""
-                CREATE TRIGGER IF NOT EXISTS trg_{table_name}_uuid
-                AFTER INSERT ON {table_name}
-                WHEN NEW.uuid IS NULL
-                BEGIN
-                    UPDATE {table_name} SET uuid = (
-                        lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' ||
-                        substr(lower(hex(randomblob(2))), 2) || '-' ||
-                        substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' ||
-                        lower(hex(randomblob(6)))
-                    )
-                    WHERE rowid = NEW.rowid;
-                END;
-                """
-            )
-
+        # Native since Postgres 13, no pgcrypto/uuid-ossp extension required.
+        cursor.execute(
+            f"ALTER TABLE {table_name} ALTER COLUMN uuid SET DEFAULT gen_random_uuid()::text"
+        )
     # Composite indexes for common tenant-scoped dashboard/report lookups.
     composite_indexes = [
         ("idx_patients_hospital_created", "patients", "hospital_id, created_at"),
@@ -1949,7 +1619,7 @@ def ensure_vector_store_tables(conn):
     `vector` extension to be pre-installed. See utils/embeddings.py for rationale.
     """
     cursor = conn.cursor()
-    id_column = "SERIAL PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    id_column = "SERIAL PRIMARY KEY"
     cursor.execute(
         f"""
         CREATE TABLE IF NOT EXISTS clinical_document_embeddings (
@@ -2101,7 +1771,7 @@ def ensure_symptom_ai_tables(conn):
     patient records (this is a staff-user knowledge base, not part of a patient chart).
     """
     cursor = conn.cursor()
-    id_column = "SERIAL PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    id_column = "SERIAL PRIMARY KEY"
     cursor.execute(
         f"""
         CREATE TABLE IF NOT EXISTS symptom_ai_documents (
@@ -2259,7 +1929,7 @@ def ensure_ocr_portal_tables(conn):
     hospitals or Hosp AI sessions itself.
     """
     cursor = conn.cursor()
-    id_column = "SERIAL PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    id_column = "SERIAL PRIMARY KEY"
     cursor.execute(
         f"""
         CREATE TABLE IF NOT EXISTS ocr_service_accounts (
@@ -2559,7 +2229,7 @@ def store_document_embedding(source_table, source_id, content_text, hospital_id=
                 source_id,
                 content_text,
                 encode_vector(vector),
-                EMBEDDING_MODEL,
+                VLLM_EMBEDDING_MODEL,
             ),
         )
         conn.commit()
@@ -2644,7 +2314,7 @@ def ensure_patient_bulk_columns(conn):
 
 def ensure_bulk_import_jobs_table(conn):
     cursor = conn.cursor()
-    id_column = "SERIAL PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    id_column = "SERIAL PRIMARY KEY"
     cursor.execute(
         f"""
         CREATE TABLE IF NOT EXISTS bulk_import_jobs (
@@ -2959,25 +2629,15 @@ def add_admission(patient_id, notes="", hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         admission_timestamp = current_ist_timestamp()
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                INSERT INTO admissions (hospital_id, patient_id, admission_date, notes)
-                VALUES (?, ?, ?, ?)
-                RETURNING id
-                """,
-                (scoped_hospital_id, patient_id, admission_timestamp, notes),
-            )
-            admission_id = cursor.fetchone()[0]
-        else:
-            cursor.execute(
-                """
-                INSERT INTO admissions (hospital_id, patient_id, admission_date, notes)
-                VALUES (?, ?, ?, ?)
+        cursor.execute(
+            """
+            INSERT INTO admissions (hospital_id, patient_id, admission_date, notes)
+            VALUES (?, ?, ?, ?)
+            RETURNING id
             """,
-                (scoped_hospital_id, patient_id, admission_timestamp, notes),
-            )
-            admission_id = cursor.lastrowid
+            (scoped_hospital_id, patient_id, admission_timestamp, notes),
+        )
+        admission_id = cursor.fetchone()[0]
         conn.commit()
         return admission_id
 
@@ -3009,53 +2669,29 @@ def add_document(
     with get_connection() as conn:
         cursor = conn.cursor()
         upload_timestamp = current_ist_timestamp()
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                INSERT INTO documents (
-                    hospital_id, patient_id, admission_id, doc_type, file_path, file_name, mime_type, file_data, ocr_text, ocr_language, created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                RETURNING id
-                """,
-                (
-                    scoped_hospital_id,
-                    patient_id,
-                    admission_id,
-                    doc_type,
-                    file_path,
-                    file_name,
-                    mime_type,
-                    file_data,
-                    ocr_text,
-                    ocr_language,
-                    upload_timestamp,
-                ),
+        cursor.execute(
+            """
+            INSERT INTO documents (
+                hospital_id, patient_id, admission_id, doc_type, file_path, file_name, mime_type, file_data, ocr_text, ocr_language, created_at
             )
-            document_id = cursor.fetchone()[0]
-        else:
-            cursor.execute(
-                """
-                INSERT INTO documents (
-                    hospital_id, patient_id, admission_id, doc_type, file_path, file_name, mime_type, file_data, ocr_text, ocr_language, created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
             """,
-                (
-                    scoped_hospital_id,
-                    patient_id,
-                    admission_id,
-                    doc_type,
-                    file_path,
-                    file_name,
-                    mime_type,
-                    file_data,
-                    ocr_text,
-                    ocr_language,
-                    upload_timestamp,
-                ),
-            )
-            document_id = cursor.lastrowid
+            (
+                scoped_hospital_id,
+                patient_id,
+                admission_id,
+                doc_type,
+                file_path,
+                file_name,
+                mime_type,
+                file_data,
+                ocr_text,
+                ocr_language,
+                upload_timestamp,
+            ),
+        )
+        document_id = cursor.fetchone()[0]
         conn.commit()
         return document_id
 
@@ -3218,52 +2854,28 @@ def get_dashboard_analytics(days=14, include_employee=False, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                SELECT DATE(created_at) AS day, COUNT(*) AS count
-                FROM patients
-                WHERE hospital_id = ? AND DATE(created_at) >= CURRENT_DATE - (%s * INTERVAL '1 day')
-                GROUP BY DATE(created_at)
-                ORDER BY day ASC
-                """,
-                (scoped_hospital_id, window_days - 1),
-            )
-        else:
-            cursor.execute(
-                """
-                SELECT DATE(created_at) AS day, COUNT(*) AS count
-                FROM patients
-                WHERE hospital_id = ? AND DATE(created_at) >= DATE('now', ?)
-                GROUP BY DATE(created_at)
-                ORDER BY day ASC
-                """,
-                (scoped_hospital_id, f"-{window_days - 1} days"),
-            )
+        cursor.execute(
+            """
+            SELECT DATE(created_at) AS day, COUNT(*) AS count
+            FROM patients
+            WHERE hospital_id = ? AND DATE(created_at) >= CURRENT_DATE - (%s * INTERVAL '1 day')
+            GROUP BY DATE(created_at)
+            ORDER BY day ASC
+            """,
+            (scoped_hospital_id, window_days - 1),
+        )
         patient_trend_map = {row["day"]: row["count"] for row in cursor.fetchall()}
 
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                SELECT DATE(created_at) AS day, COUNT(*) AS count
-                FROM documents
-                WHERE hospital_id = ? AND DATE(created_at) >= CURRENT_DATE - (%s * INTERVAL '1 day')
-                GROUP BY DATE(created_at)
-                ORDER BY day ASC
-                """,
-                (scoped_hospital_id, window_days - 1),
-            )
-        else:
-            cursor.execute(
-                """
-                SELECT DATE(created_at) AS day, COUNT(*) AS count
-                FROM documents
-                WHERE hospital_id = ? AND DATE(created_at) >= DATE('now', ?)
-                GROUP BY DATE(created_at)
-                ORDER BY day ASC
-                """,
-                (scoped_hospital_id, f"-{window_days - 1} days"),
-            )
+        cursor.execute(
+            """
+            SELECT DATE(created_at) AS day, COUNT(*) AS count
+            FROM documents
+            WHERE hospital_id = ? AND DATE(created_at) >= CURRENT_DATE - (%s * INTERVAL '1 day')
+            GROUP BY DATE(created_at)
+            ORDER BY day ASC
+            """,
+            (scoped_hospital_id, window_days - 1),
+        )
         document_trend_map = {row["day"]: row["count"] for row in cursor.fetchall()}
 
         cursor.execute(
@@ -3421,61 +3033,33 @@ def add_employee(data, hospital_id=None):
     scoped_hospital_id = hospital_id or data.get("hospital_id") or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                INSERT INTO users (hospital_id, username, password_hash, role, job_role, full_name, email, phone,
-                                   department, employee_id, status, address, emergency_contact, access_role, user_type, module_access)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                RETURNING id
-                """,
-                (
-                    scoped_hospital_id,
-                    data["username"],
-                    data["password_hash"],
-                    data.get("role", "employee"),
-                    data.get("job_role"),
-                    data.get("full_name"),
-                    data.get("email"),
-                    data.get("phone"),
-                    data.get("department"),
-                    data["employee_id"],
-                    data.get("status", "active"),
-                    data.get("address"),
-                    data.get("emergency_contact"),
-                    data.get("access_role") or ("clinician" if str(data.get("job_role", "")).lower() == "doctor" else "receptionist"),
-                    data.get("user_type", "normal"),
-                    json.dumps(data.get("module_access", []), separators=(",", ":")),
-                ),
-            )
-            employee_pk = cursor.fetchone()[0]
-        else:
-            cursor.execute(
-                """
-                INSERT INTO users (hospital_id, username, password_hash, role, job_role, full_name, email, phone,
-                                   department, employee_id, status, address, emergency_contact, access_role, user_type, module_access)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        cursor.execute(
+            """
+            INSERT INTO users (hospital_id, username, password_hash, role, job_role, full_name, email, phone,
+                               department, employee_id, status, address, emergency_contact, access_role, user_type, module_access)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
             """,
-                (
-                    scoped_hospital_id,
-                    data["username"],
-                    data["password_hash"],
-                    data.get("role", "employee"),
-                    data.get("job_role"),
-                    data.get("full_name"),
-                    data.get("email"),
-                    data.get("phone"),
-                    data.get("department"),
-                    data["employee_id"],
-                    data.get("status", "active"),
-                    data.get("address"),
-                    data.get("emergency_contact"),
-                    data.get("access_role") or ("clinician" if str(data.get("job_role", "")).lower() == "doctor" else "receptionist"),
-                    data.get("user_type", "normal"),
-                    json.dumps(data.get("module_access", []), separators=(",", ":")),
-                ),
-            )
-            employee_pk = cursor.lastrowid
+            (
+                scoped_hospital_id,
+                data["username"],
+                data["password_hash"],
+                data.get("role", "employee"),
+                data.get("job_role"),
+                data.get("full_name"),
+                data.get("email"),
+                data.get("phone"),
+                data.get("department"),
+                data["employee_id"],
+                data.get("status", "active"),
+                data.get("address"),
+                data.get("emergency_contact"),
+                data.get("access_role") or ("clinician" if str(data.get("job_role", "")).lower() == "doctor" else "receptionist"),
+                data.get("user_type", "normal"),
+                json.dumps(data.get("module_access", []), separators=(",", ":")),
+            ),
+        )
+        employee_pk = cursor.fetchone()[0]
         conn.commit()
         return employee_pk
 
@@ -3658,9 +3242,8 @@ def create_appointment(data, hospital_id=None):
                 reminder_sent_at, no_show_marked, hospital_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-        if IS_POSTGRES:
-            insert_sql += " RETURNING id"
-            
+        insert_sql += " RETURNING id"
+        
         cursor.execute(
             _to_sql_params(insert_sql),
             (
@@ -3681,11 +3264,7 @@ def create_appointment(data, hospital_id=None):
             ),
         )
         
-        if IS_POSTGRES:
-            appointment_id = cursor.fetchone()[0]
-        else:
-            appointment_id = cursor.lastrowid
-            
+        appointment_id = cursor.fetchone()[0]
         conn.commit()
         return appointment_id, token_no
 
@@ -3805,18 +3384,8 @@ def list_doctors(department=None, hospital_id=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        # UNION: doctors added via the Doctors Roster form + users with job_role=Doctor
+        # Only return doctors added via the Employee Management (users table) for this hospital
         query = """
-            SELECT
-                d.id as id,
-                d.doctor_name as doctor_name,
-                d.department as department,
-                d.consultation_fee as consultation_fee,
-                d.review_fee as review_fee,
-                d.status as status,
-                'roster' as source
-            FROM doctors d
-            UNION
             SELECT
                 u.id as id,
                 u.full_name as doctor_name,
@@ -3868,6 +3437,7 @@ def delete_doctor(doctor_id):
         return cursor.rowcount > 0
 
 def get_suggested_doctors(department=None, region=None):
+    scoped_hospital_id = resolve_hospital_id()
     region_dept_map = {
         "chest": "Cardiology",
         "head": "Neurology",
@@ -3889,34 +3459,27 @@ def get_suggested_doctors(department=None, region=None):
         cursor = conn.cursor()
         query = """
             SELECT 
-                COALESCE(d.id, u.id) as id,
-                COALESCE(u.full_name, d.doctor_name) as doctor_name,
-                COALESCE(u.department, d.department) as department,
-                COALESCE(d.consultation_fee, 0.0) as consultation_fee,
-                COALESCE(d.review_fee, 0.0) as review_fee,
-                COALESCE(d.status, u.status, 'available') as status
-            FROM users u
-            LEFT JOIN doctors d ON LOWER(u.full_name) = LOWER(d.doctor_name)
-            WHERE u.job_role = 'Doctor'
-            
-            UNION
-            
-            SELECT 
-                id, doctor_name, department, consultation_fee, review_fee, status
-            FROM doctors
-            WHERE NOT EXISTS (
-                SELECT 1 FROM users u WHERE LOWER(u.full_name) = LOWER(doctors.doctor_name) AND u.job_role = 'Doctor'
-            )
+                id as id,
+                full_name as doctor_name,
+                department as department,
+                0.0 as consultation_fee,
+                0.0 as review_fee,
+                status as status
+            FROM users
+            WHERE job_role = 'Doctor' AND hospital_id = ?
         """
         if target_dept:
             cursor.execute(
                 _to_sql_params(f"SELECT * FROM ({query}) AS combined WHERE LOWER(department) LIKE LOWER(?) ORDER BY doctor_name"),
-                (f"%{target_dept}%",),
+                (scoped_hospital_id, f"%{target_dept}%",)
             )
             matched = [dict(row) for row in cursor.fetchall()]
             if matched:
                 return matched
-        cursor.execute(f"SELECT * FROM ({query}) AS combined ORDER BY doctor_name")
+        cursor.execute(
+            _to_sql_params(f"SELECT * FROM ({query}) AS combined ORDER BY doctor_name"),
+            (scoped_hospital_id,)
+        )
         return [dict(row) for row in cursor.fetchall()]
 
 
@@ -5076,8 +4639,7 @@ def create_invoice(data, hospital_id=None):
                 advance_amount, refunded_amount, hospital_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-        if IS_POSTGRES:
-            insert_sql += " RETURNING id"
+        insert_sql += " RETURNING id"
         cursor.execute(
             insert_sql,
             (
@@ -5100,7 +4662,7 @@ def create_invoice(data, hospital_id=None):
                 scoped_hospital_id,
             ),
         )
-        invoice_id = cursor.fetchone()[0] if IS_POSTGRES else cursor.lastrowid
+        invoice_id = cursor.fetchone()[0]
         conn.commit()
         return invoice_id
 
@@ -5282,8 +4844,7 @@ def record_invoice_payment(invoice_id, data):
                 invoice_id, amount, payment_mode, gateway_ref, converted_from_mode, converted_to_mode, hospital_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
         """
-        if IS_POSTGRES:
-            payment_insert_sql += " RETURNING id"
+        payment_insert_sql += " RETURNING id"
         cursor.execute(
             payment_insert_sql,
             (
@@ -5296,7 +4857,7 @@ def record_invoice_payment(invoice_id, data):
                 invoice["hospital_id"],
             ),
         )
-        payment_id = cursor.fetchone()[0] if IS_POSTGRES else cursor.lastrowid
+        payment_id = cursor.fetchone()[0]
         cursor.execute(
             """
             UPDATE invoices
@@ -5432,32 +4993,18 @@ def get_revenue_summary(hospital_id=None):
         )
         by_module = [dict(row) for row in cursor.fetchall()]
 
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                SELECT
-                    COALESCE(SUM(CASE WHEN due_amount > 0 AND CURRENT_TIMESTAMP - created_at < INTERVAL '31 days' THEN due_amount ELSE 0 END), 0) AS bucket_0_30,
-                    COALESCE(SUM(CASE WHEN due_amount > 0 AND CURRENT_TIMESTAMP - created_at >= INTERVAL '31 days' AND CURRENT_TIMESTAMP - created_at < INTERVAL '61 days' THEN due_amount ELSE 0 END), 0) AS bucket_31_60,
-                    COALESCE(SUM(CASE WHEN due_amount > 0 AND CURRENT_TIMESTAMP - created_at >= INTERVAL '61 days' AND CURRENT_TIMESTAMP - created_at < INTERVAL '91 days' THEN due_amount ELSE 0 END), 0) AS bucket_61_90,
-                    COALESCE(SUM(CASE WHEN due_amount > 0 AND CURRENT_TIMESTAMP - created_at >= INTERVAL '91 days' THEN due_amount ELSE 0 END), 0) AS bucket_91_plus
-                FROM invoices
-                WHERE hospital_id = ?
-                """,
-                (scoped_hospital_id,),
-            )
-        else:
-            cursor.execute(
-                """
-                SELECT
-                    COALESCE(SUM(CASE WHEN due_amount > 0 AND julianday('now') - julianday(created_at) <= 30 THEN due_amount ELSE 0 END), 0) AS bucket_0_30,
-                    COALESCE(SUM(CASE WHEN due_amount > 0 AND julianday('now') - julianday(created_at) > 30 AND julianday('now') - julianday(created_at) <= 60 THEN due_amount ELSE 0 END), 0) AS bucket_31_60,
-                    COALESCE(SUM(CASE WHEN due_amount > 0 AND julianday('now') - julianday(created_at) > 60 AND julianday('now') - julianday(created_at) <= 90 THEN due_amount ELSE 0 END), 0) AS bucket_61_90,
-                    COALESCE(SUM(CASE WHEN due_amount > 0 AND julianday('now') - julianday(created_at) > 90 THEN due_amount ELSE 0 END), 0) AS bucket_91_plus
-                FROM invoices
-                WHERE hospital_id = ?
-                """,
-                (scoped_hospital_id,),
-            )
+        cursor.execute(
+            """
+            SELECT
+                COALESCE(SUM(CASE WHEN due_amount > 0 AND CURRENT_TIMESTAMP - created_at < INTERVAL '31 days' THEN due_amount ELSE 0 END), 0) AS bucket_0_30,
+                COALESCE(SUM(CASE WHEN due_amount > 0 AND CURRENT_TIMESTAMP - created_at >= INTERVAL '31 days' AND CURRENT_TIMESTAMP - created_at < INTERVAL '61 days' THEN due_amount ELSE 0 END), 0) AS bucket_31_60,
+                COALESCE(SUM(CASE WHEN due_amount > 0 AND CURRENT_TIMESTAMP - created_at >= INTERVAL '61 days' AND CURRENT_TIMESTAMP - created_at < INTERVAL '91 days' THEN due_amount ELSE 0 END), 0) AS bucket_61_90,
+                COALESCE(SUM(CASE WHEN due_amount > 0 AND CURRENT_TIMESTAMP - created_at >= INTERVAL '91 days' THEN due_amount ELSE 0 END), 0) AS bucket_91_plus
+            FROM invoices
+            WHERE hospital_id = ?
+            """,
+            (scoped_hospital_id,),
+        )
         aging = dict(cursor.fetchone() or {})
 
         cursor.execute(
@@ -5598,39 +5145,20 @@ def get_reports_overview(hospital_id=None):
         )
         payment_status_breakdown = [dict(row) for row in cursor.fetchall()]
 
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                SELECT AVG(
-                    GREATEST(
-                        EXTRACT(EPOCH FROM (COALESCE(discharge_date::timestamp, CURRENT_TIMESTAMP) - admission_date)) / 86400.0,
-                        0
-                    )
-                ) AS avg_los,
-                COUNT(*) AS admission_count
-                FROM admissions
-                WHERE hospital_id = ?
-                """,
-                (scoped_hospital_id,),
-            )
-        else:
-            cursor.execute(
-                """
-                SELECT AVG(
-                    CASE
-                        WHEN discharge_date IS NOT NULL AND julianday(discharge_date) - julianday(admission_date) > 0
-                        THEN julianday(discharge_date) - julianday(admission_date)
-                        WHEN discharge_date IS NULL AND julianday('now') - julianday(admission_date) > 0
-                        THEN julianday('now') - julianday(admission_date)
-                        ELSE 0
-                    END
-                ) AS avg_los,
-                COUNT(*) AS admission_count
-                FROM admissions
-                WHERE hospital_id = ?
-                """,
-                (scoped_hospital_id,),
-            )
+        cursor.execute(
+            """
+            SELECT AVG(
+                GREATEST(
+                    EXTRACT(EPOCH FROM (COALESCE(discharge_date::timestamp, CURRENT_TIMESTAMP) - admission_date)) / 86400.0,
+                    0
+                )
+            ) AS avg_los,
+            COUNT(*) AS admission_count
+            FROM admissions
+            WHERE hospital_id = ?
+            """,
+            (scoped_hospital_id,),
+        )
         alos_row = cursor.fetchone()
         average_los_days = round(float((alos_row or {"avg_los": 0})["avg_los"] or 0), 2)
         admission_count = int((alos_row or {"admission_count": 0})["admission_count"] or 0)
@@ -6661,68 +6189,39 @@ def get_hospital_dashboard_summary(hospital_id=None):
 
 def ensure_pharmacy_prescriptions_tables(conn):
     cursor = conn.cursor()
-    from utils.database import IS_POSTGRES
     
-    if IS_POSTGRES:
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS pharmacy_prescriptions (
-                id SERIAL PRIMARY KEY,
-                hospital_id INTEGER NOT NULL,
-                patient_id TEXT NOT NULL,
-                doctor_username TEXT NOT NULL,
-                doc_id INTEGER,
-                medicines_json TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pending',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                fulfilled_at TIMESTAMP,
-                FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
-            )
-            """
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pharmacy_prescriptions (
+            id SERIAL PRIMARY KEY,
+            hospital_id INTEGER NOT NULL,
+            patient_id TEXT NOT NULL,
+            doctor_username TEXT NOT NULL,
+            doc_id INTEGER,
+            medicines_json TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            fulfilled_at TIMESTAMP,
+            FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
         )
-    else:
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS pharmacy_prescriptions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                hospital_id INTEGER NOT NULL,
-                patient_id TEXT NOT NULL,
-                doctor_username TEXT NOT NULL,
-                doc_id INTEGER,
-                medicines_json TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pending',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                fulfilled_at TIMESTAMP,
-                FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
-            )
-            """
-        )
+        """
+    )
     conn.commit()
 
 
 def create_pharmacy_prescription(hospital_id, patient_id, doctor_username, medicines_json, doc_id=None):
-    from utils.database import get_connection, IS_POSTGRES
+    from utils.database import get_connection
     with get_connection() as conn:
         cursor = conn.cursor()
-        if IS_POSTGRES:
-            cursor.execute(
-                """
-                INSERT INTO pharmacy_prescriptions (hospital_id, patient_id, doctor_username, doc_id, medicines_json)
-                VALUES (?, ?, ?, ?, ?)
-                RETURNING id
-                """,
-                (hospital_id, patient_id, doctor_username, doc_id, medicines_json)
-            )
-            pid = cursor.fetchone()[0]
-        else:
-            cursor.execute(
-                """
-                INSERT INTO pharmacy_prescriptions (hospital_id, patient_id, doctor_username, doc_id, medicines_json)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (hospital_id, patient_id, doctor_username, doc_id, medicines_json)
-            )
-            pid = cursor.lastrowid
+        cursor.execute(
+            """
+            INSERT INTO pharmacy_prescriptions (hospital_id, patient_id, doctor_username, doc_id, medicines_json)
+            VALUES (?, ?, ?, ?, ?)
+            RETURNING id
+            """,
+            (hospital_id, patient_id, doctor_username, doc_id, medicines_json)
+        )
+        pid = cursor.fetchone()[0]
         conn.commit()
         return pid
 
@@ -6776,149 +6275,75 @@ def fulfill_pharmacy_prescription(hospital_id, prescription_id):
 def ensure_emr_tables(conn):
     cursor = conn.cursor()
     
-    if IS_POSTGRES:
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS medical_history (
-                id SERIAL PRIMARY KEY,
-                patient_id TEXT NOT NULL,
-                allergies TEXT,
-                existing_diseases TEXT,
-                chronic_conditions TEXT,
-                previous_surgeries TEXT,
-                family_history TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
-            )
-            """
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS medical_history (
+            id SERIAL PRIMARY KEY,
+            patient_id TEXT NOT NULL,
+            allergies TEXT,
+            existing_diseases TEXT,
+            chronic_conditions TEXT,
+            previous_surgeries TEXT,
+            family_history TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
         )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS clinical_notes (
-                id SERIAL PRIMARY KEY,
-                encounter_id INTEGER,
-                patient_id TEXT NOT NULL,
-                chief_complaint TEXT,
-                notes TEXT,
-                follow_up TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
-                FOREIGN KEY (encounter_id) REFERENCES encounters(id)
-            )
-            """
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS clinical_notes (
+            id SERIAL PRIMARY KEY,
+            encounter_id INTEGER,
+            patient_id TEXT NOT NULL,
+            chief_complaint TEXT,
+            notes TEXT,
+            follow_up TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+            FOREIGN KEY (encounter_id) REFERENCES encounters(id)
         )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS patient_vitals (
-                id SERIAL PRIMARY KEY,
-                encounter_id INTEGER,
-                patient_id TEXT NOT NULL,
-                bp TEXT,
-                pulse TEXT,
-                temperature TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
-                FOREIGN KEY (encounter_id) REFERENCES encounters(id)
-            )
-            """
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS patient_vitals (
+            id SERIAL PRIMARY KEY,
+            encounter_id INTEGER,
+            patient_id TEXT NOT NULL,
+            bp TEXT,
+            pulse TEXT,
+            temperature TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+            FOREIGN KEY (encounter_id) REFERENCES encounters(id)
         )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS diagnosis_records (
-                id SERIAL PRIMARY KEY,
-                encounter_id INTEGER,
-                patient_id TEXT NOT NULL,
-                diagnosis_name TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
-                FOREIGN KEY (encounter_id) REFERENCES encounters(id)
-            )
-            """
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS diagnosis_records (
+            id SERIAL PRIMARY KEY,
+            encounter_id INTEGER,
+            patient_id TEXT NOT NULL,
+            diagnosis_name TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+            FOREIGN KEY (encounter_id) REFERENCES encounters(id)
         )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS emr_access_logs (
-                id SERIAL PRIMARY KEY,
-                patient_id TEXT NOT NULL,
-                doctor_id INTEGER NOT NULL,
-                action TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
-                FOREIGN KEY (doctor_id) REFERENCES users(id)
-            )
-            """
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS emr_access_logs (
+            id SERIAL PRIMARY KEY,
+            patient_id TEXT NOT NULL,
+            doctor_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
+            FOREIGN KEY (doctor_id) REFERENCES users(id)
         )
-    else:
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS medical_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                patient_id TEXT NOT NULL,
-                allergies TEXT,
-                existing_diseases TEXT,
-                chronic_conditions TEXT,
-                previous_surgeries TEXT,
-                family_history TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
-            )
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS clinical_notes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                encounter_id INTEGER,
-                patient_id TEXT NOT NULL,
-                chief_complaint TEXT,
-                notes TEXT,
-                follow_up TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
-                FOREIGN KEY (encounter_id) REFERENCES encounters(id)
-            )
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS patient_vitals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                encounter_id INTEGER,
-                patient_id TEXT NOT NULL,
-                bp TEXT,
-                pulse TEXT,
-                temperature TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
-                FOREIGN KEY (encounter_id) REFERENCES encounters(id)
-            )
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS diagnosis_records (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                encounter_id INTEGER,
-                patient_id TEXT NOT NULL,
-                diagnosis_name TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
-                FOREIGN KEY (encounter_id) REFERENCES encounters(id)
-            )
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS emr_access_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                patient_id TEXT NOT NULL,
-                doctor_id INTEGER NOT NULL,
-                action TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
-                FOREIGN KEY (doctor_id) REFERENCES users(id)
-            )
-            """
-        )
+        """
+    )

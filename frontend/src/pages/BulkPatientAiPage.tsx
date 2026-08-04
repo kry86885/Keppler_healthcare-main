@@ -170,7 +170,7 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
     try {
       const data = await apiFetch<{ results: BulkPatientRow[]; total: number }>("/api/bulk-import/query", {
         method: "POST",
-        body: JSON.stringify({ prompt, page: targetPage, page_size: PAGE_SIZE }),
+        body: JSON.stringify({ prompt, job_id: jobId, page: targetPage, page_size: PAGE_SIZE }),
       });
       setResults((prev) => (append ? [...prev, ...(data.results || [])] : data.results || []));
       setTotal(data.total || 0);
@@ -249,13 +249,20 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
   return (
     <section className="module-page">
       <div className="module-panel-head">
-        <h3>AI Mode: Bulk Patient Search</h3>
-        <p className="muted">
-          Upload a large patient list (.xlsx or .csv, up to 200MB) -- the AI automatically detects
-          which column is phone/name/age/etc. and imports it, no manual setup needed -- then search it
-          with a plain-English prompt like "diabetic patients in Koramangala". Or upload a PDF/DOCX
-          document (discharge summary, referral letter, etc.) and ask questions about what's in it.
-        </p>
+        <div>
+          <h3>AI Mode: Bulk Patient Search</h3>
+          <p className="muted">
+            Upload a large patient list (.xlsx or .csv, up to 200MB) -- the AI automatically detects
+            which column is phone/name/age/etc. and imports it, no manual setup needed -- then search it
+            with a plain-English prompt like "diabetic patients in Koramangala". Or upload a PDF/DOCX
+            document (discharge summary, referral letter, etc.) and ask questions about what's in it.
+          </p>
+        </div>
+        {jobId && (
+          <Button variant="secondary" onClick={handleStartOver}>
+            <FiUploadCloud aria-hidden /> Reupload
+          </Button>
+        )}
       </div>
 
       <div className="journey-steps" role="list" aria-label="AI Mode steps">
@@ -340,6 +347,11 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
               </p>
             </>
           )}
+          <div style={{ marginTop: "1rem" }}>
+            <Button variant="secondary" onClick={handleStartOver}>
+              <FiUploadCloud aria-hidden /> Reupload
+            </Button>
+          </div>
         </div>
       )}
 
@@ -349,7 +361,7 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
             <div className="module-panel-head">
               <h4>{jobKind === "document" ? "3. Ask about your document" : "3. Search your uploaded list"}</h4>
               <Button variant="ghost" onClick={handleStartOver}>
-                Upload a different file
+                <FiUploadCloud aria-hidden /> Reupload
               </Button>
             </div>
             <div className="ai-search-bar">
@@ -371,7 +383,7 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
                   }
                 }}
               />
-              <Button onClick={handleSearch} disabled={searching || !prompt.trim()}>
+              <Button onClick={handleSearch} disabled={searching || (jobKind === "document" && !prompt.trim())}>
                 {searching ? (jobKind === "document" ? "Asking..." : "Searching...") : jobKind === "document" ? "Ask" : "Search"}
               </Button>
             </div>

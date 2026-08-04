@@ -673,8 +673,7 @@ from modules.documents.routes import documents_bp
 app.register_blueprint(documents_bp)
 from modules.ai_exports.routes import ai_exports_bp
 app.register_blueprint(ai_exports_bp)
-from modules.ot.routes import ot_bp
-app.register_blueprint(ot_bp)
+
 from modules.accounts.routes import accounts_bp
 app.register_blueprint(accounts_bp)
 
@@ -695,9 +694,6 @@ app.register_blueprint(billing_bp)
 
 from modules.pharmacy.routes import pharmacy_bp
 app.register_blueprint(pharmacy_bp)
-
-from modules.diagnostics.routes import diagnostics_bp
-app.register_blueprint(diagnostics_bp)
 
 from modules.hr.routes import hr_bp
 app.register_blueprint(hr_bp)
@@ -744,15 +740,9 @@ def _handle_payload_too_large(exc):
 
 if __name__ == "__main__":
     from urllib.parse import urlsplit
-    from utils.database import DATABASE_URL, DB_ENGINE, IS_POSTGRES, DB_PATH
-
-    if IS_POSTGRES:
-        parts = urlsplit(DATABASE_URL)
-        target = f"postgres://{parts.hostname}:{parts.port}{parts.path}"
-    else:
-        target = f"sqlite:{DB_PATH}"
-    print(f"=== STARTING BACKEND. DB_ENGINE={DB_ENGINE} TARGET={target} ===")
+    from utils.database import DATABASE_URL
+    
+    app.logger.info(f"Database: PostgreSQL (URL: {DATABASE_URL})")
+    print(f"=== STARTING BACKEND ===")
     port = int(os.getenv("PORT", "5001"))
     app.run(host="0.0.0.0", port=port, debug=True)
-
-

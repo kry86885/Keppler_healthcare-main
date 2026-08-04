@@ -269,6 +269,8 @@ export default function EmployeesPage({ setNotice, canEditProfile, canManageAcce
                     <option value="Nurse">Nurse</option>
                     <option value="Admin">Admin</option>
                     <option value="Receptionist">Receptionist</option>
+                    <option value="Pharmacist">Pharmacist</option>
+                    <option value="Lab Technician">Lab Technician</option>
                     <option value="Technician">Technician</option>
                     <option value="Other">Other</option>
                   </Select>

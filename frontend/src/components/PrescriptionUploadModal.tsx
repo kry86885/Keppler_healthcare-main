@@ -33,6 +33,7 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
   const [printing, setPrinting] = useState(false);
   const [ocrText, setOcrText] = useState("");
   const [medicines, setMedicines] = useState<ParsedMedicine[]>([]);
+  const [documentId, setDocumentId] = useState<number | null>(null);
   const [step, setStep] = useState<"upload" | "review" | "verify" | "done">("upload");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -159,9 +160,13 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
         credentials: "include",
       });
 
+      const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const payload = await res.json().catch(() => ({}));
         throw new Error(payload.error || "Failed to save prescription text.");
+      }
+
+      if (payload.document_id) {
+        setDocumentId(payload.document_id);
       }
 
       setNotice({ type: "success", message: "Prescription saved. The patient will be notified on WhatsApp shortly." });
@@ -196,6 +201,7 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
         body: JSON.stringify({
           patient_id: patientId,
           medicines_json: JSON.stringify(medicines),
+          doc_id: documentId,
         }),
       });
       setNotice({ type: "success", message: "Prescription sent to pharmacy successfully." });
@@ -225,17 +231,61 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
         </div>
 
         {step === "upload" && (
-          <div>
-            <p>Select a scanned image or photo of the prescription to digitize.</p>
-            <input
-              type="file"
-              accept="image/*,.pdf"
-              ref={fileInputRef}
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              style={{ display: "block", marginBottom: "1rem" }}
-            />
-            <div style={{ display: "flex", gap: "1rem", justifyContent: "flex-end" }}>
-              <Button onClick={onClose}>Cancel</Button>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1.5rem" }}>
+            <p style={{ textAlign: "center", color: "hsl(var(--muted-foreground))" }}>Select a scanned image or photo of the prescription to digitize.</p>
+            <div 
+              style={{ 
+                border: "2px dashed hsl(var(--border))", 
+                borderRadius: "12px", 
+                padding: "3rem 2rem", 
+                width: "100%",
+                textAlign: "center",
+                background: "hsl(var(--card))",
+                cursor: "pointer",
+                transition: "all 0.2s ease"
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.currentTarget.style.borderColor = "hsl(var(--accent))";
+                e.currentTarget.style.background = "hsl(var(--accent-tint))";
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.currentTarget.style.borderColor = "hsl(var(--border))";
+                e.currentTarget.style.background = "hsl(var(--card))";
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.currentTarget.style.borderColor = "hsl(var(--border))";
+                e.currentTarget.style.background = "hsl(var(--card))";
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                  setFile(e.dataTransfer.files[0]);
+                  e.dataTransfer.clearData();
+                }
+              }}
+            >
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--accent))" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: "1rem" }}>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <h3 style={{ margin: "0 0 0.5rem 0", color: "hsl(var(--foreground))" }}>Click or drag and drop to upload</h3>
+              <p style={{ margin: 0, color: "hsl(var(--muted-foreground))", fontSize: "0.9rem" }}>SVG, PNG, JPG or PDF</p>
+              <p style={{ margin: "0.5rem 0 0 0", color: "hsl(var(--accent))", fontWeight: 500 }}>{file ? file.name : ""}</p>
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                ref={fileInputRef}
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                style={{ opacity: 0, width: 0, height: 0, position: "absolute", overflow: "hidden" }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: "1rem", justifyContent: "flex-end", width: "100%" }}>
+              <Button variant="secondary" onClick={onClose}>Cancel</Button>
               <Button onClick={handleUpload} disabled={!file || uploading}>
                 {uploading ? "Extracting..." : "Upload & Extract Text"}
               </Button>

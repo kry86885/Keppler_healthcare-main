@@ -112,7 +112,6 @@ function formatCurrency(amount?: number) {
 export default function DashboardPage({ stats, recentPatients, analytics, hospitalSummary, analyticsLoading, onNavigate, permissions }: Props) {
   const canViewBilling = permissions.includes("billing.read") || permissions.includes("accounts.read");
   const canViewPharmacy = permissions.includes("pharmacy.read");
-  const canViewLab = permissions.includes("lab.read");
   const paymentModes = hospitalSummary?.revenue?.payment_mode_breakdown || [];
   const maxPaymentMode = Math.max(1, ...paymentModes.map((item) => item.count || 0));
 
@@ -216,7 +215,6 @@ export default function DashboardPage({ stats, recentPatients, analytics, hospit
           </>
         )}
         {canViewPharmacy && <StatCard label="Pharmacy Sales" value={formatCurrency(hospitalSummary?.pharmacy_summary?.monthly_sales)} />}
-        {canViewLab && <StatCard label="Diagnostics Income" value={formatCurrency(hospitalSummary?.diagnostics_summary?.monthly_income)} />}
       </div>
 
       <div className="dashboard-analytics-grid">

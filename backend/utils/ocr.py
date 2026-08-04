@@ -157,6 +157,11 @@ def _vision_prompt(target_language, doc_type):
 {_document_hint(doc_type)}
 
 Output language: {target_language}
+Critical accuracy rules:
+1. Extract only text that is visibly present in the uploaded image/document
+2. Do not invent patient names, medications, diagnoses, dates, values, or instructions
+3. If no readable text is visible, return exactly {{"markdown":"No readable text found in this document."}}
+
 Return format (STRICT):
 1. Return only valid JSON
 2. Use exactly one top-level key: "markdown"

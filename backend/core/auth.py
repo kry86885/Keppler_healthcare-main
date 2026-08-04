@@ -34,7 +34,7 @@ USER_TYPES = ("admin", "normal")
 # those backend blueprints are stub scaffolding (Phase A/E/F/G/H) with no real
 # pages behind them yet; there's nothing to protect there.
 ASSIGNABLE_MODULES = (
-    "dashboard", "patients", "op", "billing", "pharmacy", "lab", "hrms", "ot",
+    "dashboard", "patients", "op", "billing", "pharmacy", "hrms",
     "accounts", "reports", "symptom_ai", "employees", "patient_experience",
 )
 DEFAULT_NORMAL_MODULES = ("dashboard", "patients", "symptom_ai")
@@ -45,9 +45,7 @@ MODULE_BASE_PERMISSION = {
     "op": "op.read",
     "billing": "billing.read",
     "pharmacy": "pharmacy.read",
-    "lab": "lab.read",
     "hrms": "hr.read",
-    "ot": "ot.read",
     "accounts": "accounts.read",
     "reports": "reports.read",
     "symptom_ai": "symptom_ai.use",
@@ -93,19 +91,11 @@ SUB_MODULES = {
         "purchases": {"label": "Purchases", "permissions": ["pharmacy.purchases.write"]},
         "prescriptions": {"label": "Prescriptions", "permissions": ["pharmacy.prescriptions.write"]},
     },
-    "lab": {
-        "vendors": {"label": "Lab Vendors", "permissions": ["lab.vendors.write"]},
-        "diagnostics": {"label": "Diagnostic Orders", "permissions": ["lab.diagnostics.write"]},
-    },
     "hrms": {
         "departments": {"label": "Departments", "permissions": ["hr.departments.write"]},
         "attendance": {"label": "Attendance", "permissions": ["hr.attendance.write"]},
         "payroll": {"label": "Payroll", "permissions": ["hr.payroll.write"]},
         "leaves": {"label": "Leave Requests", "permissions": ["hr.leaves.write"]},
-    },
-    "ot": {
-        "theatres": {"label": "Theatres", "permissions": ["ot.theatres.write"]},
-        "surgeries": {"label": "Surgeries", "permissions": ["ot.surgeries.write"]},
     },
     "accounts": {
         "ledger": {"label": "Ledger", "permissions": ["accounts.ledger.write"]},

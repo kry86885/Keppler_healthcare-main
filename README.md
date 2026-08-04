@@ -55,30 +55,10 @@ Notes:
 - Set `E2E_BASE_URL` if your frontend runs on a different port or host.
 - Use `npm run test:e2e:headed` to run with a visible browser.
 
-## Static HospAI Landing Site (Tailwind + HTML)
-- Project path: `site/`
-- Pages: `/` (homepage), `/login.html`, `/register.html`, `/about.html`, `/terms.html`, `/privacy.html`
-- Build-time env mapping: set `VITE_APP_URL` and build the site.
-
-### Run locally
-- `cd site`
-- `npm install`
-- `npm run dev`
-
-### Build static output
-- `cd site`
-- `VITE_APP_URL=http://localhost:5173 npm run build`
-- Output is generated in `site/dist`.
-
-### Docker Compose
-- Production static container: `docker compose up marketing-site --build`
-- Dev container with live reload: `docker compose -f docker-compose.dev.yml up marketing-site --build`
-  - Serves on `http://localhost:4173`
-
 ## Production Deployment (Coolify)
 - Production compose file: `docker-compose.yml`
 - Services are internal-only via `expose` (no host port publishing), which is recommended for Coolify reverse-proxy routing.
-- Healthchecks are enabled for backend, symptom backend, frontend, and marketing site.
+- Healthchecks are enabled for backend, symptom backend, and frontend.
 - Persistent volumes are configured for SQLite data and uploads:
   - `backend_data` -> `/data`
   - `backend_uploads` -> `/app/backend/uploads`
@@ -87,11 +67,9 @@ Notes:
 - `VITE_API_BASE` (example: `https://api.hospai.ai`)
 - `VITE_API_URL` (example: `https://api.hospai.ai`)
 - `VITE_SYMPTOM_API_BASE` (example: `https://symptom.hospai.ai`)
-- `VITE_APP_URL` (example: `https://app.hospai.ai`)
 - Backend runtime variables in Coolify (session/admin-route secrets, storage keys, OCR keys, Razorpay keys, etc.)
 - The compose file enforces these `VITE_*` variables as required build args, so deployment will fail fast if missing.
 
 ### Coolify routing recommendation
 - Route `frontend` service to your app domain (for example `app.hospai.ai`).
-- Route `marketing-site` service to your public site domain (for example `www.hospai.ai`).
 - Keep `backend` and `symptom-backend` private unless you explicitly need direct public access.

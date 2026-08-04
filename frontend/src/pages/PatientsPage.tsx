@@ -20,7 +20,6 @@ type Props = {
   canEdit: boolean;
   canDelete: boolean;
   canReadBilling: boolean;
-  canReadLab: boolean;
   ocrLanguage: string;
   languages: Record<string, string>;
   refreshToken: number;
@@ -37,16 +36,6 @@ type PatientInvoice = {
   paid_amount?: number;
   due_amount?: number;
   payment_status?: string;
-  created_at?: string;
-};
-type PatientDiagnostic = {
-  id: number;
-  invoice_no?: string;
-  test_name?: string;
-  amount?: number;
-  paid_amount?: number;
-  due_amount?: number;
-  status?: string;
   created_at?: string;
 };
 
@@ -111,7 +100,6 @@ export default function PatientsPage({
   canEdit,
   canDelete,
   canReadBilling,
-  canReadLab,
   ocrLanguage,
   languages,
   refreshToken,
@@ -310,7 +298,6 @@ export default function PatientsPage({
                         setNotice={setNotice}
                         canEdit={canEdit}
                         canReadBilling={canReadBilling}
-                        canReadLab={canReadLab}
                         ocrLanguage={ocrLanguage}
                         languages={languages}
                         canDelete={canDelete}
@@ -391,7 +378,6 @@ type PatientDetailProps = {
   setNotice: Dispatch<SetStateAction<Notice | null>>;
   canEdit: boolean;
   canReadBilling: boolean;
-  canReadLab: boolean;
   ocrLanguage: string;
   languages: Record<string, string>;
   canDelete: boolean;
@@ -447,7 +433,6 @@ function PatientDetail({
   setNotice,
   canEdit,
   canReadBilling,
-  canReadLab,
   ocrLanguage,
   languages,
   canDelete,
@@ -466,7 +451,6 @@ function PatientDetail({
   const [notes, setNotes] = useState<ObservationNote[]>([]);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [billingInvoices, setBillingInvoices] = useState<PatientInvoice[]>([]);
-  const [diagnosticTransactions, setDiagnosticTransactions] = useState<PatientDiagnostic[]>([]);
   const [downloadReady, setDownloadReady] = useState<Record<number, Record<string, boolean>>>({});
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -549,11 +533,8 @@ function PatientDetail({
       if (canReadBilling) {
         requests.push(apiFetch<{ invoices?: PatientInvoice[] }>(`/api/billing/invoices?patient_id=${encodeURIComponent(patientId)}`));
       }
-      if (canReadLab) {
-        requests.push(apiFetch<{ diagnostics?: PatientDiagnostic[] }>(`/api/lab/diagnostics?patient_id=${encodeURIComponent(patientId)}`));
-      }
       const results = await Promise.all(requests);
-      const [docs, adm, mv, enc, bedData, med, noteData, certificateData, maybeInvoices, maybeDiagnostics] = results as [
+      const [docs, adm, mv, enc, bedData, med, noteData, certificateData, maybeInvoices] = results as [
         { documents?: DocumentItem[] },
         { admissions?: Admission[] },
         { movements?: PatientMovement[] },
@@ -563,7 +544,6 @@ function PatientDetail({
         { notes?: ObservationNote[] },
         { certificates?: Certificate[] },
         ({ invoices?: PatientInvoice[] } | undefined)?,
-        ({ diagnostics?: PatientDiagnostic[] } | undefined)?,
       ];
       setDocuments(docs.documents || []);
       setAdmissions(adm.admissions || []);
@@ -574,7 +554,6 @@ function PatientDetail({
       setNotes(noteData.notes || []);
       setCertificates(certificateData.certificates || []);
       setBillingInvoices(canReadBilling ? maybeInvoices?.invoices || [] : []);
-      setDiagnosticTransactions(canReadLab ? maybeDiagnostics?.diagnostics || [] : []);
     } catch (error) {
       setPatient(null);
       setDocuments([]);
@@ -586,7 +565,6 @@ function PatientDetail({
       setNotes([]);
       setCertificates([]);
       setBillingInvoices([]);
-      setDiagnosticTransactions([]);
       const typedError = error as { status?: number; message?: string };
       if (typedError.status !== 401) {
         setLoadError(typedError.message || "Failed to load patient details.");
@@ -599,7 +577,7 @@ function PatientDetail({
 
   useEffect(() => {
     void loadData();
-  }, [patientId, refreshToken, canReadBilling, canReadLab]);
+  }, [patientId, refreshToken, canReadBilling]);
 
   const parseNumber = (label: string, value: string) => {
     const trimmed = value.trim();
@@ -1562,11 +1540,11 @@ function PatientDetail({
           <div className="module-panel-head">
             <h4>Transaction History</h4>
           </div>
-          {!canReadBilling && !canReadLab ? (
-            <p className="muted">No billing or diagnostics access for transaction history.</p>
+          {!canReadBilling ? (
+            <p className="muted">No billing access for transaction history.</p>
           ) : (
             <>
-              {canReadBilling && billingInvoices.length > 0 ? (
+              {billingInvoices.length > 0 ? (
                 <div className="transaction-group">
                   <h5>Billing</h5>
                   <div className="care-note-list">
@@ -1585,32 +1563,9 @@ function PatientDetail({
                     ))}
                   </div>
                 </div>
-              ) : null}
-              {canReadLab && diagnosticTransactions.length > 0 ? (
-                <div className="transaction-group">
-                  <h5>Diagnostics</h5>
-                  <div className="care-note-list">
-                    {diagnosticTransactions.slice(0, 6).map((record) => (
-                      <div key={`diagnostic-${record.id}`} className="care-note-card">
-                        <div className="care-note-head">
-                          <strong>{record.test_name || `Diagnostic #${record.id}`}</strong>
-                          <span className="muted">{formatDateTimeIST(record.created_at)}</span>
-                        </div>
-                        <p>
-                          {record.invoice_no || "No invoice"} · Amount {formatCurrency(record.amount)} · Paid {formatCurrency(record.paid_amount)} · Due{" "}
-                          {formatCurrency(record.due_amount)}
-                        </p>
-                        <p className="muted">Status: {record.status || "-"}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              {((canReadBilling && billingInvoices.length === 0) && (canReadLab && diagnosticTransactions.length === 0)) ||
-              (canReadBilling && !canReadLab && billingInvoices.length === 0) ||
-              (!canReadBilling && canReadLab && diagnosticTransactions.length === 0) ? (
+              ) : (
                 <p className="muted">No transactions recorded yet.</p>
-              ) : null}
+              )}
             </>
           )}
         </div>

@@ -18,13 +18,13 @@ import numpy as np
 from lightrag import LightRAG, QueryParam
 from lightrag.utils import EmbeddingFunc
 
-from .gemini_provider import GeminiLLMProvider
 from utils.embeddings import generate_embedding
+from .service import llm_provider
 
 EMBEDDING_DIM = int(os.getenv("GEMINI_EMBEDDING_DIM", "768"))
 WORKSPACE_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "rag_workspaces")
 
-_llm_provider = GeminiLLMProvider()
+_llm_provider = llm_provider
 
 
 def _safe_workspace_segment(value: str) -> str:

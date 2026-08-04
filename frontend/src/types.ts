@@ -1,5 +1,5 @@
 export type UserType = "admin" | "normal";
-export type ModuleId = "dashboard" | "patients" | "op" | "billing" | "pharmacy" | "lab" | "hrms" | "ot" | "accounts" | "reports" | "symptom_ai" | "employees" | "patient_experience";
+export type ModuleId = "dashboard" | "patients" | "op" | "billing" | "pharmacy" | "hrms" | "accounts" | "reports" | "symptom_ai" | "employees" | "patient_experience";
 
 // A stored module_access entry is either a bare ModuleId (full access to that
 // module) or a dotted "module.subitem" string (access to just one sub-item

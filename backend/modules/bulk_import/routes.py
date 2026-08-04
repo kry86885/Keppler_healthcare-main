@@ -1,4 +1,5 @@
 import json
+import re
 
 from flask import Blueprint, g, jsonify, request
 from werkzeug.utils import secure_filename
@@ -23,6 +24,7 @@ ALLOWED_EXTENSIONS = (".xlsx", ".csv") + DOCUMENT_EXTENSIONS
 # (field, op, value) tuples that pass these allow-lists are ever used to build
 # a parameterized WHERE clause. See translate_patient_filter_prompt() in ai/service.py.
 ALLOWED_FIELDS = set(BULK_IMPORT_PATIENT_FIELDS) | {"phone"}
+FALLBACK_SEARCH_FIELDS = ["name", "last_name", "phone", "medical_condition", "area"]
 OP_SQL = {
     "eq": "= ?",
     "contains": "LIKE ?",
@@ -31,6 +33,18 @@ OP_SQL = {
     "gte": ">= ?",
     "lte": "<= ?",
 }
+
+
+def _job_scope_clause(job_id):
+    if not job_id:
+        return "", []
+    try:
+        numeric_job_id = int(job_id)
+    except (TypeError, ValueError):
+        return "", []
+    if numeric_job_id <= 0:
+        return "", []
+    return " AND patient_id LIKE ?", [f"BULK-{numeric_job_id}-%"]
 
 
 @bulk_import_bp.post("/api/bulk-import/upload")
@@ -143,25 +157,75 @@ def _build_filter_clause(conditions, logic):
     return f" AND ({joiner.join(clauses)})", params
 
 
+def _deterministic_filter_clause(prompt):
+    text = (prompt or "").strip().lower()
+    if not text:
+        return "", []
+
+    age_matchers = [
+        (r"\b(?:above|over|older than|greater than|more than)\s+(\d{1,3})\b", ">"),
+        (r"\b(?:below|under|younger than|less than)\s+(\d{1,3})\b", "<"),
+        (r"\b(?:age|aged)\s*(>=|>|<=|<|=)\s*(\d{1,3})\b", None),
+    ]
+    for pattern, implied_op in age_matchers:
+        match = re.search(pattern, text)
+        if match:
+            if implied_op:
+                return f" AND age {implied_op} ?", [int(match.group(1))]
+            return f" AND age {match.group(1)} ?", [int(match.group(2))]
+
+    between_match = re.search(r"\b(?:between|from)\s+(\d{1,3})\s+(?:and|to)\s+(\d{1,3})\b", text)
+    if between_match and "age" in text:
+        low, high = sorted([int(between_match.group(1)), int(between_match.group(2))])
+        return " AND age BETWEEN ? AND ?", [low, high]
+
+    if re.search(r"\b(?:list|show|display|get|all|every|everyone|patients|patient list|full list)\b", text):
+        filter_words = ("above", "over", "older", "below", "under", "younger", "between", "diabetes", "diabetic", "area", "city")
+        if not any(word in text for word in filter_words):
+            return "", []
+
+    return None, None
+
+
 @bulk_import_bp.post("/api/bulk-import/query")
 @require_permissions("patients.bulk_ai.write")
 def bulk_import_query():
     payload = request.get_json(silent=True) or {}
     prompt = (payload.get("prompt") or "").strip()
+    job_id = payload.get("job_id")
     page = max(int(payload.get("page") or 1), 1)
     page_size = min(max(int(payload.get("page_size") or 150), 1), 500)
 
     hospital_id = current_hospital_id()
+    scope_clause, scope_params = _job_scope_clause(job_id)
 
     if not prompt:
-        rows, total = query_bulk_patients(hospital_id, "", [], page=page, page_size=page_size)
+        rows, total = query_bulk_patients(hospital_id, scope_clause, scope_params, page=page, page_size=page_size)
+        return jsonify({"results": rows, "total": total, "page": page, "page_size": page_size})
+
+    where_clause, params = _deterministic_filter_clause(prompt)
+    if where_clause is not None:
+        where_clause = scope_clause + where_clause
+        params = scope_params + params
+        rows, total = query_bulk_patients(hospital_id, where_clause, params, page=page, page_size=page_size)
         return jsonify({"results": rows, "total": total, "page": page, "page_size": page_size})
 
     filter_result = translate_patient_filter_prompt(prompt, list(ALLOWED_FIELDS))
-    if not filter_result:
-        return jsonify({"error": "Could not understand that prompt. Try rephrasing with specific area/condition terms."}), 422
+    if not filter_result or not filter_result.get("conditions"):
+        search_term = f"%{prompt}%"
+        fallback_clauses = [f"{f} LIKE ?" for f in FALLBACK_SEARCH_FIELDS]
+        where_clause = scope_clause + f" AND ({' OR '.join(fallback_clauses)})"
+        params = scope_params + [search_term] * len(FALLBACK_SEARCH_FIELDS)
+    else:
+        where_clause, params = _build_filter_clause(filter_result.get("conditions") or [], filter_result.get("logic"))
+        if not where_clause:
+            search_term = f"%{prompt}%"
+            fallback_clauses = [f"{f} LIKE ?" for f in FALLBACK_SEARCH_FIELDS]
+            where_clause = f" AND ({' OR '.join(fallback_clauses)})"
+            params = [search_term] * len(FALLBACK_SEARCH_FIELDS)
+        where_clause = scope_clause + where_clause
+        params = scope_params + params
 
-    where_clause, params = _build_filter_clause(filter_result.get("conditions") or [], filter_result.get("logic"))
     rows, total = query_bulk_patients(hospital_id, where_clause, params, page=page, page_size=page_size)
     return jsonify({"results": rows, "total": total, "page": page, "page_size": page_size})
 

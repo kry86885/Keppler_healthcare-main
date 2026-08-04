@@ -220,7 +220,7 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
               <Input
                 value={doctorForm.doctor_name}
                 onChange={(e) => setDoctorForm((prev) => ({ ...prev, doctor_name: e.target.value }))}
-                placeholder="e.g. Dr. Robert Vance"
+                placeholder="Enter doctor's full name..."
                 required
               />
             </div>

@@ -10,7 +10,6 @@ from pathlib import Path
 from datetime import datetime, timezone
 import io
 
-import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
@@ -371,39 +370,67 @@ def _rate_limit():
     _last_request = time.time()
 
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:3b-instruct")
+try:
+    from google import genai
+    from google.genai import types as genai_types
+    _GENAI_IMPORT_ERROR = None
+except Exception as exc:  # pragma: no cover - import guard for local/dev env mismatch
+    genai = None
+    genai_types = None
+    _GENAI_IMPORT_ERROR = exc
+
+GEMINI_MODEL = os.getenv("SYMPTOM_AI_MODEL") or os.getenv("GEMINI_MODEL") or "gemini-2.0-flash"
+_gemini_client = None
 
 
-def _ollama_available():
+def _resolve_gemini_api_key():
+    # Dedicated symptom_backend key first (see SYMPTOM_AI_GEMINI_API_KEY in
+    # the root .env) so this service can use its own key/quota independent
+    # of the main backend's GEMINI_API_KEY (OCR, /api/symptom-ai/* RAG chat).
+    return (
+        os.getenv("SYMPTOM_AI_GEMINI_API_KEY")
+        or os.getenv("GEMINI_API_KEY")
+        or os.getenv("GOOGLE_API_KEY")
+        or ""
+    ).strip()
+
+
+def _get_gemini_client():
+    global _gemini_client
+    if genai is None:
+        return None
+    if _gemini_client is None:
+        api_key = _resolve_gemini_api_key()
+        if not api_key:
+            return None
+        _gemini_client = genai.Client(api_key=api_key)
+    return _gemini_client
+
+
+def _gemini_available():
+    return _get_gemini_client() is not None
+
+
+def _gemini_generate(prompt: str, json_mode: bool = False, temperature: float = 0.7, max_tokens: int = 1024):
+    client = _get_gemini_client()
+    if client is None:
+        return None, "GEMINI_API_KEY is not configured or google-genai is not installed"
     try:
-        resp = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=2)
-        return resp.status_code == 200
-    except Exception:
-        return False
-
-
-def _ollama_generate(prompt: str, json_mode: bool = False, temperature: float = 0.7, max_tokens: int = 1024):
-    payload = {
-        "model": OLLAMA_MODEL,
-        "prompt": prompt,
-        "stream": False,
-        "options": {"temperature": temperature, "num_predict": max_tokens},
-    }
-    if json_mode:
-        payload["format"] = "json"
-    try:
-        resp = requests.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload, timeout=180)
-        resp.raise_for_status()
-        return (resp.json().get("response") or "").strip(), None
+        config = genai_types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+            response_mime_type="application/json" if json_mode else None,
+        )
+        response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt, config=config)
+        return (response.text or "").strip(), None
     except Exception as exc:
         return None, str(exc)
 
 
 def _require_api_key():
-    if _ollama_available():
+    if _gemini_available():
         return None
-    return jsonify({"error": f"Local AI model (Ollama) is not reachable at {OLLAMA_BASE_URL}"}), 503
+    return jsonify({"error": "GEMINI_API_KEY is not configured for the Symptom AI service"}), 503
 
 
 def detect_region_from_text(text: str):
@@ -687,11 +714,11 @@ def _generate_insight_pdf(payload):
 
 
 def _generate_with_gemini(system_prompt: str, user_prompt: str):
-    if not _ollama_available():
-        return None, f"Local AI model (Ollama) is not reachable at {OLLAMA_BASE_URL}"
+    if not _gemini_available():
+        return None, "GEMINI_API_KEY is not configured for the Symptom AI service"
 
     _rate_limit()
-    text, error = _ollama_generate(
+    text, error = _gemini_generate(
         f"{system_prompt}\n\nUser input:\n{user_prompt}", temperature=0.7, max_tokens=1024
     )
     if error:
@@ -707,7 +734,7 @@ def _classify_region_with_gemini(description: str):
     # fallback for when that quick match comes up empty: ask the model to pick the closest
     # region from the same fixed list, constrained to an exact-match response so it can't
     # hallucinate a region name the frontend won't recognize.
-    if not _ollama_available():
+    if not _gemini_available():
         return None
 
     region_names = list(BODY_REGIONS.keys())
@@ -719,7 +746,7 @@ def _classify_region_with_gemini(description: str):
     )
     try:
         _rate_limit()
-        text, error = _ollama_generate(prompt, temperature=0, max_tokens=20)
+        text, error = _gemini_generate(prompt, temperature=0, max_tokens=20)
         if error or not text:
             return None
         candidate = text.strip()
@@ -778,7 +805,7 @@ def symptom_meta():
                 "disclaimer": "Educational tool only. Not medical advice.",
                 "emergency": "For severe or urgent concerns, contact emergency services immediately.",
             },
-            "api_key_configured": _ollama_available(),
+            "api_key_configured": _gemini_available(),
         }
     )
 
@@ -834,29 +861,32 @@ def triage():
     payload = request.get_json(force=True) or {}
     symptoms = (payload.get("symptoms") or "").strip()
     available_departments = payload.get("available_departments") or []
+    available_doctors = payload.get("available_doctors") or []
 
     if len(symptoms) < 5:
         return jsonify({"error": "Please provide a valid symptom description."}), 400
 
     departments_str = ", ".join(available_departments) if available_departments else "General Medicine, Cardiology, Neurology, Orthopedics, Pediatrics, Gynecology, Dermatology, Psychiatry, Oncology"
+    doctors_str = ", ".join(available_doctors) if available_doctors else "Any available doctor"
 
     prompt = (
-        "You are a medical triage assistant. A patient at the registration desk has the following symptoms:\n"
+        "You are a medical triage assistant. A patient at the registration desk has the following symptoms or requests:\n"
         f'"{symptoms}"\n\n'
-        "Based on these symptoms, determine the most appropriate hospital department for them to visit, "
-        "the urgency of their case, and a brief reasoning for the receptionist.\n\n"
-        f"Available departments to choose from: [{departments_str}]\n\n"
+        "Based on this, determine the most appropriate hospital department, the urgency, a brief reasoning, and the specific doctor if mentioned or clearly applicable.\n\n"
+        f"Available departments: [{departments_str}]\n"
+        f"Available doctors: [{doctors_str}]\n\n"
         "Respond ONLY with a valid JSON object in this exact format:\n"
         "{\n"
-        '  "department": "Name of the chosen department",\n'
+        '  "department": "Must EXACTLY match one of the Available departments",\n'
         '  "urgency": "Routine | Urgent | Emergency",\n'
-        '  "reasoning": "Brief explanation (1-2 sentences)"\n'
+        '  "reasoning": "Brief explanation (1-2 sentences)",\n'
+        '  "doctor": "Specific doctor name if requested or highly relevant, else empty string"\n'
         "}"
     )
 
     try:
         _rate_limit()
-        text, error = _ollama_generate(prompt, json_mode=True, temperature=0, max_tokens=300)
+        text, error = _gemini_generate(prompt, json_mode=True, temperature=0, max_tokens=300)
         if error or not text:
             raise RuntimeError(error or "Empty response from model")
         import json

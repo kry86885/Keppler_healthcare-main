@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, g
 from app import (
-    require_permissions, log_audit_event, rows_to_dicts, validate_required_fields, current_hospital_id
+    require_permissions, log_audit_event, rows_to_dicts, validate_required_fields, current_hospital_id,
+    require_session, resolve_user_permissions
 )
 from utils.database import (
     list_pharmacy_sales, list_inventory_items, upsert_inventory_item, delete_inventory_item,
@@ -186,8 +187,12 @@ def pharmacy_summary():
 # ---- Prescriptions via OCR ----
 
 @pharmacy_bp.post("/api/pharmacy/prescriptions")
-@require_permissions("pharmacy.prescriptions.write")
+@require_session
 def create_prescription():
+    perms = resolve_user_permissions(g.current_user)
+    if "pharmacy.prescriptions.write" not in perms and "patients.documents.write" not in perms:
+        return jsonify({"error": "Forbidden"}), 403
+        
     payload = request.get_json(force=True)
     patient_id = payload.get("patient_id")
     medicines_json = payload.get("medicines_json")

@@ -156,7 +156,7 @@ export default function PaymentCollectionPage({ setNotice, onNavigate }: Props) 
             Record and track all patient payments in real-time.
           </p>
         </div>
-        <Button variant="outline" onClick={() => onNavigate && onNavigate("dashboard")}>
+        <Button variant="secondary" onClick={() => onNavigate && onNavigate("dashboard")}>
           ← Back to Dashboard
         </Button>
       </div>
@@ -214,8 +214,11 @@ export default function PaymentCollectionPage({ setNotice, onNavigate }: Props) 
                   id="paymentMode"
                   value={paymentMode}
                   onChange={e => setPaymentMode(e.target.value)}
-                  options={PAYMENT_MODES.map(m => ({ value: m.name, label: `${m.icon} ${m.name}` }))}
-                />
+                >
+                  {PAYMENT_MODES.map(m => (
+                    <option key={m.name} value={m.name}>{m.icon} {m.name}</option>
+                  ))}
+                </Select>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                 <Label htmlFor="gatewayRef">Gateway Reference</Label>

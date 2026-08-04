@@ -10,6 +10,7 @@ from io import BytesIO
 
 from app import (
     require_permissions, 
+    require_session,
     log_audit_event, 
     validate_required_fields,
     current_hospital_id,
@@ -107,7 +108,7 @@ def op_doctor_schedules_delete(schedule_id):
     return jsonify({"status": "ok"})
 
 @op_bp.get("/api/op/doctors")
-@require_permissions("op.read")
+@require_session
 def op_doctors_list():
     department = request.args.get("department")
     return jsonify({"doctors": list_doctors(department=department)})
@@ -145,7 +146,7 @@ def op_doctors_delete(doctor_id):
     return jsonify({"status": "ok"})
 
 @op_bp.get("/api/op/doctors/suggest")
-@require_permissions("op.read")
+@require_session
 def op_doctors_suggest():
     department = request.args.get("department")
     region = request.args.get("region")

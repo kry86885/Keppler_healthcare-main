@@ -20,7 +20,7 @@ uploads/
 
 backend/.env
 frontend/.env
-site/.env
+
 ocr_portal/.env
 
 frontend/tests/e2e/artifacts/

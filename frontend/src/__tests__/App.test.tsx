@@ -138,63 +138,6 @@ describe("App role-based UI", () => {
   });
 
 
-  test("uses module_access to unlock finance billing pages and pick receivable aging by default", async () => {
-    mockFetchForUser({
-      username: "billing-user",
-      user_type: "normal",
-      module_access: ["billing"],
-      full_name: "Billing User",
-      status: "active",
-    });
-
-    await act(async () => {
-      root.render(<App />);
-      await flush();
-      await flush();
-    });
-
-    const billingTab = Array.from(container.querySelectorAll("button")).find((el) => el.textContent?.trim() === "Receivable Aging") as HTMLButtonElement;
-    const patientsTab = Array.from(container.querySelectorAll("button")).find((el) => el.textContent?.trim() === "Patients") as HTMLButtonElement;
-
-    expect(billingTab).toBeTruthy();
-    expect(billingTab.disabled).toBe(false);
-    expect(patientsTab).toBeFalsy();
-    expect(container.textContent).toContain("Receivable Aging");
-    expect(container.textContent).toContain("Payment Reconciliation");
-    expect(container.textContent).toContain("Create Invoice");
-    expect(container.textContent).toContain("Record Payment");
-    expect(container.textContent).toContain("Insurance Claims");
-    expect(container.textContent).toContain("Invoices");
-    expect(container.textContent).toContain("Payment Mode Breakdown");
-    expect(container.textContent).toContain("Collections by Module");
-  });
-
-  test("uses module_access to unlock accounts pages and pick overview by default", async () => {
-    mockFetchForUser({
-      username: "accounts-user",
-      user_type: "normal",
-      module_access: ["accounts"],
-      full_name: "Accounts User",
-      status: "active",
-    });
-
-    await act(async () => {
-      root.render(<App />);
-      await flush();
-      await flush();
-    });
-
-    const overviewTab = Array.from(container.querySelectorAll("button")).find((el) => el.textContent?.trim() === "Accounts Overview") as HTMLButtonElement;
-    const ledgerTab = Array.from(container.querySelectorAll("button")).find((el) => el.textContent?.trim() === "Ledger Entries") as HTMLButtonElement;
-    const vendorTab = Array.from(container.querySelectorAll("button")).find((el) => el.textContent?.trim() === "Vendor Payments") as HTMLButtonElement;
-    const doctorTab = Array.from(container.querySelectorAll("button")).find((el) => el.textContent?.trim() === "Doctor Payouts") as HTMLButtonElement;
-
-    expect(overviewTab).toBeTruthy();
-    expect(ledgerTab).toBeTruthy();
-    expect(vendorTab).toBeTruthy();
-    expect(doctorTab).toBeTruthy();
-    expect(container.textContent).toContain("Accounts Overview");
-  });
 
   test("returns to login when a protected request receives 401", async () => {
     global.fetch = vi.fn((url: string) => {

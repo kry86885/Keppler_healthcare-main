@@ -6,6 +6,7 @@ import { Button, ConfirmDialog, Input, Select, Table, TableCell, TableHead, Tabl
 import { apiFetch, reportError } from "../lib/api";
 import { formatDate } from "../lib/format";
 import type { Notice, Patient, PharmacySale } from "../types";
+import { API_BASE } from "../lib/constants";
 
 type Props = {
   setNotice: Dispatch<SetStateAction<Notice | null>>;
@@ -87,6 +88,7 @@ type PendingPrescription = {
   medicines_json: string;
   status: string;
   created_at: string;
+  doc_id?: number;
 };
 
 type PurchaseForm = {
@@ -374,9 +376,11 @@ export default function PharmacyPage({ setNotice }: Props) {
     
     // Auto-fill unit prices from inventory
     const enrichedMeds = meds.map((m: any) => {
-      const inv = items.find(i => i.medicine_name.toLowerCase() === m.name.toLowerCase());
+      const mName = m.name || m.medicine_name || m.medicine || "";
+      const inv = items.find(i => i.medicine_name.toLowerCase() === mName.toLowerCase());
       return {
         ...m,
+        name: mName,
         unit_price: inv ? inv.unit_price : 0
       };
     });
@@ -687,9 +691,19 @@ export default function PharmacyPage({ setNotice }: Props) {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Button onClick={() => handleFulfillPrescription(p)} style={{ background: "var(--accent)" }}>
-                        Fulfill & Bill
-                      </Button>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <Button onClick={() => handleFulfillPrescription(p)} style={{ background: "var(--accent)" }}>
+                          Fulfill & Bill
+                        </Button>
+                        {p.doc_id && (
+                          <Button 
+                            variant="secondary"
+                            onClick={() => window.open(`${API_BASE}/api/documents/${p.doc_id}/file`, "_blank", "noopener,noreferrer")}
+                          >
+                            View Original
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );

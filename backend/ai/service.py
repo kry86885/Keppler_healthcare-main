@@ -6,17 +6,38 @@ two module-level singletons below; nothing else in the codebase needs to change.
 """
 
 import json
+import os
 import re
 
 from utils.ocr import _detect_mime_type
 from utils.database import search_similar_documents
 
-from .local_ocr_provider import EasyOCRProvider
-from .ollama_provider import OllamaLLMProvider
+from .gemini_provider import GeminiLLMProvider, GeminiOCRProvider
 from .preprocessing import preprocess_image_bytes
+from .vllm_provider import VLLMLLMProvider, VLLMOCRProvider
 
-ocr_provider = EasyOCRProvider()
-llm_provider = OllamaLLMProvider()
+
+def _has_gemini_api_key() -> bool:
+    return bool((os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip())
+
+
+def _provider_name() -> str:
+    return (os.getenv("AI_PROVIDER") or os.getenv("LLM_PROVIDER") or "").strip().lower()
+
+
+if _has_gemini_api_key() and _provider_name() != "vllm":
+    ocr_provider = GeminiOCRProvider()
+    llm_provider = GeminiLLMProvider()
+else:
+    ocr_provider = VLLMOCRProvider()
+    llm_provider = VLLMLLMProvider()
+
+
+def _try_generate(prompt: str, context: str = "", **kwargs):
+    try:
+        return llm_provider.generate(prompt, context=context, **kwargs)
+    except Exception:
+        return None
 
 
 def extract_text_from_image(file_bytes, language="en", doc_type="document", filename=None):
@@ -59,7 +80,7 @@ def classify_and_extract_entities(ocr_text: str, doc_type: str = "document"):
     if not text or not llm_provider.is_configured():
         return None
     prompt = _ENTITY_EXTRACTION_PROMPT.format(doc_type=doc_type, text=text[:8000])
-    raw_response = llm_provider.generate(prompt, json_mode=True)
+    raw_response = _try_generate(prompt, json_mode=True)
     if not raw_response:
         return None
     return _parse_json_response(raw_response)
@@ -118,7 +139,7 @@ def translate_patient_filter_prompt(prompt: str, available_fields):
     if not prompt or not llm_provider.is_configured():
         return None
     rendered = _PATIENT_FILTER_PROMPT.format(fields=", ".join(available_fields), prompt=prompt)
-    raw_response = llm_provider.generate(rendered, json_mode=True)
+    raw_response = _try_generate(rendered, json_mode=True)
     if not raw_response:
         return None
     return _parse_json_response(raw_response)
@@ -155,7 +176,7 @@ def answer_bulk_document_prompt(prompt: str, document_text: str):
     if not prompt or not document_text or not llm_provider.is_configured():
         return None
     rendered = _DOCUMENT_PROMPT_TEMPLATE.format(prompt=prompt, document_text=document_text)
-    raw_response = llm_provider.generate(rendered, json_mode=True)
+    raw_response = _try_generate(rendered, json_mode=True)
     if not raw_response:
         return None
     return _parse_json_response(raw_response)
@@ -179,7 +200,7 @@ def patient_history_search(query: str, hospital_id, patient_id=None, k: int = 5)
     answer = None
     if llm_provider.is_configured():
         prompt = _HISTORY_SEARCH_PROMPT.format(query=query, excerpts=excerpts)
-        answer = llm_provider.generate(prompt)
+        answer = _try_generate(prompt)
 
     return {
         "answer": answer,

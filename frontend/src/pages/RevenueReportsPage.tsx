@@ -114,7 +114,7 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
             Monitor module-wise collections, dues, and doctor payouts.
           </p>
         </div>
-        <Button variant="outline" onClick={() => onNavigate && onNavigate("dashboard")}>
+        <Button variant="secondary" onClick={() => onNavigate && onNavigate("dashboard")}>
           ← Back to Dashboard
         </Button>
       </div>

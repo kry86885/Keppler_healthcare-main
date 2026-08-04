@@ -22,9 +22,8 @@ class GeminiLLMProvider:
     def generate(self, prompt: str, context: str = "", **kwargs):
         client = get_genai_model()
         if client is None:
-            return None
+            raise RuntimeError("GEMINI_API_KEY is not configured or is invalid. Cannot call Gemini AI.")
         full_prompt = f"{context}\n\n{prompt}" if context else prompt
-        try:
-            return _generate_content(client, full_prompt)
-        except Exception:
-            return None
+        # Do NOT catch exceptions here — let them propagate to the route handler
+        # so error messages can be shown to the user instead of silently failing.
+        return _generate_content(client, full_prompt)

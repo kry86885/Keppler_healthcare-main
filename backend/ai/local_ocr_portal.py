@@ -27,7 +27,7 @@ from utils.database import (
 )
 
 from .document_extraction import extract_document_text
-from .ollama_provider import OllamaLLMProvider
+from .service import llm_provider
 
 BLUEPRINTS = [
     "Universal OCR (Any Text)",
@@ -39,8 +39,6 @@ BLUEPRINTS = [
 
 _CHUNK_SIZE = 1000
 _CHUNK_OVERLAP = 150
-
-llm_provider = OllamaLLMProvider()
 
 
 class OcrPortalError(Exception):

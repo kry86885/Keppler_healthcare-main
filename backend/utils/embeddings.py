@@ -16,8 +16,9 @@ import os
 
 import requests
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
-EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://host.docker.internal:8700/v1").rstrip("/")
+VLLM_EMBEDDING_MODEL = os.getenv("VLLM_EMBEDDING_MODEL", "nomic-embed-text")
+VLLM_API_KEY = os.getenv("VLLM_API_KEY", "local")
 
 
 def generate_embedding(text: str):
@@ -26,14 +27,22 @@ def generate_embedding(text: str):
     if not text:
         return None
     try:
+        headers = {"Content-Type": "application/json"}
+        if VLLM_API_KEY:
+            headers["Authorization"] = f"Bearer {VLLM_API_KEY}"
+            
         resp = requests.post(
-            f"{OLLAMA_BASE_URL}/api/embeddings",
-            json={"model": EMBEDDING_MODEL, "prompt": text},
+            f"{VLLM_BASE_URL}/embeddings",
+            json={"model": VLLM_EMBEDDING_MODEL, "input": text},
+            headers=headers,
             timeout=30,
         )
         resp.raise_for_status()
-        values = resp.json().get("embedding")
-        return list(values) if values else None
+        data = resp.json().get("data", [])
+        if data and len(data) > 0:
+            values = data[0].get("embedding")
+            return list(values) if values else None
+        return None
     except Exception:
         return None
 

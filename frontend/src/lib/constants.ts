@@ -31,9 +31,7 @@ export const MODULE_OPTIONS: ModuleOption[] = [
   { value: "op", label: "Doctor Scheduling", description: "Doctor schedules and the doctor directory." },
   { value: "billing", label: "Billing", description: "Invoices, collections, and payment workflows." },
   { value: "pharmacy", label: "Pharmacy", description: "Inventory and pharmacy sales operations." },
-  { value: "lab", label: "Lab & Diagnostics", description: "Diagnostic vendors and test records." },
   { value: "hrms", label: "HRMS", description: "Attendance, payroll, and leave operations." },
-  { value: "ot", label: "OT", description: "Operation theatre scheduling and utilisation." },
   { value: "accounts", label: "Accounts", description: "Ledger, vendor payments, and doctor payouts." },
   { value: "reports", label: "Reports", description: "Cross-module operational and financial reporting." },
   { value: "symptom_ai", label: "SymptoMap AI", description: "AI symptom and OCR tools." },
@@ -72,19 +70,11 @@ export const SUB_MODULES: Partial<Record<ModuleId, SubModuleOption[]>> = {
     { value: "purchases", label: "Purchases" },
     { value: "prescriptions", label: "Prescriptions" },
   ],
-  lab: [
-    { value: "vendors", label: "Lab Vendors" },
-    { value: "diagnostics", label: "Diagnostic Orders" },
-  ],
   hrms: [
     { value: "departments", label: "Departments" },
     { value: "attendance", label: "Attendance" },
     { value: "payroll", label: "Payroll" },
     { value: "leaves", label: "Leave Requests" },
-  ],
-  ot: [
-    { value: "theatres", label: "Theatres" },
-    { value: "surgeries", label: "Surgeries" },
   ],
   accounts: [
     { value: "ledger", label: "Ledger" },
@@ -134,17 +124,11 @@ export const ADMIN_PERMISSIONS: string[] = [
     "pharmacy.suppliers.write",
     "pharmacy.purchases.write",
     "pharmacy.prescriptions.write",
-    "lab.read",
-    "lab.vendors.write",
-    "lab.diagnostics.write",
     "hr.read",
     "hr.departments.write",
     "hr.attendance.write",
     "hr.payroll.write",
     "hr.leaves.write",
-    "ot.read",
-    "ot.theatres.write",
-    "ot.surgeries.write",
     "accounts.read",
     "accounts.ledger.write",
     "accounts.vendors.write",
@@ -173,9 +157,7 @@ export const MODULE_PERMISSIONS: Record<ModuleId, string[]> = {
     "pharmacy.read", "pharmacy.inventory.write", "pharmacy.sales.write",
     "pharmacy.suppliers.write", "pharmacy.purchases.write", "pharmacy.prescriptions.write",
   ],
-  lab: ["lab.read", "lab.vendors.write", "lab.diagnostics.write"],
   hrms: ["hr.read", "hr.departments.write", "hr.attendance.write", "hr.payroll.write", "hr.leaves.write"],
-  ot: ["ot.read", "ot.theatres.write", "ot.surgeries.write"],
   accounts: ["accounts.read", "accounts.ledger.write", "accounts.vendors.write", "accounts.doctors.write"],
   reports: ["reports.read"],
   symptom_ai: ["symptom_ai.use", "symptom_ai.documents.write"],
@@ -211,19 +193,11 @@ export const SUB_MODULE_PERMISSIONS: Partial<Record<ModuleId, Record<string, str
     purchases: ["pharmacy.purchases.write"],
     prescriptions: ["pharmacy.prescriptions.write"],
   },
-  lab: {
-    vendors: ["lab.vendors.write"],
-    diagnostics: ["lab.diagnostics.write"],
-  },
   hrms: {
     departments: ["hr.departments.write"],
     attendance: ["hr.attendance.write"],
     payroll: ["hr.payroll.write"],
     leaves: ["hr.leaves.write"],
-  },
-  ot: {
-    theatres: ["ot.theatres.write"],
-    surgeries: ["ot.surgeries.write"],
   },
   accounts: {
     ledger: ["accounts.ledger.write"],
@@ -261,8 +235,6 @@ export const NAV_ITEMS: NavItem[] = [
   // Operations: scheduling first, then the departments doctors refer patients to.
   { id: "op-desk", label: "Doctor Scheduling", group: "operations", permission: "op.read", deniedHint: "Requires doctor scheduling access.", module: "op" },
   { id: "pharmacy", label: "Pharmacy", group: "operations", permission: "pharmacy.read", deniedHint: "Requires pharmacy access.", module: "pharmacy" },
-  { id: "lab", label: "Lab & Diagnostics", group: "operations", permission: "lab.read", deniedHint: "Requires lab access.", module: "lab" },
-  { id: "ot", label: "OT", group: "operations", permission: "ot.read", deniedHint: "Requires OT access.", module: "ot" },
 
   // AI: the flagship assistant first, then supporting document/bulk tools.
   { id: "symptom-ai", label: "SymptoMap AI", group: "ai", permission: "symptom_ai.use", deniedHint: "Requires SymptoMap AI access.", module: "symptom_ai" },

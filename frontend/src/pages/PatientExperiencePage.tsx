@@ -103,7 +103,7 @@ export default function PatientExperiencePage({ setNotice }: { setNotice: any })
         <Button onClick={exportCSV} variant="primary">Export CSV</Button>
       </div>
 
-      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Log Patient Feedback">
+      <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="Log Patient Feedback">
         <form onSubmit={submitManualFeedback} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           <div>
             <Label>Patient ID (Optional)</Label>

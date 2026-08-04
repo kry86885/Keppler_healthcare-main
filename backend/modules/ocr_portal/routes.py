@@ -196,12 +196,22 @@ def parse_prescription():
     if not text:
         return jsonify({"error": "No text provided"}), 400
 
-    if not ocr.llm_provider.is_configured():
-        return jsonify({"error": "The local AI model is not reachable right now.", "medicines": []}), 503
-
     try:
         response_text = ocr.llm_provider.generate(_PRESCRIPTION_PARSE_PROMPT.format(text=text), json_mode=True)
-        medicines = json.loads((response_text or "").strip())
-        return jsonify({"medicines": medicines})
+        parsed = json.loads((response_text or "").strip())
+        
+        medicines_list = []
+        if isinstance(parsed, list):
+            medicines_list = parsed
+        elif isinstance(parsed, dict):
+            # Sometimes models wrap the array in an object, e.g. {"medicines": [...]}
+            for val in parsed.values():
+                if isinstance(val, list):
+                    medicines_list = val
+                    break
+            if not medicines_list and "medicines" in parsed:
+                medicines_list = parsed["medicines"]
+        
+        return jsonify({"medicines": medicines_list})
     except Exception as exc:
         return jsonify({"error": str(exc), "medicines": []}), 500

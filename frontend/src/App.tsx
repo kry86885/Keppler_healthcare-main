@@ -22,9 +22,7 @@ const PaymentCollectionPage = lazy(() => import("./pages/PaymentCollectionPage")
 const RevenueReportsPage = lazy(() => import("./pages/RevenueReportsPage"));
 const DailyMonthlyReportsPage = lazy(() => import("./pages/DailyMonthlyReportsPage"));
 const PharmacyPage = lazy(() => import("./pages/PharmacyPage"));
-const LabPage = lazy(() => import("./pages/LabPage"));
 const HrmsPage = lazy(() => import("./pages/HrmsPage"));
-const OtPage = lazy(() => import("./pages/OtPage"));
 const PatientsPage = lazy(() => import("./pages/PatientsPage"));
 const ReadmitPage = lazy(() => import("./pages/ReadmitPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
@@ -45,7 +43,7 @@ import { apiFetch, getHospitalCode, reportError, setHospitalCode } from "./lib/a
 import { resolvePermissions } from "./lib/format";
 import type { DashboardAnalytics, HospitalSummary, Notice, Patient, Stats, User } from "./types";
 
-type SidebarIconName = "dashboard" | "add" | "patients" | "readmit" | "billing" | "pharmacy" | "lab" | "hrms" | "ot" | "symptom" | "employees" | "settings" | "logout" | "profile" | "appointment";
+type SidebarIconName = "dashboard" | "add" | "patients" | "readmit" | "billing" | "pharmacy" | "hrms" | "symptom" | "employees" | "settings" | "logout" | "profile" | "appointment";
 
 const NAV_ICON_MAP: Record<string, SidebarIconName> = {
   dashboard: "dashboard",
@@ -69,10 +67,11 @@ const NAV_ICON_MAP: Record<string, SidebarIconName> = {
   "billing-invoices": "billing",
   "billing-mode-breakdown": "billing",
   "billing-module-collections": "billing",
+  "billing-payment-collection": "billing",
+  "billing-revenue-reports": "billing",
+  "billing-daily-monthly-reports": "billing",
   pharmacy: "pharmacy",
-  lab: "lab",
   hrms: "hrms",
-  ot: "ot",
   accounts: "billing",
   "accounts-overview": "billing",
   "accounts-ledger": "billing",
@@ -131,28 +130,18 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
       </>
     ),
     pharmacy: (
-      <>
-        <rect x="7" y="3" width="10" height="18" rx="3" {...stroke} />
-        <path d="M9 7h6M9 17h6" {...stroke} />
-      </>
-    ),
-    lab: (
-      <>
-        <path d="M10 3v5l-5.5 9.5A2 2 0 0 0 6.2 21h11.6a2 2 0 0 0 1.7-3.5L14 8V3" {...stroke} />
-        <path d="M8.5 13h7" {...stroke} />
-      </>
+      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10.5 20.5l-6-6a4.243 4.243 0 0 1 6-6l6 6a4.243 4.243 0 0 1-6 6z" />
+        <line x1="8.5" y1="8.5" x2="15.5" y2="15.5" />
+      </svg>
     ),
     hrms: (
-      <>
-        <rect x="3" y="4" width="18" height="16" rx="2" {...stroke} />
-        <path d="M8 8h8M8 12h8M8 16h5" {...stroke} />
-      </>
-    ),
-    ot: (
-      <>
-        <rect x="4" y="5" width="16" height="14" rx="2.5" {...stroke} />
-        <path d="M9 5V3M15 5V3M8 12h8M12 8v8" {...stroke} />
-      </>
+      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
     ),
     symptom: (
       <>
@@ -385,11 +374,13 @@ function App() {
       "billing-invoices",
       "billing-mode-breakdown",
       "billing-module-collections",
+      "billing-payment-collection",
+      "billing-revenue-reports",
+      "billing-daily-monthly-reports",
       "pharmacy",
-      "lab",
       "hrms",
-      "ot",
-      "accounts-overview",
+      "accounts",
+      "reports",
       "accounts-ledger",
       "accounts-vendor-payments",
       "accounts-doctor-payouts",
@@ -1220,7 +1211,6 @@ function App() {
               canEdit={hasPermission("patients.write")}
               canDelete={hasPermission("patients.delete")}
               canReadBilling={hasPermission("billing.read")}
-              canReadLab={hasPermission("lab.read")}
               ocrLanguage={ocrLanguage}
               languages={languages}
               refreshToken={patientDetailRefreshToken}
@@ -1240,11 +1230,7 @@ function App() {
 
           {page === "pharmacy" && hasPermission("pharmacy.read") && <PharmacyPage setNotice={setNotice} />}
 
-          {page === "lab" && hasPermission("lab.read") && <LabPage setNotice={setNotice} />}
-
           {page === "hrms" && hasPermission("hr.read") && <HrmsPage setNotice={setNotice} />}
-
-          {page === "ot" && hasPermission("ot.read") && <OtPage setNotice={setNotice} />}
 
         {page === "employees" && hasPermission("employees.read") && (
           <EmployeesPage
