@@ -14,7 +14,12 @@ const sizeClassMap: Record<NonNullable<ContainerProps["size"]>, string> = {
 };
 
 function Container({ className, size = "xl", ...props }: ContainerProps) {
-  return <div className={cn("ui-container", sizeClassMap[size], className)} {...props} />;
+  return (
+    <div
+      className={cn("ui-container", sizeClassMap[size], className)}
+      {...props}
+    />
+  );
 }
 
 export default Container;

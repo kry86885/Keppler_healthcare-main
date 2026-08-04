@@ -33,10 +33,18 @@ export async function ensureRazorpayLoaded(): Promise<void> {
   if (typeof window.Razorpay === "function") return;
   if (!loadPromise) {
     loadPromise = new Promise<void>((resolve, reject) => {
-      const existingScript = document.querySelector<HTMLScriptElement>(`script[src="${RAZORPAY_CHECKOUT_URL}"]`);
+      const existingScript = document.querySelector<HTMLScriptElement>(
+        `script[src="${RAZORPAY_CHECKOUT_URL}"]`,
+      );
       if (existingScript) {
-        existingScript.addEventListener("load", () => resolve(), { once: true });
-        existingScript.addEventListener("error", () => reject(new Error("Failed to load Razorpay checkout script.")), { once: true });
+        existingScript.addEventListener("load", () => resolve(), {
+          once: true,
+        });
+        existingScript.addEventListener(
+          "error",
+          () => reject(new Error("Failed to load Razorpay checkout script.")),
+          { once: true },
+        );
         return;
       }
 
@@ -44,14 +52,17 @@ export async function ensureRazorpayLoaded(): Promise<void> {
       script.src = RAZORPAY_CHECKOUT_URL;
       script.async = true;
       script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Failed to load Razorpay checkout script."));
+      script.onerror = () =>
+        reject(new Error("Failed to load Razorpay checkout script."));
       document.body.appendChild(script);
     });
   }
   await loadPromise;
 }
 
-export async function openRazorpayCheckout(options: RazorpayCheckoutOptions): Promise<RazorpaySuccessResponse> {
+export async function openRazorpayCheckout(
+  options: RazorpayCheckoutOptions,
+): Promise<RazorpaySuccessResponse> {
   await ensureRazorpayLoaded();
   return new Promise<RazorpaySuccessResponse>((resolve, reject) => {
     if (typeof window.Razorpay !== "function") {

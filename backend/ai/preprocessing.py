@@ -48,11 +48,15 @@ def _deskew(image):
     if abs(angle) < 0.1 or abs(angle) > MAX_DESKEW_ANGLE_DEGREES:
         # Skip near-zero (no-op) and implausibly large (likely a misdetection) corrections.
         return image
-    (h, w) = image.shape[:2]
+    h, w = image.shape[:2]
     center = (w // 2, h // 2)
     rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
     return cv2.warpAffine(
-        image, rotation_matrix, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE
+        image,
+        rotation_matrix,
+        (w, h),
+        flags=cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_REPLICATE,
     )
 
 

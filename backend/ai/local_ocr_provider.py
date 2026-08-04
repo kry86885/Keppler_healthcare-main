@@ -17,10 +17,12 @@ from .ollama_provider import OllamaLLMProvider
 
 def _strip_code_fences(text):
     """Smaller local models don't reliably follow "no code fences" instructions --
-    strip a leading/trailing ```(markdown)? fence if the model wrapped its answer in one."""
+    strip a leading/trailing ```(markdown)? fence if the model wrapped its answer in one.
+    """
     text = text.strip()
     match = re.match(r"^```(?:markdown|md)?\s*\n?([\s\S]*?)\n?```$", text)
     return match.group(1).strip() if match else text
+
 
 _reader = None
 _reader_lock = threading.Lock()
@@ -66,7 +68,9 @@ Raw OCR text:
 
 
 class EasyOCRProvider:
-    def extract_text(self, file_bytes, language="en", doc_type="document", filename=None):
+    def extract_text(
+        self, file_bytes, language="en", doc_type="document", filename=None
+    ):
         mime_type = _detect_mime_type(file_bytes, filename)
 
         try:

@@ -1,75 +1,44 @@
----
-title: HospAI
-emoji: 🏥
-colorFrom: blue
-colorTo: red
-sdk: docker
-pinned: false
-license: mit
----
+# Keppler Healthcare
 
-# HospAI
+AI-driven healthcare management application featuring intelligent patient tracking, OCR-assisted document intake, dynamic dashboards, and automated hospital workflows.
 
-AI-driven healthcare management application with patient tracking, OCR-assisted document intake, and admissions.
+## System Architecture
 
-## Features
-- 🏥 Patient Management
-- 🔬 Medical Imaging OCR (X-Ray/MRI)
-- 💊 Prescription OCR
-- 📊 Healthcare Analytics
+The application is built with a robust, production-ready stack:
+- **Frontend**: React (TypeScript, Vite) with dynamic UI routing and components.
+- **Backend**: Python (Flask, Gunicorn) serving stateless REST APIs.
+- **Database**: PostgreSQL for all core storage (using `psycopg2`).
+- **Caching & Workers**: Redis + Celery for background tasks (bulk import, document processing).
+- **AI Module**: Separate `symptom_backend` microservice for advanced LLM integrations.
 
-## Project Structure
-- `backend/`: Flask API, OCR/export utilities, database access
-- `frontend/`: React UI with HospAI branding
+## Production Deployment
 
-## Run Locally
-1. Backend:
-   - `cd backend`
-   - `python -m venv .venv && source .venv/bin/activate`
-   - `pip install -r requirements.txt`
-   - `python app.py`
-2. Frontend:
-   - `cd frontend`
-   - `npm install`
-   - `npm run dev`
+The entire system is thoroughly containerized and ready for production environments via `docker-compose.yml`.
 
-## Testing
-### Backend (unit + integration)
-- `cd backend`
-- `pip install -r requirements-dev.txt`
-- `pytest`
+### Quick Start
 
-### Payment Regression Suite (backend + frontend)
-- From repo root: `./scripts/test_payment_regression.sh`
-- Frontend-only payment tests: `cd frontend && npm run test:payments`
+1. **Configure Environment**
+   Copy the example environment file and fill in your secure keys.
+   ```bash
+   cp .env.example .env
+   ```
 
-### Frontend (E2E with Jest + Puppeteer)
-1. Start backend and frontend:
-   - `cd backend && python app.py`
-   - `cd frontend && npm install && npm run dev -- --port 5173`
-2. Run E2E tests:
-   - `cd frontend`
-   - `npm run test:e2e`
+2. **Start the Stack**
+   ```bash
+   docker compose up -d --build
+   ```
 
-Notes:
-- Set `E2E_BASE_URL` if your frontend runs on a different port or host.
-- Use `npm run test:e2e:headed` to run with a visible browser.
+3. **Access the Application**
+   - Frontend: http://localhost:5173
+   - API: http://localhost:5011
 
-## Production Deployment (Coolify)
-- Production compose file: `docker-compose.yml`
-- Services are internal-only via `expose` (no host port publishing), which is recommended for Coolify reverse-proxy routing.
-- Healthchecks are enabled for backend, symptom backend, and frontend.
-- Persistent volumes are configured for SQLite data and uploads:
-  - `backend_data` -> `/data`
-  - `backend_uploads` -> `/app/backend/uploads`
+### Essential Environment Variables
+For deployment on a remote server, ensure the following are properly set in `.env`:
+- `POSTGRES_PASSWORD`: A secure password for PostgreSQL.
+- `SESSION_PEPPER`: A random cryptographic string for securing sessions.
+- `GEMINI_API_KEY`: Your LLM API key.
+- `VITE_API_BASE` / `VITE_APP_URL`: Must reflect the domain names where your frontend and API are hosted if placed behind a reverse proxy (like Nginx or Traefik).
 
-### Required environment variables in Coolify
-- `VITE_API_BASE` (example: `https://api.hospai.ai`)
-- `VITE_API_URL` (example: `https://api.hospai.ai`)
-- `VITE_SYMPTOM_API_BASE` (example: `https://symptom.hospai.ai`)
-- Backend runtime variables in Coolify (session/admin-route secrets, storage keys, OCR keys, Razorpay keys, etc.)
-- The compose file enforces these `VITE_*` variables as required build args, so deployment will fail fast if missing.
-
-### Coolify routing recommendation
-- Route `frontend` service to your app domain (for example `app.hospai.ai`).
-- Keep `backend` and `symptom-backend` private unless you explicitly need direct public access.
+## Maintenance & Development
+- All code is strictly formatted (Black for Python, Prettier for TypeScript).
+- PostgreSQL database backups should target the bound `volumes/pg_data` directory.

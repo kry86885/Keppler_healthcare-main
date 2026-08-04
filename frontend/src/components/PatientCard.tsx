@@ -13,7 +13,8 @@ export default function PatientCard({ patient }: Props) {
           {patient.name} {patient.middle_name || ""} {patient.last_name || ""}
         </h4>
         <p className="patient-card-meta">
-          ID: {patient.patient_id} · {patient.gender || "-"} · Age {patient.age || "-"}
+          ID: {patient.patient_id} · {patient.gender || "-"} · Age{" "}
+          {patient.age || "-"}
         </p>
       </ListItemContent>
       <ListItemActions className="patient-card-side">

@@ -5,9 +5,11 @@ import os
 from pathlib import Path
 import json
 import re
+
 try:
     from google import genai
     from google.genai import types
+
     _GENAI_IMPORT_ERROR = None
 except Exception as exc:  # pragma: no cover - import guard for local/dev env mismatch
     genai = None
@@ -36,11 +38,15 @@ def _resolve_api_key():
 
     backend_env = dotenv_values(_BACKEND_DIR / ".env")
     root_env = dotenv_values(_PROJECT_ROOT / ".env")
-    key = (backend_env.get("GEMINI_API_KEY") or root_env.get("GEMINI_API_KEY") or "").strip()
+    key = (
+        backend_env.get("GEMINI_API_KEY") or root_env.get("GEMINI_API_KEY") or ""
+    ).strip()
     if key:
         return key
 
-    key = (backend_env.get("GOOGLE_API_KEY") or root_env.get("GOOGLE_API_KEY") or "").strip()
+    key = (
+        backend_env.get("GOOGLE_API_KEY") or root_env.get("GOOGLE_API_KEY") or ""
+    ).strip()
     return key or None
 
 
@@ -132,7 +138,9 @@ def _detect_mime_type(file_bytes, filename=None):
 
 def _extract_text_from_pdf_bytes(pdf_bytes):
     if PdfReader is None:
-        raise RuntimeError("PDF support requires pypdf. Install dependencies and retry.")
+        raise RuntimeError(
+            "PDF support requires pypdf. Install dependencies and retry."
+        )
     reader = PdfReader(io.BytesIO(pdf_bytes))
     chunks = []
     for page in reader.pages:
@@ -234,7 +242,9 @@ def _extract_markdown_from_llm_response(raw_text):
     return text
 
 
-def extract_text_from_image(file_bytes, language="en", doc_type="document", filename=None):
+def extract_text_from_image(
+    file_bytes, language="en", doc_type="document", filename=None
+):
     client = get_genai_model()
     if client is None:
         return (

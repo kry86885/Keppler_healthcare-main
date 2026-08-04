@@ -10,8 +10,18 @@ function jsonResponse(payload: unknown) {
 }
 
 const FIXTURE_PATIENTS = [
-  { patient_id: "PAT-20260101-0001", name: "Alice", last_name: "Smith", phone: "5551112222" },
-  { patient_id: "PAT-20260101-0002", name: "Alicia", last_name: "Jones", phone: "5553334444" },
+  {
+    patient_id: "PAT-20260101-0001",
+    name: "Alice",
+    last_name: "Smith",
+    phone: "5551112222",
+  },
+  {
+    patient_id: "PAT-20260101-0002",
+    name: "Alicia",
+    last_name: "Jones",
+    phone: "5553334444",
+  },
 ];
 
 async function advanceDebounce() {
@@ -32,7 +42,9 @@ describe("PatientAutocomplete", () => {
   });
 
   test("debounces search input and renders suggestions after the delay", async () => {
-    global.fetch = vi.fn(() => jsonResponse({ patients: FIXTURE_PATIENTS })) as any;
+    global.fetch = vi.fn(() =>
+      jsonResponse({ patients: FIXTURE_PATIENTS }),
+    ) as any;
 
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -40,11 +52,23 @@ describe("PatientAutocomplete", () => {
     const onChange = vi.fn();
 
     act(() => {
-      root.render(<PatientAutocomplete value="" onChange={onChange} ariaLabel="Search patient" />);
+      root.render(
+        <PatientAutocomplete
+          value=""
+          onChange={onChange}
+          ariaLabel="Search patient"
+        />,
+      );
     });
 
     act(() => {
-      root.render(<PatientAutocomplete value="ali" onChange={onChange} ariaLabel="Search patient" />);
+      root.render(
+        <PatientAutocomplete
+          value="ali"
+          onChange={onChange}
+          ariaLabel="Search patient"
+        />,
+      );
     });
 
     expect(global.fetch).not.toHaveBeenCalled();
@@ -62,7 +86,9 @@ describe("PatientAutocomplete", () => {
   });
 
   test("ArrowDown + Enter selects a suggestion and prevents default so a wrapping form does not submit", async () => {
-    global.fetch = vi.fn(() => jsonResponse({ patients: FIXTURE_PATIENTS })) as any;
+    global.fetch = vi.fn(() =>
+      jsonResponse({ patients: FIXTURE_PATIENTS }),
+    ) as any;
 
     const form = document.createElement("form");
     document.body.appendChild(form);
@@ -73,20 +99,39 @@ describe("PatientAutocomplete", () => {
     form.addEventListener("submit", submitHandler);
 
     act(() => {
-      root.render(<PatientAutocomplete value="ali" onChange={onChange} onSelect={onSelect} ariaLabel="Search patient" />);
+      root.render(
+        <PatientAutocomplete
+          value="ali"
+          onChange={onChange}
+          onSelect={onSelect}
+          ariaLabel="Search patient"
+        />,
+      );
     });
 
     await advanceDebounce();
 
-    const input = form.querySelector('input[aria-label="Search patient"]') as HTMLInputElement;
+    const input = form.querySelector(
+      'input[aria-label="Search patient"]',
+    ) as HTMLInputElement;
 
     act(() => {
-      input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowDown",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
     });
 
     let enterEvent: KeyboardEvent | null = null;
     act(() => {
-      enterEvent = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+      enterEvent = new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      });
       input.dispatchEvent(enterEvent);
     });
 
@@ -101,7 +146,9 @@ describe("PatientAutocomplete", () => {
   });
 
   test("Escape closes the suggestion list without selecting", async () => {
-    global.fetch = vi.fn(() => jsonResponse({ patients: FIXTURE_PATIENTS })) as any;
+    global.fetch = vi.fn(() =>
+      jsonResponse({ patients: FIXTURE_PATIENTS }),
+    ) as any;
 
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -110,16 +157,31 @@ describe("PatientAutocomplete", () => {
     const onSelect = vi.fn();
 
     act(() => {
-      root.render(<PatientAutocomplete value="ali" onChange={onChange} onSelect={onSelect} ariaLabel="Search patient" />);
+      root.render(
+        <PatientAutocomplete
+          value="ali"
+          onChange={onChange}
+          onSelect={onSelect}
+          ariaLabel="Search patient"
+        />,
+      );
     });
 
     await advanceDebounce();
 
     expect(container.textContent).toContain("Alice Smith");
 
-    const input = container.querySelector('input[aria-label="Search patient"]') as HTMLInputElement;
+    const input = container.querySelector(
+      'input[aria-label="Search patient"]',
+    ) as HTMLInputElement;
     act(() => {
-      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
     });
 
     expect(container.querySelector(".patient-autocomplete-list")).toBeFalsy();

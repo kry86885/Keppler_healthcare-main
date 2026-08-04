@@ -1,8 +1,23 @@
 import { useEffect, useState } from "react";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
-import { ALL_ASSIGNABLE_MODULES, DEFAULT_MODULE_ACCESS, MODULE_OPTIONS } from "../lib/constants";
+import {
+  ALL_ASSIGNABLE_MODULES,
+  DEFAULT_MODULE_ACCESS,
+  MODULE_OPTIONS,
+} from "../lib/constants";
 import { apiFetch, reportError } from "../lib/api";
-import { Badge, Button, Checkbox, Input, Label, Select, Table, TableCell, TableHead, TableRow } from "../components/ui";
+import {
+  Badge,
+  Button,
+  Checkbox,
+  Input,
+  Label,
+  Select,
+  Table,
+  TableCell,
+  TableHead,
+  TableRow,
+} from "../components/ui";
 import type { Employee, ModuleId, Notice, UserType } from "../types";
 
 type Props = {
@@ -42,7 +57,10 @@ export default function AdminPage({ setNotice }: Props) {
   const [users, setUsers] = useState<Employee[]>([]);
   const [promotingId, setPromotingId] = useState<string | null>(null);
 
-  const toggleModule = (current: ModuleId[] | undefined, moduleName: ModuleId) => {
+  const toggleModule = (
+    current: ModuleId[] | undefined,
+    moduleName: ModuleId,
+  ) => {
     const set = new Set(current || []);
     if (set.has(moduleName)) {
       set.delete(moduleName);
@@ -55,7 +73,10 @@ export default function AdminPage({ setNotice }: Props) {
   const loadAdminAuthState = async () => {
     setAuthLoading(true);
     try {
-      const state = await apiFetch<{ authorized: boolean; configured: boolean }>("/api/admin/auth/session");
+      const state = await apiFetch<{
+        authorized: boolean;
+        configured: boolean;
+      }>("/api/admin/auth/session");
       setAuthorized(!!state.authorized);
       setConfigured(!!state.configured);
     } catch {
@@ -71,7 +92,11 @@ export default function AdminPage({ setNotice }: Props) {
       const data = await apiFetch<{ users?: Employee[] }>("/api/admin/users");
       setUsers(data.users || []);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load users.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to load users.",
+      );
     }
   };
 
@@ -97,7 +122,11 @@ export default function AdminPage({ setNotice }: Props) {
       setAuthPassword("");
       setNotice({ type: "success", message: "Admin route unlocked." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Invalid admin route password.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Invalid admin route password.",
+      );
     } finally {
       setAuthSubmitting(false);
     }
@@ -110,7 +139,11 @@ export default function AdminPage({ setNotice }: Props) {
       setUsers([]);
       setNotice({ type: "success", message: "Admin route locked." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to lock admin route.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to lock admin route.",
+      );
     }
   };
 
@@ -122,12 +155,19 @@ export default function AdminPage({ setNotice }: Props) {
       const payload = {
         ...form,
         user_type: form.user_type,
-        module_access: form.user_type === "admin" ? ALL_ASSIGNABLE_MODULES : form.module_access,
+        module_access:
+          form.user_type === "admin"
+            ? ALL_ASSIGNABLE_MODULES
+            : form.module_access,
         job_role: form.user_type === "admin" ? "System Admin" : "Staff",
         address: "",
         emergency_contact: "",
       };
-      const response = await apiFetch<{ success?: boolean; message?: string; employee_id?: string }>("/api/admin/users", {
+      const response = await apiFetch<{
+        success?: boolean;
+        message?: string;
+        employee_id?: string;
+      }>("/api/admin/users", {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -141,10 +181,17 @@ export default function AdminPage({ setNotice }: Props) {
         setForm(EMPTY_FORM);
         await loadUsers();
       } else {
-        setNotice({ type: "error", message: response.message || "Unable to create user." });
+        setNotice({
+          type: "error",
+          message: response.message || "Unable to create user.",
+        });
       }
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to create user.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to create user.",
+      );
     } finally {
       setCreating(false);
     }
@@ -153,11 +200,20 @@ export default function AdminPage({ setNotice }: Props) {
   const handlePromoteToAdmin = async (employeeId: string) => {
     setPromotingId(employeeId);
     try {
-      await apiFetch(`/api/admin/users/${employeeId}/promote`, { method: "POST" });
-      setNotice({ type: "success", message: `${employeeId} promoted to admin.` });
+      await apiFetch(`/api/admin/users/${employeeId}/promote`, {
+        method: "POST",
+      });
+      setNotice({
+        type: "success",
+        message: `${employeeId} promoted to admin.`,
+      });
       await loadUsers();
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to promote user.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to promote user.",
+      );
     } finally {
       setPromotingId(null);
     }
@@ -174,9 +230,12 @@ export default function AdminPage({ setNotice }: Props) {
   if (!configured) {
     return (
       <section className="panel admin-auth-panel">
-        <p className="muted">Admin route password is not configured on the server.</p>
         <p className="muted">
-          Set <code>ADMIN_ROUTE_PASSWORD</code> in your <code>.env</code> and restart the backend.
+          Admin route password is not configured on the server.
+        </p>
+        <p className="muted">
+          Set <code>ADMIN_ROUTE_PASSWORD</code> in your <code>.env</code> and
+          restart the backend.
         </p>
       </section>
     );
@@ -185,11 +244,18 @@ export default function AdminPage({ setNotice }: Props) {
   if (!authorized) {
     return (
       <section className="panel admin-auth-panel">
-        <p className="muted">Enter the route password to access admin management.</p>
+        <p className="muted">
+          Enter the route password to access admin management.
+        </p>
         <form className="grid-form" onSubmit={handleAdminAuthLogin}>
           <Label className="span-2">
             Admin Route Password
-            <Input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} required />
+            <Input
+              type="password"
+              value={authPassword}
+              onChange={(e) => setAuthPassword(e.target.value)}
+              required
+            />
           </Label>
           <div className="form-actions span-2">
             <Button variant="primary" type="submit" disabled={authSubmitting}>
@@ -205,10 +271,16 @@ export default function AdminPage({ setNotice }: Props) {
     <section className="panel admin-page">
       <div className="admin-page-header">
         <div>
-          <p className="muted">Create users and promote existing users to admin.</p>
+          <p className="muted">
+            Create users and promote existing users to admin.
+          </p>
         </div>
         <div className="form-actions">
-          <Button variant="secondary" type="button" onClick={handleAdminAuthLogout}>
+          <Button
+            variant="secondary"
+            type="button"
+            onClick={handleAdminAuthLogout}
+          >
             Lock /admin
           </Button>
         </div>
@@ -220,31 +292,77 @@ export default function AdminPage({ setNotice }: Props) {
           <form className="grid-form" onSubmit={handleCreateUser}>
             <Label>
               Username
-              <Input value={form.username} onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))} required />
+              <Input
+                value={form.username}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, username: e.target.value }))
+                }
+                required
+              />
             </Label>
             <Label>
               Password
-              <Input type="password" value={form.password} onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))} required />
+              <Input
+                type="password"
+                value={form.password}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, password: e.target.value }))
+                }
+                required
+              />
             </Label>
             <Label>
               Full Name
-              <Input value={form.full_name} onChange={(e) => setForm((prev) => ({ ...prev, full_name: e.target.value }))} required />
+              <Input
+                value={form.full_name}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, full_name: e.target.value }))
+                }
+                required
+              />
             </Label>
             <Label>
               Email
-              <Input type="email" value={form.email} onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))} required />
+              <Input
+                type="email"
+                value={form.email}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, email: e.target.value }))
+                }
+                required
+              />
             </Label>
             <Label>
               Phone
-              <Input value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} required />
+              <Input
+                value={form.phone}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, phone: e.target.value }))
+                }
+                required
+              />
             </Label>
             <Label>
               Department
-              <Input value={form.department} onChange={(e) => setForm((prev) => ({ ...prev, department: e.target.value }))} required />
+              <Input
+                value={form.department}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, department: e.target.value }))
+                }
+                required
+              />
             </Label>
             <Label>
               User Type
-              <Select value={form.user_type} onChange={(e) => setForm((prev) => ({ ...prev, user_type: e.target.value as UserType }))}>
+              <Select
+                value={form.user_type}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    user_type: e.target.value as UserType,
+                  }))
+                }
+              >
                 <option value="normal">Normal</option>
                 <option value="admin">Admin</option>
               </Select>
@@ -262,7 +380,10 @@ export default function AdminPage({ setNotice }: Props) {
                           onChange={() =>
                             setForm((prev) => ({
                               ...prev,
-                              module_access: toggleModule(prev.module_access, module.value),
+                              module_access: toggleModule(
+                                prev.module_access,
+                                module.value,
+                              ),
                             }))
                           }
                         />
@@ -277,7 +398,12 @@ export default function AdminPage({ setNotice }: Props) {
               <Button variant="primary" type="submit" disabled={creating}>
                 {creating ? "Creating..." : "Create User"}
               </Button>
-              <Button variant="secondary" type="button" onClick={() => setForm(EMPTY_FORM)} disabled={creating}>
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => setForm(EMPTY_FORM)}
+                disabled={creating}
+              >
                 Reset
               </Button>
             </div>
@@ -304,16 +430,24 @@ export default function AdminPage({ setNotice }: Props) {
                     <TableCell>{user.username}</TableCell>
                     <TableCell>{user.full_name || "-"}</TableCell>
                     <TableCell>
-                      <Badge variant={isAdmin ? "default" : "outline"}>{isAdmin ? "admin" : "normal"}</Badge>
+                      <Badge variant={isAdmin ? "default" : "outline"}>
+                        {isAdmin ? "admin" : "normal"}
+                      </Badge>
                     </TableCell>
                     <TableCell>{user.status || "-"}</TableCell>
                     <TableCell>
                       <Button
                         variant="secondary"
-                        onClick={() => void handlePromoteToAdmin(user.employee_id)}
+                        onClick={() =>
+                          void handlePromoteToAdmin(user.employee_id)
+                        }
                         disabled={isAdmin || promotingId === user.employee_id}
                       >
-                        {promotingId === user.employee_id ? "Promoting..." : isAdmin ? "Already Admin" : "Make Admin"}
+                        {promotingId === user.employee_id
+                          ? "Promoting..."
+                          : isAdmin
+                            ? "Already Admin"
+                            : "Make Admin"}
                       </Button>
                     </TableCell>
                   </TableRow>

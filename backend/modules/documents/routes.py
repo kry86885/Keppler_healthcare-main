@@ -12,23 +12,24 @@ from datetime import datetime
 from io import BytesIO
 
 from app import (
-    require_permissions, 
-    log_audit_event, 
+    require_permissions,
+    log_audit_event,
     validate_required_fields,
     current_hospital_id,
     row_to_dict,
-    rows_to_dicts
+    rows_to_dicts,
 )
 
 from utils.database import (
     delete_certificate,
     delete_document,
     get_document,
-    update_document_ocr
+    update_document_ocr,
 )
 
+documents_bp = Blueprint("documents", __name__)
 
-documents_bp = Blueprint('documents', __name__)
+
 @documents_bp.get("/api/documents/<int:document_id>/file")
 @require_permissions("patients.read")
 def document_file(document_id):
@@ -65,7 +66,6 @@ def document_file(document_id):
     return jsonify({"error": "Document file content unavailable"}), 404
 
 
-
 @documents_bp.delete("/api/documents/<int:document_id>")
 @require_permissions("patients.documents.write")
 def document_delete(document_id):
@@ -74,14 +74,15 @@ def document_delete(document_id):
     if not document:
         return jsonify({"error": "Document not found"}), 404
 
-    deleted = delete_document(document_id, hospital_id=hospital_id, actor=g.current_user.get("username"))
+    deleted = delete_document(
+        document_id, hospital_id=hospital_id, actor=g.current_user.get("username")
+    )
     if not deleted:
         return jsonify({"error": "Document not found"}), 404
 
     STORAGE.delete(document["file_path"])
 
     return jsonify({"status": "ok"})
-
 
 
 @documents_bp.post("/api/documents/<int:document_id>/ocr")
@@ -124,7 +125,11 @@ def document_process_ocr(document_id):
         pass
 
     updated = update_document_ocr(
-        document_id, ocr_text, requested_language, hospital_id=hospital_id, structured_data=structured_data
+        document_id,
+        ocr_text,
+        requested_language,
+        hospital_id=hospital_id,
+        structured_data=structured_data,
     )
     if not updated:
         return jsonify({"error": "Document not found"}), 404
@@ -140,14 +145,16 @@ def document_process_ocr(document_id):
     )
 
 
-
 @documents_bp.delete("/api/certificates/<int:certificate_id>")
 @require_permissions("patients.clinical.write")
 def patient_certificates_delete(certificate_id):
     deleted = delete_certificate(certificate_id, actor=g.current_user.get("username"))
     if not deleted:
         return jsonify({"error": "Certificate not found"}), 404
-    log_audit_event("delete", "certificates", str(certificate_id), {"certificate_id": certificate_id})
+    log_audit_event(
+        "delete",
+        "certificates",
+        str(certificate_id),
+        {"certificate_id": certificate_id},
+    )
     return jsonify({"status": "ok"})
-
-

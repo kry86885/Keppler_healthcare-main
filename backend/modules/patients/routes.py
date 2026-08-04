@@ -12,7 +12,7 @@ from app import (
     current_hospital_id,
     row_to_dict,
     rows_to_dicts,
-    normalize_department_name
+    normalize_department_name,
 )
 
 from utils.database import (
@@ -50,12 +50,12 @@ from utils.database import (
     create_certificate,
     list_patient_movements,
     add_patient_movement,
-    get_patient_journey
+    get_patient_journey,
 )
 from core.export import generate_pdf
 from core.whatsapp import send_whatsapp_message
 
-patients_bp = Blueprint('patients', __name__)
+patients_bp = Blueprint("patients", __name__)
 logger = logging.getLogger(__name__)
 
 
@@ -69,9 +69,12 @@ def _notify_patient_prescription_ready(patient, ocr_text, doctor_name=None):
         phone = patient["phone"] if patient else None
         if not phone:
             return
-        patient_name = " ".join(
-            part for part in [patient["name"], patient["last_name"]] if part
-        ).strip() or "Patient"
+        patient_name = (
+            " ".join(
+                part for part in [patient["name"], patient["last_name"]] if part
+            ).strip()
+            or "Patient"
+        )
         doctor_line = f" from Dr. {doctor_name}" if doctor_name else ""
         public_base_url = (os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
 
@@ -92,22 +95,30 @@ def _notify_patient_prescription_ready(patient, ocr_text, doctor_name=None):
             media_url=media_url,
         )
     except Exception:
-        logger.exception("Failed to send prescription WhatsApp notification for patient %s", patient.get("patient_id") if patient else None)
+        logger.exception(
+            "Failed to send prescription WhatsApp notification for patient %s",
+            patient.get("patient_id") if patient else None,
+        )
+
 
 # NOTE: Add your utils.database imports here after extraction.
+
 
 @patients_bp.get("/api/patients")
 @require_permissions("patients.read")
 def patients_list():
     query = (request.args.get("q") or "").strip()
     hospital_id = current_hospital_id()
-    
+
     # Enforce isolation for clinicians
     doctor_name = None
     current_user = getattr(g, "current_user", {})
-    if current_user.get("access_role") == "clinician" or (current_user.get("job_role") or "").strip().lower() == "doctor":
+    if (
+        current_user.get("access_role") == "clinician"
+        or (current_user.get("job_role") or "").strip().lower() == "doctor"
+    ):
         doctor_name = current_user.get("full_name") or current_user.get("username")
-        
+
     patients = (
         search_patients(query, hospital_id=hospital_id, doctor_name=doctor_name)
         if query
@@ -116,12 +127,16 @@ def patients_list():
     return jsonify({"patients": rows_to_dicts(patients)})
 
 
-
 @patients_bp.get("/api/registration/departments")
 @require_permissions("patients.read")
 def registration_departments_list():
-    return jsonify({"departments": rows_to_dicts(list_departments(hospital_id=current_hospital_id()))})
-
+    return jsonify(
+        {
+            "departments": rows_to_dicts(
+                list_departments(hospital_id=current_hospital_id())
+            )
+        }
+    )
 
 
 @patients_bp.post("/api/registration/departments")
@@ -136,13 +151,22 @@ def registration_departments_create():
     existing = next(
         (
             row
-            for row in rows_to_dicts(list_departments(hospital_id=current_hospital_id()))
-            if (row.get("department_name") or "").strip().lower() == department_name.lower()
+            for row in rows_to_dicts(
+                list_departments(hospital_id=current_hospital_id())
+            )
+            if (row.get("department_name") or "").strip().lower()
+            == department_name.lower()
         ),
         None,
     )
     if existing:
-        return jsonify({"department_id": existing.get("id"), "department_name": existing.get("department_name"), "already_exists": True})
+        return jsonify(
+            {
+                "department_id": existing.get("id"),
+                "department_name": existing.get("department_name"),
+                "already_exists": True,
+            }
+        )
 
     department_id = create_department(
         {"department_name": department_name},
@@ -157,26 +181,32 @@ def registration_departments_create():
     return jsonify({"department_id": department_id})
 
 
-
 @patients_bp.get("/api/registration/consents")
 @require_permissions("patients.read")
 def registration_consents_list():
     patient_id = request.args.get("patient_id")
-    return jsonify({"consents": rows_to_dicts(list_patient_consents(patient_id=patient_id))})
-
+    return jsonify(
+        {"consents": rows_to_dicts(list_patient_consents(patient_id=patient_id))}
+    )
 
 
 @patients_bp.post("/api/registration/consents")
 @require_permissions("patients.consent.write")
 def registration_consents_create():
     payload = request.get_json(force=True)
-    validation_error = validate_required_fields(payload, ["patient_name", "consent_type", "signed_by"])
+    validation_error = validate_required_fields(
+        payload, ["patient_name", "consent_type", "signed_by"]
+    )
     if validation_error:
         return validation_error
     consent_id = create_patient_consent(payload)
-    log_audit_event("create", "patient_consents", str(consent_id), {"patient_name": payload.get("patient_name")})
+    log_audit_event(
+        "create",
+        "patient_consents",
+        str(consent_id),
+        {"patient_name": payload.get("patient_name")},
+    )
     return jsonify({"consent_id": consent_id})
-
 
 
 @patients_bp.put("/api/registration/consents/<int:consent_id>")
@@ -186,24 +216,32 @@ def registration_consents_update(consent_id):
     updated = update_patient_consent(consent_id, payload)
     if not updated:
         return jsonify({"error": "Consent not found"}), 404
-    log_audit_event("update", "patient_consents", str(consent_id), {"consent_id": consent_id})
+    log_audit_event(
+        "update", "patient_consents", str(consent_id), {"consent_id": consent_id}
+    )
     return jsonify({"status": "ok"})
-
 
 
 @patients_bp.get("/api/registration/insurance")
 @require_permissions("patients.read")
 def registration_insurance_list():
     patient_id = request.args.get("patient_id")
-    return jsonify({"verifications": rows_to_dicts(list_insurance_verifications(patient_id=patient_id))})
-
+    return jsonify(
+        {
+            "verifications": rows_to_dicts(
+                list_insurance_verifications(patient_id=patient_id)
+            )
+        }
+    )
 
 
 @patients_bp.post("/api/registration/insurance")
 @require_permissions("patients.insurance.write")
 def registration_insurance_create():
     payload = request.get_json(force=True)
-    validation_error = validate_required_fields(payload, ["patient_name", "insurer_name"])
+    validation_error = validate_required_fields(
+        payload, ["patient_name", "insurer_name"]
+    )
     if validation_error:
         return validation_error
     verification_id = create_insurance_verification(payload)
@@ -214,7 +252,6 @@ def registration_insurance_create():
         {"patient_name": payload.get("patient_name")},
     )
     return jsonify({"verification_id": verification_id})
-
 
 
 @patients_bp.put("/api/registration/insurance/<int:verification_id>")
@@ -233,14 +270,12 @@ def registration_insurance_update(verification_id):
     return jsonify({"status": "ok"})
 
 
-
 @patients_bp.get("/api/patients/next-id")
 @require_permissions("patients.registration.write")
 def patients_next_id():
     return jsonify(
         {"patient_id": generate_patient_id(hospital_id=current_hospital_id())}
     )
-
 
 
 @patients_bp.post("/api/patients")
@@ -292,7 +327,6 @@ def patients_create():
     return jsonify({"patient_id": patient_id, "admission_id": admission_id})
 
 
-
 @patients_bp.get("/api/patients/<patient_id>")
 @require_permissions("patients.read")
 def patients_get(patient_id):
@@ -300,7 +334,6 @@ def patients_get(patient_id):
     if not patient:
         return jsonify({"error": "Patient not found"}), 404
     return jsonify({"patient": row_to_dict(patient)})
-
 
 
 @patients_bp.put("/api/patients/<patient_id>")
@@ -334,18 +367,18 @@ def patients_update(patient_id):
     return jsonify({"status": "ok"})
 
 
-
 @patients_bp.delete("/api/patients/<patient_id>")
 @require_permissions("patients.delete")
 def patients_delete(patient_id):
     deleted = delete_patient(
-        patient_id, hospital_id=current_hospital_id(), actor=g.current_user.get("username")
+        patient_id,
+        hospital_id=current_hospital_id(),
+        actor=g.current_user.get("username"),
     )
     if not deleted:
         return jsonify({"error": "Patient not found"}), 404
     log_audit_event("delete", "patients", patient_id)
     return jsonify({"status": "ok"})
-
 
 
 @patients_bp.get("/api/patients/<patient_id>/admissions")
@@ -357,7 +390,6 @@ def admissions_list(patient_id):
         return jsonify({"error": "Patient not found"}), 404
     admissions = get_admissions(patient_id, hospital_id=hospital_id)
     return jsonify({"admissions": rows_to_dicts(admissions)})
-
 
 
 @patients_bp.post("/api/patients/<patient_id>/admissions")
@@ -376,7 +408,6 @@ def admissions_create(patient_id):
     return jsonify({"admission_id": admission_id})
 
 
-
 @patients_bp.get("/api/patients/<patient_id>/documents")
 @require_permissions("patients.read")
 def documents_list(patient_id):
@@ -386,7 +417,6 @@ def documents_list(patient_id):
         return jsonify({"error": "Patient not found"}), 404
     documents = get_documents(patient_id, hospital_id=hospital_id)
     return jsonify({"documents": rows_to_dicts(documents)})
-
 
 
 @patients_bp.post("/api/patients/<patient_id>/documents")
@@ -429,14 +459,18 @@ def documents_create(patient_id):
     )
 
 
-
 @patients_bp.get("/api/patients/<patient_id>/encounters")
 @require_permissions("patients.read")
 def patient_encounters(patient_id):
     return jsonify(
-        {"encounters": rows_to_dicts(list_encounters(patient_id=patient_id, hospital_id=current_hospital_id()))}
+        {
+            "encounters": rows_to_dicts(
+                list_encounters(
+                    patient_id=patient_id, hospital_id=current_hospital_id()
+                )
+            )
+        }
     )
-
 
 
 @patients_bp.post("/api/patients/<patient_id>/encounters")
@@ -466,7 +500,6 @@ def patient_encounter_create(patient_id):
     return jsonify({"encounter_id": encounter_id})
 
 
-
 @patients_bp.get("/api/patients/<patient_id>/beds")
 @require_permissions("patients.read")
 def patient_beds(patient_id):
@@ -478,7 +511,6 @@ def patient_beds(patient_id):
             )
         }
     )
-
 
 
 @patients_bp.post("/api/patients/<patient_id>/beds")
@@ -506,7 +538,6 @@ def patient_bed_assign(patient_id):
     return jsonify({"bed_allocation_id": bed_id})
 
 
-
 @patients_bp.get("/api/patients/<patient_id>/medications")
 @require_permissions("patients.read")
 def patient_medications(patient_id):
@@ -518,7 +549,6 @@ def patient_medications(patient_id):
             )
         }
     )
-
 
 
 @patients_bp.post("/api/patients/<patient_id>/medications")
@@ -546,12 +576,10 @@ def patient_medications_create(patient_id):
     return jsonify({"schedule_id": schedule_id})
 
 
-
 @patients_bp.get("/api/patients/<patient_id>/notes")
 @require_permissions("patients.read")
 def patient_notes(patient_id):
     return jsonify({"notes": rows_to_dicts(list_observation_notes(patient_id))})
-
 
 
 @patients_bp.post("/api/patients/<patient_id>/notes")
@@ -576,12 +604,10 @@ def patient_notes_create(patient_id):
     return jsonify({"note_id": note_id})
 
 
-
 @patients_bp.get("/api/patients/<patient_id>/certificates")
 @require_permissions("patients.read")
 def patient_certificates(patient_id):
     return jsonify({"certificates": rows_to_dicts(list_certificates(patient_id))})
-
 
 
 @patients_bp.post("/api/patients/<patient_id>/certificates")
@@ -612,12 +638,10 @@ def patient_certificates_create(patient_id):
     return jsonify({"certificate_id": certificate_id})
 
 
-
 @patients_bp.get("/api/patients/<patient_id>/movements")
 @require_permissions("patients.read")
 def patient_movements(patient_id):
     return jsonify({"movements": rows_to_dicts(list_patient_movements(patient_id))})
-
 
 
 @patients_bp.get("/api/patients/<patient_id>/journey")
@@ -627,7 +651,6 @@ def patient_journey(patient_id):
     if journey is None:
         return jsonify({"error": "Patient not found"}), 404
     return jsonify(journey)
-
 
 
 @patients_bp.post("/api/patients/<patient_id>/movements")
@@ -650,5 +673,3 @@ def patient_movements_create(patient_id):
         "create", "patient_movements", str(movement_id), {"patient_id": patient_id}
     )
     return jsonify({"movement_id": movement_id})
-
-

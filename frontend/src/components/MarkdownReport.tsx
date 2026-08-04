@@ -22,15 +22,20 @@ const splitTableCells = (line: string) => {
   return raw.split("|").map((cell) => cell.trim());
 };
 
-const isTableSeparator = (line: string) => /^\s*\|?[\s:-]+\|[\s|:-]*$/.test(line);
+const isTableSeparator = (line: string) =>
+  /^\s*\|?[\s:-]+\|[\s|:-]*$/.test(line);
 
 const renderInline = (text: string, keyPrefix: string) => {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return parts.map((part, index) => {
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
-      return <strong key={`${keyPrefix}-b-${index}`}>{part.slice(2, -2)}</strong>;
+      return (
+        <strong key={`${keyPrefix}-b-${index}`}>{part.slice(2, -2)}</strong>
+      );
     }
-    return <React.Fragment key={`${keyPrefix}-t-${index}`}>{part}</React.Fragment>;
+    return (
+      <React.Fragment key={`${keyPrefix}-t-${index}`}>{part}</React.Fragment>
+    );
   });
 };
 
@@ -58,7 +63,11 @@ const parseBlocks = (source: string) => {
       continue;
     }
 
-    if (line.includes("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+    if (
+      line.includes("|") &&
+      i + 1 < lines.length &&
+      isTableSeparator(lines[i + 1])
+    ) {
       const headers = splitTableCells(line);
       const rows: string[][] = [];
       i += 2;
@@ -82,9 +91,18 @@ const parseBlocks = (source: string) => {
 
     const paragraphLines = [line];
     i += 1;
-    while (i < lines.length && lines[i].trim() && !/^(#{1,6})\s+/.test(lines[i].trim())) {
+    while (
+      i < lines.length &&
+      lines[i].trim() &&
+      !/^(#{1,6})\s+/.test(lines[i].trim())
+    ) {
       if (/^(\-|\*|•)\s+/.test(lines[i].trim())) break;
-      if (lines[i].includes("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) break;
+      if (
+        lines[i].includes("|") &&
+        i + 1 < lines.length &&
+        isTableSeparator(lines[i + 1])
+      )
+        break;
       paragraphLines.push(lines[i].trim());
       i += 1;
     }
@@ -107,19 +125,50 @@ const headingClassName = (level: number) => {
 const renderBlock = (block: Block, key: string) => {
   if (block.type === "heading") {
     const className = headingClassName(block.level);
-    if (block.level === 1) return <h1 className={className} key={key}>{renderInline(block.text, key)}</h1>;
-    if (block.level === 2) return <h2 className={className} key={key}>{renderInline(block.text, key)}</h2>;
-    if (block.level === 3) return <h3 className={className} key={key}>{renderInline(block.text, key)}</h3>;
-    if (block.level === 4) return <h4 className={className} key={key}>{renderInline(block.text, key)}</h4>;
-    if (block.level === 5) return <h5 className={className} key={key}>{renderInline(block.text, key)}</h5>;
-    return <h6 className={className} key={key}>{renderInline(block.text, key)}</h6>;
+    if (block.level === 1)
+      return (
+        <h1 className={className} key={key}>
+          {renderInline(block.text, key)}
+        </h1>
+      );
+    if (block.level === 2)
+      return (
+        <h2 className={className} key={key}>
+          {renderInline(block.text, key)}
+        </h2>
+      );
+    if (block.level === 3)
+      return (
+        <h3 className={className} key={key}>
+          {renderInline(block.text, key)}
+        </h3>
+      );
+    if (block.level === 4)
+      return (
+        <h4 className={className} key={key}>
+          {renderInline(block.text, key)}
+        </h4>
+      );
+    if (block.level === 5)
+      return (
+        <h5 className={className} key={key}>
+          {renderInline(block.text, key)}
+        </h5>
+      );
+    return (
+      <h6 className={className} key={key}>
+        {renderInline(block.text, key)}
+      </h6>
+    );
   }
 
   if (block.type === "list") {
     return (
       <ul className="markdown-list" key={key}>
         {block.items.map((item, index) => (
-          <li key={`${key}-${index}`}>{renderInline(item, `${key}-${index}`)}</li>
+          <li key={`${key}-${index}`}>
+            {renderInline(item, `${key}-${index}`)}
+          </li>
         ))}
       </ul>
     );
@@ -131,7 +180,9 @@ const renderBlock = (block: Block, key: string) => {
         <thead>
           <tr>
             {block.headers.map((header, index) => (
-              <th key={`${key}-th-${index}`}>{renderInline(header, `${key}-th-${index}`)}</th>
+              <th key={`${key}-th-${index}`}>
+                {renderInline(header, `${key}-th-${index}`)}
+              </th>
             ))}
           </tr>
         </thead>
@@ -139,7 +190,9 @@ const renderBlock = (block: Block, key: string) => {
           {block.rows.map((row, rowIndex) => (
             <tr key={`${key}-row-${rowIndex}`}>
               {row.map((cell, cellIndex) => (
-                <td key={`${key}-td-${rowIndex}-${cellIndex}`}>{renderInline(cell, `${key}-td-${rowIndex}-${cellIndex}`)}</td>
+                <td key={`${key}-td-${rowIndex}-${cellIndex}`}>
+                  {renderInline(cell, `${key}-td-${rowIndex}-${cellIndex}`)}
+                </td>
               ))}
             </tr>
           ))}
@@ -180,9 +233,13 @@ export default function MarkdownReport({ text }: Props) {
       {leadBlocks.map((block, index) => renderBlock(block, `lead-${index}`))}
       {sections.map((section, sectionIndex) => (
         <section key={`section-${sectionIndex}`} className="wellness-section">
-          <h3 className="wellness-section-title">{renderInline(section.title, `section-title-${sectionIndex}`)}</h3>
+          <h3 className="wellness-section-title">
+            {renderInline(section.title, `section-title-${sectionIndex}`)}
+          </h3>
           <div className="wellness-section-body">
-            {section.body.map((block, blockIndex) => renderBlock(block, `section-${sectionIndex}-${blockIndex}`))}
+            {section.body.map((block, blockIndex) =>
+              renderBlock(block, `section-${sectionIndex}-${blockIndex}`),
+            )}
           </div>
         </section>
       ))}

@@ -19,11 +19,22 @@ describe("OcrPage", () => {
     global.fetch = vi.fn((url: string) => {
       const requestUrl = String(url);
       if (requestUrl.includes("/api/ocr-portal/blueprints")) {
-        return jsonResponse({ blueprints: ["Universal OCR (Any Text)", "Handwritten Medical Prescription"] });
+        return jsonResponse({
+          blueprints: [
+            "Universal OCR (Any Text)",
+            "Handwritten Medical Prescription",
+          ],
+        });
       }
       if (requestUrl.includes("/api/ocr-portal/vault")) {
         return jsonResponse([
-          { id: 1, filename: "report.pdf", doc_category: "Universal OCR (Any Text)", confidence_score: 96, extraction_date: "2026-01-01T00:00:00Z" },
+          {
+            id: 1,
+            filename: "report.pdf",
+            doc_category: "Universal OCR (Any Text)",
+            confidence_score: 96,
+            extraction_date: "2026-01-01T00:00:00Z",
+          },
         ]);
       }
       return jsonResponse({});
@@ -41,8 +52,8 @@ describe("OcrPage", () => {
     expect(container.textContent).toContain("Upload a Document");
     expect(container.textContent).toContain("Start OCR Scanning");
 
-    const vaultTab = Array.from(container.querySelectorAll("button")).find((btn) =>
-      btn.textContent?.includes("My Documents")
+    const vaultTab = Array.from(container.querySelectorAll("button")).find(
+      (btn) => btn.textContent?.includes("My Documents"),
     );
     expect(vaultTab).toBeTruthy();
 

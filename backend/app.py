@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import sys
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
@@ -55,7 +56,11 @@ from core.auth import (
 from core.export import generate_pdf, generate_word
 from utils.ocr import LANGUAGE_NAMES
 from core.storage import ObjectStorage
-from ai.service import extract_text_from_image, classify_and_extract_entities, patient_history_search
+from ai.service import (
+    extract_text_from_image,
+    classify_and_extract_entities,
+    patient_history_search,
+)
 from werkzeug.exceptions import BadRequest
 from werkzeug.utils import secure_filename
 
@@ -272,7 +277,10 @@ def csrf_protect():
         return
     if request.method not in ["GET", "HEAD", "OPTIONS", "TRACE"]:
         # Only enforce CSRF if a session cookie is present (public endpoints don't use cookies).
-        if SESSION_COOKIE_NAME in request.cookies or ADMIN_ROUTE_AUTH_COOKIE_NAME in request.cookies:
+        if (
+            SESSION_COOKIE_NAME in request.cookies
+            or ADMIN_ROUTE_AUTH_COOKIE_NAME in request.cookies
+        ):
             token = request.cookies.get("csrf_token")
             header_token = request.headers.get("X-CSRF-Token")
             if token and header_token and hmac.compare_digest(token, header_token):
@@ -280,8 +288,13 @@ def csrf_protect():
             # Enforce CSRF when not in development mode OR when TESTING was explicitly
             # disabled (i.e., TESTING=False was set, typically by the CSRF test itself).
             if not is_development or app.config.get("TESTING") is False:
-                if not token or not header_token or not hmac.compare_digest(token, header_token):
+                if (
+                    not token
+                    or not header_token
+                    or not hmac.compare_digest(token, header_token)
+                ):
                     return jsonify({"error": "CSRF token missing or incorrect"}), 403
+
 
 @app.after_request
 def security_headers(response):
@@ -289,13 +302,18 @@ def security_headers(response):
     response.headers["X-Frame-Options"] = "DENY"
     # Only set HSTS on HTTPS connections
     if request.is_secure:
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
 
     # Set CSRF cookie if not present.
     # secure=False allows the cookie to be set over HTTP (local dev).
     # secure=True is only needed in production HTTPS deployments.
     if "csrf_token" not in request.cookies:
-        is_https = request.is_secure or os.getenv("SESSION_COOKIE_SECURE", "").lower() == "true"
+        is_https = (
+            request.is_secure
+            or os.getenv("SESSION_COOKIE_SECURE", "").lower() == "true"
+        )
         response.set_cookie(
             "csrf_token",
             secrets.token_hex(32),
@@ -313,8 +331,12 @@ def add_cors_headers(response):
     if is_allowed_origin(origin):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, X-Hospital-Code, X-CSRF-Token, X-Platform-Admin-Username, X-Platform-Admin-Password"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = (
+            "Content-Type, Authorization, X-Requested-With, X-Hospital-Code, X-CSRF-Token, X-Platform-Admin-Username, X-Platform-Admin-Password"
+        )
+        response.headers["Access-Control-Allow-Methods"] = (
+            "GET, POST, PUT, DELETE, OPTIONS"
+        )
     return response
 
 
@@ -324,6 +346,7 @@ def preflight(_path):
 
 
 import sys
+
 if "pytest" not in sys.modules:
     init_database()
     create_default_users()
@@ -358,7 +381,9 @@ def validate_hospital_code(value: str) -> str:
     if not code:
         raise BadRequest("hospital_code is required")
     if not re.fullmatch(r"[a-z0-9-]{3,64}", code):
-        raise BadRequest("hospital_code must contain only lowercase letters, numbers, and '-'")
+        raise BadRequest(
+            "hospital_code must contain only lowercase letters, numbers, and '-'"
+        )
     return code
 
 
@@ -400,7 +425,9 @@ def require_platform_admin():
 
 def _session_cookie_settings():
     # In local dev (HTTP), never use Secure so the browser actually stores the cookie.
-    is_https = request.is_secure or os.getenv("SESSION_COOKIE_SECURE", "").lower() == "true"
+    is_https = (
+        request.is_secure or os.getenv("SESSION_COOKIE_SECURE", "").lower() == "true"
+    )
     same_site = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
     if same_site not in ("Lax", "Strict", "None"):
         same_site = "Lax"
@@ -490,7 +517,14 @@ def is_razorpay_configured():
 def require_razorpay_configured():
     if is_razorpay_configured():
         return None
-    return jsonify({"error": "Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET."}), 503
+    return (
+        jsonify(
+            {
+                "error": "Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET."
+            }
+        ),
+        503,
+    )
 
 
 def to_amount_paise(value):
@@ -504,7 +538,9 @@ def to_amount_paise(value):
 
 
 def _razorpay_auth_header():
-    encoded = base64.b64encode(f"{RAZORPAY_KEY_ID}:{RAZORPAY_KEY_SECRET}".encode("utf-8")).decode("ascii")
+    encoded = base64.b64encode(
+        f"{RAZORPAY_KEY_ID}:{RAZORPAY_KEY_SECRET}".encode("utf-8")
+    ).decode("ascii")
     return f"Basic {encoded}"
 
 
@@ -664,73 +700,77 @@ def build_reports_export_text(overview):
 
 
 from modules.reports.routes import reports_bp
+
 app.register_blueprint(reports_bp)
 from modules.dashboard.routes import dashboard_bp
+
 app.register_blueprint(dashboard_bp)
 from modules.op.routes import op_bp
+
 app.register_blueprint(op_bp)
 from modules.documents.routes import documents_bp
+
 app.register_blueprint(documents_bp)
 from modules.ai_exports.routes import ai_exports_bp
+
 app.register_blueprint(ai_exports_bp)
 
 from modules.accounts.routes import accounts_bp
+
 app.register_blueprint(accounts_bp)
 
 from modules.auth.routes import auth_bp
+
 app.register_blueprint(auth_bp)
 
 from modules.admin.routes import admin_bp
+
 app.register_blueprint(admin_bp)
 
 from modules.patients.routes import patients_bp
+
 app.register_blueprint(patients_bp)
 
 from modules.appointments.routes import appointments_bp
+
 app.register_blueprint(appointments_bp)
 
 from modules.billing.routes import billing_bp
+
 app.register_blueprint(billing_bp)
 
 from modules.pharmacy.routes import pharmacy_bp
+
 app.register_blueprint(pharmacy_bp)
 
 from modules.hr.routes import hr_bp
+
 app.register_blueprint(hr_bp)
 
-from modules.emergency.routes import bp as emergency_bp
-app.register_blueprint(emergency_bp)
-
-from modules.icu.routes import bp as icu_bp
-app.register_blueprint(icu_bp)
-
-from modules.ambulance.routes import bp as ambulance_bp
-app.register_blueprint(ambulance_bp)
-
-from modules.nurse.routes import bp as nurse_bp
-app.register_blueprint(nurse_bp)
 
 from modules.queue.routes import bp as queue_bp
+
 app.register_blueprint(queue_bp)
 
-from modules.beds.routes import bp as beds_bp
-app.register_blueprint(beds_bp)
-
 from modules.symptom_ai.routes import symptom_ai_bp
+
 app.register_blueprint(symptom_ai_bp)
 
 from modules.ocr_portal.routes import ocr_portal_bp
+
 app.register_blueprint(ocr_portal_bp)
 
 from modules.whatsapp.routes import whatsapp_bp
+
 app.register_blueprint(whatsapp_bp)
 
 from modules.emr.routes import emr_bp
+
 app.register_blueprint(emr_bp)
 
 from modules.bulk_import.routes import bulk_import_bp
-app.register_blueprint(bulk_import_bp)
 
+app.register_blueprint(bulk_import_bp)
 
 
 @app.errorhandler(413)
@@ -741,7 +781,7 @@ def _handle_payload_too_large(exc):
 if __name__ == "__main__":
     from urllib.parse import urlsplit
     from utils.database import DATABASE_URL
-    
+
     app.logger.info(f"Database: PostgreSQL (URL: {DATABASE_URL})")
     print(f"=== STARTING BACKEND ===")
     port = int(os.getenv("PORT", "5001"))

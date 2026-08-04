@@ -20,17 +20,15 @@ from app import (
     build_reports_export_text,
 )
 
-from utils.database import (
-    get_reports_overview
-)
+from utils.database import get_reports_overview
+
+reports_bp = Blueprint("reports", __name__)
 
 
-reports_bp = Blueprint('reports', __name__)
 @reports_bp.get("/api/reports/overview")
 @require_permissions("reports.read")
 def reports_overview():
     return jsonify(get_reports_overview(hospital_id=current_hospital_id()))
-
 
 
 @reports_bp.get("/api/reports/export/csv")
@@ -40,13 +38,33 @@ def reports_export_csv():
     csv_stream = io.StringIO()
     writer = csv.writer(csv_stream)
     writer.writerow(["section", "label", "value"])
-    writer.writerow(["billing", "total_billed", overview["billing_summary"]["total_billed"]])
-    writer.writerow(["billing", "total_collected", overview["billing_summary"]["total_collected"]])
+    writer.writerow(
+        ["billing", "total_billed", overview["billing_summary"]["total_billed"]]
+    )
+    writer.writerow(
+        ["billing", "total_collected", overview["billing_summary"]["total_collected"]]
+    )
     writer.writerow(["billing", "total_due", overview["billing_summary"]["total_due"]])
-    writer.writerow(["accounts", "net_position", overview["accounts_summary"]["net_position"]])
-    writer.writerow(["operations", "monthly_op", overview["hospital_summary"]["ip_op_counts"]["monthly_op"]])
-    writer.writerow(["operations", "monthly_ip", overview["hospital_summary"]["ip_op_counts"]["monthly_ip"]])
-    writer.writerow(["operations", "average_los_days", overview["alos_summary"]["average_los_days"]])
+    writer.writerow(
+        ["accounts", "net_position", overview["accounts_summary"]["net_position"]]
+    )
+    writer.writerow(
+        [
+            "operations",
+            "monthly_op",
+            overview["hospital_summary"]["ip_op_counts"]["monthly_op"],
+        ]
+    )
+    writer.writerow(
+        [
+            "operations",
+            "monthly_ip",
+            overview["hospital_summary"]["ip_op_counts"]["monthly_ip"],
+        ]
+    )
+    writer.writerow(
+        ["operations", "average_los_days", overview["alos_summary"]["average_los_days"]]
+    )
     for row in overview.get("clinic_income", []):
         writer.writerow(["clinic_income", row["label"], row["count"]])
     for row in overview.get("discount_by_module", []):
@@ -62,7 +80,6 @@ def reports_export_csv():
         as_attachment=True,
         download_name="reports-overview.csv",
     )
-
 
 
 @reports_bp.get("/api/reports/export/pdf")
@@ -83,7 +100,6 @@ def reports_export_pdf():
     )
 
 
-
 @reports_bp.get("/api/reports/export/word")
 @require_permissions("reports.read")
 def reports_export_word():
@@ -100,5 +116,3 @@ def reports_export_word():
         as_attachment=True,
         download_name="reports-overview.docx",
     )
-
-

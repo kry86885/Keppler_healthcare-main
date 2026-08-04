@@ -25,7 +25,9 @@ MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15MB
 @symptom_ai_bp.get("/api/symptom-ai/documents")
 @require_permissions("symptom_ai.use")
 def symptom_ai_documents_list():
-    rows = list_symptom_ai_documents(current_hospital_id(), g.current_user.get("username"))
+    rows = list_symptom_ai_documents(
+        current_hospital_id(), g.current_user.get("username")
+    )
     return jsonify(
         {
             "documents": [
@@ -61,18 +63,27 @@ def symptom_ai_documents_upload():
     try:
         extracted_text = extract_document_text(file_bytes, filename)
     except ValueError as exc:
-        return jsonify({"error": str(exc), "supported_types": sorted(SUPPORTED_EXTENSIONS)}), 400
+        return (
+            jsonify(
+                {"error": str(exc), "supported_types": sorted(SUPPORTED_EXTENSIONS)}
+            ),
+            400,
+        )
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 502
 
     hospital_id = current_hospital_id()
     username = g.current_user.get("username")
 
-    document_id = create_symptom_ai_document(hospital_id, username, filename, "USER_UPLOAD", extracted_text)
+    document_id = create_symptom_ai_document(
+        hospital_id, username, filename, "USER_UPLOAD", extracted_text
+    )
 
     try:
         key = rag_provider.workspace_key(hospital_id, username)
-        rag_provider.insert_text_into_graph(key, f"--- Document: {filename} ---\n{extracted_text}")
+        rag_provider.insert_text_into_graph(
+            key, f"--- Document: {filename} ---\n{extracted_text}"
+        )
         graph_updated = True
         graph_error = None
     except Exception as exc:
@@ -82,7 +93,9 @@ def symptom_ai_documents_upload():
         graph_updated = False
         graph_error = str(exc)
 
-    log_audit_event("create", "symptom_ai_documents", str(document_id), {"filename": filename})
+    log_audit_event(
+        "create", "symptom_ai_documents", str(document_id), {"filename": filename}
+    )
 
     return jsonify(
         {
@@ -104,62 +117,184 @@ def symptom_ai_documents_delete(document_id):
     if not document:
         return jsonify({"error": "Document not found"}), 404
     delete_symptom_ai_document(document_id, hospital_id, username, actor=username)
-    log_audit_event("delete", "symptom_ai_documents", str(document_id), {"filename": document["filename"]})
+    log_audit_event(
+        "delete",
+        "symptom_ai_documents",
+        str(document_id),
+        {"filename": document["filename"]},
+    )
     return jsonify({"status": "ok"})
 
 
 # --- Symptom AI Model Endpoints ---
 
+
 @symptom_ai_bp.get("/api/symptom-ai/meta")
 @require_permissions("symptom_ai.use")
 def symptom_ai_meta():
-    return jsonify({
-        "duration_options": [
-            "Just started (today)",
-            "A few days",
-            "About a week",
-            "1-2 weeks",
-            "2-4 weeks",
-            "More than a month",
-            "Comes and goes",
-            "Recurring over time",
-        ],
-        "context_tags": [
-            "Recent stress",
-            "Changed sleep pattern",
-            "New exercise routine",
-            "Dietary changes",
-            "Weather changes",
-            "Travel recently",
-            "Screen time increase",
-            "Sitting for long periods",
-            "Physical activity",
-            "Emotional changes",
-            "Hydration concerns",
-            "New environment",
-        ],
-        "regions": [
-            {"name": "General / Full Body", "keywords": ["all over", "everywhere", "body"], "color": "#8BC8B8", "icon": "🧍", "svg_id": "full_body"},
-            {"name": "Head", "keywords": ["head", "headache", "scalp", "migraine"], "color": "#A8DADC", "icon": "🤕", "svg_id": "head"},
-            {"name": "Eyes", "keywords": ["eye", "eyes", "vision", "blur"], "color": "#457B9D", "icon": "👁️", "svg_id": "eyes"},
-            {"name": "Ears", "keywords": ["ear", "ears", "hearing", "ringing"], "color": "#1D3557", "icon": "👂", "svg_id": "ears"},
-            {"name": "Nose / Sinus", "keywords": ["nose", "sinus", "smell", "congestion"], "color": "#E63946", "icon": "👃", "svg_id": "nose"},
-            {"name": "Mouth / Throat", "keywords": ["mouth", "throat", "swallow", "teeth"], "color": "#F4A261", "icon": "👄", "svg_id": "mouth"},
-            {"name": "Neck", "keywords": ["neck", "stiff neck", "cervical"], "color": "#2A9D8F", "icon": "🦒", "svg_id": "neck"},
-            {"name": "Chest", "keywords": ["chest", "heart", "lungs", "breathing"], "color": "#E76F51", "icon": "🫁", "svg_id": "chest"},
-            {"name": "Abdomen", "keywords": ["stomach", "belly", "gut", "abdomen", "nausea"], "color": "#E9C46A", "icon": "🤢", "svg_id": "abdomen"},
-            {"name": "Shoulders", "keywords": ["shoulder", "shoulders", "rotator cuff"], "color": "#264653", "icon": "🤷", "svg_id": "shoulders"},
-            {"name": "Arms", "keywords": ["arm", "arms", "bicep", "tricep", "elbow"], "color": "#F4A261", "icon": "💪", "svg_id": "arms"},
-            {"name": "Hands / Wrists", "keywords": ["hand", "hands", "wrist", "fingers"], "color": "#E76F51", "icon": "🖐️", "svg_id": "hands"},
-            {"name": "Upper Back", "keywords": ["upper back", "spine", "shoulder blades"], "color": "#2A9D8F", "icon": "🔙", "svg_id": "upper_back"},
-            {"name": "Lower Back", "keywords": ["lower back", "lumbar", "sciatica"], "color": "#E63946", "icon": "⚡", "svg_id": "lower_back"},
-            {"name": "Hips / Pelvis", "keywords": ["hip", "hips", "pelvis", "groin"], "color": "#457B9D", "icon": "🦴", "svg_id": "hips"},
-            {"name": "Thighs", "keywords": ["thigh", "thighs", "quads", "hamstrings"], "color": "#1D3557", "icon": "🦵", "svg_id": "thighs"},
-            {"name": "Knees", "keywords": ["knee", "knees", "patella", "joint"], "color": "#A8DADC", "icon": "🦿", "svg_id": "knees"},
-            {"name": "Lower Legs / Calves", "keywords": ["calf", "calves", "shin", "shins"], "color": "#E9C46A", "icon": "🦵", "svg_id": "lower_legs"},
-            {"name": "Feet / Ankles", "keywords": ["foot", "feet", "ankle", "ankles", "toes"], "color": "#8BC8B8", "icon": "🦶", "svg_id": "feet"},
-        ]
-    })
+    return jsonify(
+        {
+            "duration_options": [
+                "Just started (today)",
+                "A few days",
+                "About a week",
+                "1-2 weeks",
+                "2-4 weeks",
+                "More than a month",
+                "Comes and goes",
+                "Recurring over time",
+            ],
+            "context_tags": [
+                "Recent stress",
+                "Changed sleep pattern",
+                "New exercise routine",
+                "Dietary changes",
+                "Weather changes",
+                "Travel recently",
+                "Screen time increase",
+                "Sitting for long periods",
+                "Physical activity",
+                "Emotional changes",
+                "Hydration concerns",
+                "New environment",
+            ],
+            "regions": [
+                {
+                    "name": "General / Full Body",
+                    "keywords": ["all over", "everywhere", "body"],
+                    "color": "#8BC8B8",
+                    "icon": "🧍",
+                    "svg_id": "full_body",
+                },
+                {
+                    "name": "Head",
+                    "keywords": ["head", "headache", "scalp", "migraine"],
+                    "color": "#A8DADC",
+                    "icon": "🤕",
+                    "svg_id": "head",
+                },
+                {
+                    "name": "Eyes",
+                    "keywords": ["eye", "eyes", "vision", "blur"],
+                    "color": "#457B9D",
+                    "icon": "👁️",
+                    "svg_id": "eyes",
+                },
+                {
+                    "name": "Ears",
+                    "keywords": ["ear", "ears", "hearing", "ringing"],
+                    "color": "#1D3557",
+                    "icon": "👂",
+                    "svg_id": "ears",
+                },
+                {
+                    "name": "Nose / Sinus",
+                    "keywords": ["nose", "sinus", "smell", "congestion"],
+                    "color": "#E63946",
+                    "icon": "👃",
+                    "svg_id": "nose",
+                },
+                {
+                    "name": "Mouth / Throat",
+                    "keywords": ["mouth", "throat", "swallow", "teeth"],
+                    "color": "#F4A261",
+                    "icon": "👄",
+                    "svg_id": "mouth",
+                },
+                {
+                    "name": "Neck",
+                    "keywords": ["neck", "stiff neck", "cervical"],
+                    "color": "#2A9D8F",
+                    "icon": "🦒",
+                    "svg_id": "neck",
+                },
+                {
+                    "name": "Chest",
+                    "keywords": ["chest", "heart", "lungs", "breathing"],
+                    "color": "#E76F51",
+                    "icon": "🫁",
+                    "svg_id": "chest",
+                },
+                {
+                    "name": "Abdomen",
+                    "keywords": ["stomach", "belly", "gut", "abdomen", "nausea"],
+                    "color": "#E9C46A",
+                    "icon": "🤢",
+                    "svg_id": "abdomen",
+                },
+                {
+                    "name": "Shoulders",
+                    "keywords": ["shoulder", "shoulders", "rotator cuff"],
+                    "color": "#264653",
+                    "icon": "🤷",
+                    "svg_id": "shoulders",
+                },
+                {
+                    "name": "Arms",
+                    "keywords": ["arm", "arms", "bicep", "tricep", "elbow"],
+                    "color": "#F4A261",
+                    "icon": "💪",
+                    "svg_id": "arms",
+                },
+                {
+                    "name": "Hands / Wrists",
+                    "keywords": ["hand", "hands", "wrist", "fingers"],
+                    "color": "#E76F51",
+                    "icon": "🖐️",
+                    "svg_id": "hands",
+                },
+                {
+                    "name": "Upper Back",
+                    "keywords": ["upper back", "spine", "shoulder blades"],
+                    "color": "#2A9D8F",
+                    "icon": "🔙",
+                    "svg_id": "upper_back",
+                },
+                {
+                    "name": "Lower Back",
+                    "keywords": ["lower back", "lumbar", "sciatica"],
+                    "color": "#E63946",
+                    "icon": "⚡",
+                    "svg_id": "lower_back",
+                },
+                {
+                    "name": "Hips / Pelvis",
+                    "keywords": ["hip", "hips", "pelvis", "groin"],
+                    "color": "#457B9D",
+                    "icon": "🦴",
+                    "svg_id": "hips",
+                },
+                {
+                    "name": "Thighs",
+                    "keywords": ["thigh", "thighs", "quads", "hamstrings"],
+                    "color": "#1D3557",
+                    "icon": "🦵",
+                    "svg_id": "thighs",
+                },
+                {
+                    "name": "Knees",
+                    "keywords": ["knee", "knees", "patella", "joint"],
+                    "color": "#A8DADC",
+                    "icon": "🦿",
+                    "svg_id": "knees",
+                },
+                {
+                    "name": "Lower Legs / Calves",
+                    "keywords": ["calf", "calves", "shin", "shins"],
+                    "color": "#E9C46A",
+                    "icon": "🦵",
+                    "svg_id": "lower_legs",
+                },
+                {
+                    "name": "Feet / Ankles",
+                    "keywords": ["foot", "feet", "ankle", "ankles", "toes"],
+                    "color": "#8BC8B8",
+                    "icon": "🦶",
+                    "svg_id": "feet",
+                },
+            ],
+        }
+    )
 
 
 @symptom_ai_bp.post("/api/symptom-ai/detect-region")
@@ -172,7 +307,7 @@ def symptom_ai_detect_region():
 
     from ai.service import llm_provider
     import json
-    
+
     prompt = f"""
 Analyze the following symptom description and return ONLY a JSON object containing the most likely body region from the allowed list.
 If it involves multiple regions or is unclear, return "General / Full Body".
@@ -188,7 +323,7 @@ Expected output format:
         raw_response = llm_provider.generate(prompt)
         if not raw_response:
             return jsonify({"region": None})
-            
+
         text = raw_response.strip()
         if text.startswith("```json"):
             text = text.replace("```json", "", 1)
@@ -196,7 +331,7 @@ Expected output format:
             text = text[3:]
         if text.endswith("```"):
             text = text[:-3]
-            
+
         result = json.loads(text.strip())
         return jsonify({"region": result.get("region")})
     except Exception:
@@ -213,19 +348,23 @@ def symptom_ai_analyze():
     duration = data.get("duration", "Unknown")
     context_tags = data.get("context_tags", [])
     patient_info = data.get("patient_info", {})
-    
+
     if not description:
         return jsonify({"error": "Missing symptom description."}), 400
 
     from ai.service import llm_provider
     from utils.database import list_doctors
     import json
-    
+
     hospital_id = current_hospital_id()
     doctors = list_doctors(hospital_id=hospital_id)
-    available_departments = list(set([doc['department'] for doc in doctors if doc.get('department')]))
-    available_doctors = [doc['doctor_name'] for doc in doctors if doc.get('doctor_name')]
-    
+    available_departments = list(
+        set([doc["department"] for doc in doctors if doc.get("department")])
+    )
+    available_doctors = [
+        doc["doctor_name"] for doc in doctors if doc.get("doctor_name")
+    ]
+
     prompt = f"""
 You are a highly advanced AI Medical Assistant (Symptom AI) providing clinical decision support.
 Analyze the following patient data and return a detailed response formatted EXACTLY as a JSON object containing a Markdown string.
@@ -269,13 +408,15 @@ The Markdown response MUST include these exact sections:
     try:
         raw_response = llm_provider.generate(prompt)
         if not raw_response:
-            return jsonify({
-                "response": "### ⚠️ Medical Disclaimer\nSymptom AI is temporarily unavailable. Please consult a healthcare professional directly.",
-                "detected_region": body_region,
-                "used_fallback": True,
-                "model_error": "LLM provider returned empty response"
-            })
-            
+            return jsonify(
+                {
+                    "response": "### ⚠️ Medical Disclaimer\nSymptom AI is temporarily unavailable. Please consult a healthcare professional directly.",
+                    "detected_region": body_region,
+                    "used_fallback": True,
+                    "model_error": "LLM provider returned empty response",
+                }
+            )
+
         text = raw_response.strip()
         if text.startswith("```json"):
             text = text.replace("```json", "", 1)
@@ -283,24 +424,28 @@ The Markdown response MUST include these exact sections:
             text = text[3:]
         if text.endswith("```"):
             text = text[:-3]
-            
+
         result = json.loads(text.strip())
         return jsonify(result)
     except json.JSONDecodeError:
         # Fallback if the model didn't return valid JSON (just raw markdown)
-        return jsonify({
-            "response": raw_response.strip(),
-            "detected_region": body_region,
-            "used_fallback": False,
-            "model_error": "JSON parse error, falling back to raw text"
-        })
+        return jsonify(
+            {
+                "response": raw_response.strip(),
+                "detected_region": body_region,
+                "used_fallback": False,
+                "model_error": "JSON parse error, falling back to raw text",
+            }
+        )
     except Exception as e:
-        return jsonify({
-            "response": f"### ⚠️ Medical Disclaimer\nAn error occurred while generating insights. Please consult a healthcare professional.\n\nError: {str(e)}",
-            "detected_region": body_region,
-            "used_fallback": True,
-            "model_error": str(e)
-        })
+        return jsonify(
+            {
+                "response": f"### ⚠️ Medical Disclaimer\nAn error occurred while generating insights. Please consult a healthcare professional.\n\nError: {str(e)}",
+                "detected_region": body_region,
+                "used_fallback": True,
+                "model_error": str(e),
+            }
+        )
 
 
 @symptom_ai_bp.post("/api/symptom-ai/triage")
@@ -356,7 +501,9 @@ Your response MUST be valid JSON only. Do not include markdown formatting or bac
 
         # Guard: if the AI returned None (API key invalid / no internet / model error)
         if not response_text:
-            return fallback_triage("Please check the configured AI provider and model server connectivity.")
+            return fallback_triage(
+                "Please check the configured AI provider and model server connectivity."
+            )
 
         # Clean up any potential markdown code blocks
         response_text = response_text.strip()
@@ -374,28 +521,51 @@ Your response MUST be valid JSON only. Do not include markdown formatting or bac
             dept_lower = result.get("department", "").strip().lower()
             match = None
             # 1. Try exact case-insensitive match
-            match = next((d for d in available_departments if d.strip().lower() == dept_lower), None)
+            match = next(
+                (d for d in available_departments if d.strip().lower() == dept_lower),
+                None,
+            )
 
             # 2. Try prefix/substring/common root matching
             if not match:
                 for d in available_departments:
                     d_clean = d.strip().lower()
-                    if d_clean in dept_lower or dept_lower in d_clean or (len(d_clean) > 4 and len(dept_lower) > 4 and d_clean[:5] == dept_lower[:5]):
+                    if (
+                        d_clean in dept_lower
+                        or dept_lower in d_clean
+                        or (
+                            len(d_clean) > 4
+                            and len(dept_lower) > 4
+                            and d_clean[:5] == dept_lower[:5]
+                        )
+                    ):
                         match = d
                         break
 
             if match:
                 result["department"] = match
             else:
-                gen_med = next((d for d in available_departments if "general" in d.lower()), None)
-                result["department"] = gen_med if gen_med else (available_departments[0] if available_departments else "General")
+                gen_med = next(
+                    (d for d in available_departments if "general" in d.lower()), None
+                )
+                result["department"] = (
+                    gen_med
+                    if gen_med
+                    else (
+                        available_departments[0] if available_departments else "General"
+                    )
+                )
 
         return jsonify(result)
     except json.JSONDecodeError:
         return fallback_triage("The AI response was not valid JSON.")
     except Exception as exc:
         message = str(exc)
-        if "RESOURCE_EXHAUSTED" in message or "quota" in message.lower() or "429" in message:
+        if (
+            "RESOURCE_EXHAUSTED" in message
+            or "quota" in message.lower()
+            or "429" in message
+        ):
             return fallback_triage("The configured AI provider quota is exhausted.")
         return fallback_triage("Please check the AI provider configuration.")
 
@@ -434,11 +604,18 @@ def symptom_ai_chat():
 @require_permissions("symptom_ai.use")
 def symptom_ai_chat_history():
     session_id = request.args.get("session_id")
-    rows = list_symptom_ai_chat_history(current_hospital_id(), g.current_user.get("username"), session_id)
+    rows = list_symptom_ai_chat_history(
+        current_hospital_id(), g.current_user.get("username"), session_id
+    )
     return jsonify(
         {
             "messages": [
-                {"role": row["role"], "content": row["content"], "session_id": row["session_id"], "created_at": row["created_at"]}
+                {
+                    "role": row["role"],
+                    "content": row["content"],
+                    "session_id": row["session_id"],
+                    "created_at": row["created_at"],
+                }
                 for row in rows
             ]
         }
@@ -448,5 +625,7 @@ def symptom_ai_chat_history():
 @symptom_ai_bp.delete("/api/symptom-ai/chat/history")
 @require_permissions("symptom_ai.use")
 def symptom_ai_chat_history_clear():
-    delete_symptom_ai_chat_history(current_hospital_id(), g.current_user.get("username"))
+    delete_symptom_ai_chat_history(
+        current_hospital_id(), g.current_user.get("username")
+    )
     return jsonify({"status": "ok"})

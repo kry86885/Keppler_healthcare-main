@@ -9,13 +9,13 @@ from datetime import datetime
 from io import BytesIO
 
 from app import (
-    require_permissions, 
+    require_permissions,
     require_session,
-    log_audit_event, 
+    log_audit_event,
     validate_required_fields,
     current_hospital_id,
     row_to_dict,
-    rows_to_dicts
+    rows_to_dicts,
 )
 
 from utils.database import (
@@ -28,17 +28,17 @@ from utils.database import (
     list_doctors,
     update_doctor,
     delete_doctor,
-    get_suggested_doctors
+    get_suggested_doctors,
 )
 
+op_bp = Blueprint("op", __name__)
 
-op_bp = Blueprint('op', __name__)
+
 @op_bp.get("/api/op/summary")
 @require_permissions("op.read")
 def op_summary():
     target_date = request.args.get("date")
     return jsonify(get_op_summary(target_date, hospital_id=current_hospital_id()))
-
 
 
 @op_bp.get("/api/op/doctor-schedules")
@@ -49,11 +49,12 @@ def op_doctor_schedules_list():
     return jsonify(
         {
             "schedules": rows_to_dicts(
-                list_doctor_schedules(schedule_date=schedule_date, doctor_name=doctor_name)
+                list_doctor_schedules(
+                    schedule_date=schedule_date, doctor_name=doctor_name
+                )
             )
         }
     )
-
 
 
 @op_bp.post("/api/op/doctor-schedules")
@@ -75,7 +76,6 @@ def op_doctor_schedules_create():
     return jsonify({"schedule_id": schedule_id})
 
 
-
 @op_bp.put("/api/op/doctor-schedules/<int:schedule_id>")
 @require_permissions("op.schedules.write")
 def op_doctor_schedules_update(schedule_id):
@@ -92,7 +92,6 @@ def op_doctor_schedules_update(schedule_id):
     return jsonify({"status": "ok"})
 
 
-
 @op_bp.delete("/api/op/doctor-schedules/<int:schedule_id>")
 @require_permissions("op.schedules.write")
 def op_doctor_schedules_delete(schedule_id):
@@ -107,24 +106,27 @@ def op_doctor_schedules_delete(schedule_id):
     )
     return jsonify({"status": "ok"})
 
+
 @op_bp.get("/api/op/doctors")
 @require_session
 def op_doctors_list():
     department = request.args.get("department")
     return jsonify({"doctors": list_doctors(department=department)})
 
+
 @op_bp.post("/api/op/doctors")
 @require_permissions("op.doctors.write")
 def op_doctors_create():
     payload = request.get_json(force=True)
-    validation_error = validate_required_fields(
-        payload, ["doctor_name", "department"]
-    )
+    validation_error = validate_required_fields(payload, ["doctor_name", "department"])
     if validation_error:
         return validation_error
     doctor_id = create_doctor(payload)
-    log_audit_event("create", "doctors", str(doctor_id), {"doctor_name": payload.get("doctor_name")})
+    log_audit_event(
+        "create", "doctors", str(doctor_id), {"doctor_name": payload.get("doctor_name")}
+    )
     return jsonify({"doctor_id": doctor_id})
+
 
 @op_bp.put("/api/op/doctors/<int:doctor_id>")
 @require_permissions("op.doctors.write")
@@ -136,6 +138,7 @@ def op_doctors_update(doctor_id):
     log_audit_event("update", "doctors", str(doctor_id), {"doctor_id": doctor_id})
     return jsonify({"status": "ok"})
 
+
 @op_bp.delete("/api/op/doctors/<int:doctor_id>")
 @require_permissions("op.doctors.write")
 def op_doctors_delete(doctor_id):
@@ -144,6 +147,7 @@ def op_doctors_delete(doctor_id):
         return jsonify({"error": "Doctor not found"}), 404
     log_audit_event("delete", "doctors", str(doctor_id), {"doctor_id": doctor_id})
     return jsonify({"status": "ok"})
+
 
 @op_bp.get("/api/op/doctors/suggest")
 @require_session

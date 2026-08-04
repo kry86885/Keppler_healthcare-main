@@ -15,7 +15,12 @@ type BadgeProps = React.HTMLAttributes<HTMLSpanElement> & {
 };
 
 function Badge({ className, variant = "default", ...props }: BadgeProps) {
-  return <span className={cn("ui-badge", variantClassMap[variant], className)} {...props} />;
+  return (
+    <span
+      className={cn("ui-badge", variantClassMap[variant], className)}
+      {...props}
+    />
+  );
 }
 
 export default Badge;

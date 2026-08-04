@@ -119,7 +119,9 @@ class ObjectStorage:
             return posixpath.join(self.prefix, key)
         return key
 
-    def store(self, doc_type: str, file_name: str, data: bytes, mime_type: str | None = None) -> str:
+    def store(
+        self, doc_type: str, file_name: str, data: bytes, mime_type: str | None = None
+    ) -> str:
         key = self._compose_key(doc_type, file_name)
         args = {"Bucket": self.bucket, "Key": key, "Body": data}
         if mime_type:

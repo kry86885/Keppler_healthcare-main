@@ -2,7 +2,22 @@ import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import MarkdownReport from "../components/MarkdownReport";
 import DocumentUploadDropzone from "../components/DocumentUploadDropzone";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, Select, Tabs, TabsContent, TabsTrigger, Textarea } from "../components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Select,
+  Tabs,
+  TabsContent,
+  TabsTrigger,
+  Textarea,
+} from "../components/ui";
 import { API_BASE, SYMPTOM_API_BASE } from "../lib/constants";
 import { apiFetch, reportError, withAuthHeaders } from "../lib/api";
 import type { Notice } from "../types";
@@ -101,7 +116,15 @@ const FALLBACK_CONTEXT_TAGS = [
   "New environment",
 ];
 
-const FALLBACK_REGIONS: Region[] = [{ name: "General / Full Body", keywords: [], color: "#8BC8B8", icon: "🧍", svg_id: "full_body" }];
+const FALLBACK_REGIONS: Region[] = [
+  {
+    name: "General / Full Body",
+    keywords: [],
+    color: "#8BC8B8",
+    icon: "🧍",
+    svg_id: "full_body",
+  },
+];
 
 const START_PATIENT: PatientInfo = {
   age: "",
@@ -129,25 +152,94 @@ function buildBodySvg(selectedRegion: Region) {
   const highlight = selectedRegion?.color || "#6B8E9F";
   const muted = "#E8F4F8";
 
-  const head = ["head", "eyes", "ears", "nose", "mouth", "full_body"].includes(id) ? highlight : muted;
+  const head = ["head", "eyes", "ears", "nose", "mouth", "full_body"].includes(
+    id,
+  )
+    ? highlight
+    : muted;
   const neck = ["neck", "full_body"].includes(id) ? highlight : muted;
-  const chest = ["chest", "shoulders", "upper_back", "full_body"].includes(id) ? highlight : muted;
+  const chest = ["chest", "shoulders", "upper_back", "full_body"].includes(id)
+    ? highlight
+    : muted;
   const abdomen = ["abdomen", "full_body"].includes(id) ? highlight : muted;
-  const arms = ["arms", "shoulders", "hands", "full_body"].includes(id) ? highlight : muted;
-  const hips = ["hips", "lower_back", "full_body"].includes(id) ? highlight : muted;
-  const legs = ["thighs", "knees", "lower_legs", "feet", "full_body"].includes(id) ? highlight : muted;
+  const arms = ["arms", "shoulders", "hands", "full_body"].includes(id)
+    ? highlight
+    : muted;
+  const hips = ["hips", "lower_back", "full_body"].includes(id)
+    ? highlight
+    : muted;
+  const legs = ["thighs", "knees", "lower_legs", "feet", "full_body"].includes(
+    id,
+  )
+    ? highlight
+    : muted;
 
   return (
-    <svg viewBox="0 0 200 400" className="symptom-body-svg" aria-label="Body map">
-      <ellipse cx="100" cy="40" rx="30" ry="35" fill={head} stroke="#6B8E9F" strokeWidth="2" />
-      <rect x="88" y="70" width="24" height="20" fill={neck} stroke="#6B8E9F" strokeWidth="2" />
-      <path d="M60 90 Q50 95 45 130 L50 180 Q55 200 60 200 L140 200 Q145 200 150 180 L155 130 Q150 95 140 90 Z" fill={chest} stroke="#6B8E9F" strokeWidth="2" />
-      <path d="M60 200 L60 250 Q65 260 75 260 L125 260 Q135 260 140 250 L140 200 Z" fill={abdomen} stroke="#6B8E9F" strokeWidth="2" />
-      <path d="M45 95 Q25 100 20 150 L15 220 Q15 230 25 230 L35 230 Q45 230 45 220 L50 150 Z" fill={arms} stroke="#6B8E9F" strokeWidth="2" />
-      <path d="M155 95 Q175 100 180 150 L185 220 Q185 230 175 230 L165 230 Q155 230 155 220 L150 150 Z" fill={arms} stroke="#6B8E9F" strokeWidth="2" />
-      <path d="M75 260 L70 280 Q65 290 75 290 L125 290 Q135 290 130 280 L125 260 Z" fill={hips} stroke="#6B8E9F" strokeWidth="2" />
-      <path d="M75 290 L70 370 Q68 385 80 385 L95 385 Q100 385 100 370 L100 290 Z" fill={legs} stroke="#6B8E9F" strokeWidth="2" />
-      <path d="M100 290 L100 370 Q100 385 105 385 L120 385 Q132 385 130 370 L125 290 Z" fill={legs} stroke="#6B8E9F" strokeWidth="2" />
+    <svg
+      viewBox="0 0 200 400"
+      className="symptom-body-svg"
+      aria-label="Body map"
+    >
+      <ellipse
+        cx="100"
+        cy="40"
+        rx="30"
+        ry="35"
+        fill={head}
+        stroke="#6B8E9F"
+        strokeWidth="2"
+      />
+      <rect
+        x="88"
+        y="70"
+        width="24"
+        height="20"
+        fill={neck}
+        stroke="#6B8E9F"
+        strokeWidth="2"
+      />
+      <path
+        d="M60 90 Q50 95 45 130 L50 180 Q55 200 60 200 L140 200 Q145 200 150 180 L155 130 Q150 95 140 90 Z"
+        fill={chest}
+        stroke="#6B8E9F"
+        strokeWidth="2"
+      />
+      <path
+        d="M60 200 L60 250 Q65 260 75 260 L125 260 Q135 260 140 250 L140 200 Z"
+        fill={abdomen}
+        stroke="#6B8E9F"
+        strokeWidth="2"
+      />
+      <path
+        d="M45 95 Q25 100 20 150 L15 220 Q15 230 25 230 L35 230 Q45 230 45 220 L50 150 Z"
+        fill={arms}
+        stroke="#6B8E9F"
+        strokeWidth="2"
+      />
+      <path
+        d="M155 95 Q175 100 180 150 L185 220 Q185 230 175 230 L165 230 Q155 230 155 220 L150 150 Z"
+        fill={arms}
+        stroke="#6B8E9F"
+        strokeWidth="2"
+      />
+      <path
+        d="M75 260 L70 280 Q65 290 75 290 L125 290 Q135 290 130 280 L125 260 Z"
+        fill={hips}
+        stroke="#6B8E9F"
+        strokeWidth="2"
+      />
+      <path
+        d="M75 290 L70 370 Q68 385 80 385 L95 385 Q100 385 100 370 L100 290 Z"
+        fill={legs}
+        stroke="#6B8E9F"
+        strokeWidth="2"
+      />
+      <path
+        d="M100 290 L100 370 Q100 385 105 385 L120 385 Q132 385 130 370 L125 290 Z"
+        fill={legs}
+        stroke="#6B8E9F"
+        strokeWidth="2"
+      />
     </svg>
   );
 }
@@ -163,15 +255,21 @@ function entryKey(entry: HistoryEntry) {
 }
 
 export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
-  const [activeSection, setActiveSection] = useState<"home" | "documents" | "about" | "safety">("home");
+  const [activeSection, setActiveSection] = useState<
+    "home" | "documents" | "about" | "safety"
+  >("home");
   const [historySidebarOpen, setHistorySidebarOpen] = useState(false);
-  const [symptomDocuments, setSymptomDocuments] = useState<SymptomDocument[]>([]);
+  const [symptomDocuments, setSymptomDocuments] = useState<SymptomDocument[]>(
+    [],
+  );
   const [docUploadFile, setDocUploadFile] = useState<File | null>(null);
   const [docUploadLoading, setDocUploadLoading] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
-  const [chatSessionId, setChatSessionId] = useState<string | undefined>(undefined);
+  const [chatSessionId, setChatSessionId] = useState<string | undefined>(
+    undefined,
+  );
   const [documentsLoaded, setDocumentsLoaded] = useState(false);
   const [description, setDescription] = useState("");
   const [bodyRegion, setBodyRegion] = useState("General / Full Body");
@@ -184,13 +282,18 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
   const [activeHistoryKey, setActiveHistoryKey] = useState<string | null>(null);
   const [suggestedDoctors, setSuggestedDoctors] = useState<Doctor[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [contextOptions, setContextOptions] = useState<string[]>(FALLBACK_CONTEXT_TAGS);
-  const [durationOptions, setDurationOptions] = useState<string[]>(FALLBACK_DURATIONS);
+  const [contextOptions, setContextOptions] = useState<string[]>(
+    FALLBACK_CONTEXT_TAGS,
+  );
+  const [durationOptions, setDurationOptions] =
+    useState<string[]>(FALLBACK_DURATIONS);
   const [regions, setRegions] = useState<Region[]>(FALLBACK_REGIONS);
 
   const fetchSuggestedDoctors = async (region: string) => {
     try {
-      const data = await apiFetch<{ doctors?: Doctor[] }>(`/api/op/doctors/suggest?region=${encodeURIComponent(region)}`);
+      const data = await apiFetch<{ doctors?: Doctor[] }>(
+        `/api/op/doctors/suggest?region=${encodeURIComponent(region)}`,
+      );
       setSuggestedDoctors(data.doctors || []);
     } catch {
       setSuggestedDoctors([]);
@@ -210,37 +313,62 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
         if (data.context_tags?.length) setContextOptions(data.context_tags);
         if (data.duration_options?.length) {
           setDurationOptions(data.duration_options);
-          setDuration((prev) => (data.duration_options?.includes(prev) ? prev : data.duration_options?.[0] || prev));
+          setDuration((prev) =>
+            data.duration_options?.includes(prev)
+              ? prev
+              : data.duration_options?.[0] || prev,
+          );
         }
         if (data.regions?.length) {
           setRegions(data.regions);
-          setBodyRegion((prev) => (data.regions?.some((r) => r.name === prev) ? prev : data.regions?.[0]?.name || prev));
+          setBodyRegion((prev) =>
+            data.regions?.some((r) => r.name === prev)
+              ? prev
+              : data.regions?.[0]?.name || prev,
+          );
         }
       })
       .catch(() => {
-        setNotice({ type: "warning", message: "SymptoMap AI metadata unavailable. Running with fallback options." });
+        setNotice({
+          type: "warning",
+          message:
+            "SymptoMap AI metadata unavailable. Running with fallback options.",
+        });
       });
     return () => {
       active = false;
     };
   }, [setNotice]);
 
-  const selectedRegion = useMemo(() => regions.find((entry) => entry.name === bodyRegion) || regions[0] || FALLBACK_REGIONS[0], [regions, bodyRegion]);
+  const selectedRegion = useMemo(
+    () =>
+      regions.find((entry) => entry.name === bodyRegion) ||
+      regions[0] ||
+      FALLBACK_REGIONS[0],
+    [regions, bodyRegion],
+  );
 
   const trendItems = useMemo(() => history.slice(0, 10).reverse(), [history]);
 
   const onToggleTag = (tag: string) => {
-    setContextTags((prev) => (prev.includes(tag) ? prev.filter((value) => value !== tag) : [...prev, tag]));
+    setContextTags((prev) =>
+      prev.includes(tag)
+        ? prev.filter((value) => value !== tag)
+        : [...prev, tag],
+    );
   };
 
   const detectRegion = async () => {
     if (!description.trim()) return;
     try {
-      const res = await fetch(`${SYMPTOM_API_BASE}/api/symptom-ai/detect-region`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description }),
-      });
+      const res = await fetch(
+        `${SYMPTOM_API_BASE}/api/symptom-ai/detect-region`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ description }),
+        },
+      );
       if (!res.ok) return;
       const data = (await res.json()) as { region?: string | null };
       if (data.region && regions.some((entry) => entry.name === data.region)) {
@@ -253,7 +381,10 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
 
   const analyze = async () => {
     if (description.trim().length < 10) {
-      setNotice({ type: "warning", message: "Please describe the sensation with at least 10 characters." });
+      setNotice({
+        type: "warning",
+        message: "Please describe the sensation with at least 10 characters.",
+      });
       return;
     }
 
@@ -265,10 +396,15 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
       context_tags: contextTags,
       patient_info: {
         age: patientInfo.age ? Number(patientInfo.age) : null,
-        gender: patientInfo.gender === "Not specified" ? null : patientInfo.gender,
-        temperature: patientInfo.temperature ? Number(patientInfo.temperature) : null,
+        gender:
+          patientInfo.gender === "Not specified" ? null : patientInfo.gender,
+        temperature: patientInfo.temperature
+          ? Number(patientInfo.temperature)
+          : null,
         temp_unit: patientInfo.temp_unit,
-        heart_rate: patientInfo.heart_rate ? Number(patientInfo.heart_rate) : null,
+        heart_rate: patientInfo.heart_rate
+          ? Number(patientInfo.heart_rate)
+          : null,
         blood_pressure:
           patientInfo.systolic && patientInfo.diastolic
             ? {
@@ -286,23 +422,37 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = (await res.json()) as SymptomAnalyzeResponse & { error?: string };
+      const data = (await res.json()) as SymptomAnalyzeResponse & {
+        error?: string;
+      };
       if (!res.ok) {
-        throw Object.assign(new Error(data.error || "Unable to generate wellness insights."), { status: res.status });
+        throw Object.assign(
+          new Error(data.error || "Unable to generate wellness insights."),
+          { status: res.status },
+        );
       }
 
       const nextResponse = data.response || "No insights returned.";
       const resolvedRegion = data.detected_region || bodyRegion;
       setResponseText(nextResponse);
       void fetchSuggestedDoctors(resolvedRegion);
-      if (data.detected_region && regions.some((entry) => entry.name === data.detected_region)) {
+      if (
+        data.detected_region &&
+        regions.some((entry) => entry.name === data.detected_region)
+      ) {
         setBodyRegion(data.detected_region);
       }
 
       if (data.used_fallback) {
-        setNotice({ type: "warning", message: "SymptoMap AI returned a safety fallback response." });
+        setNotice({
+          type: "warning",
+          message: "SymptoMap AI returned a safety fallback response.",
+        });
       } else if (data.model_error) {
-        setNotice({ type: "warning", message: "SymptoMap AI response was generated with model warnings." });
+        setNotice({
+          type: "warning",
+          message: "SymptoMap AI response was generated with model warnings.",
+        });
       }
 
       const entry: HistoryEntry = {
@@ -322,7 +472,11 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
       });
       setActiveHistoryKey(entryKey(entry));
     } catch (error) {
-      reportError(setNotice, error as { status?: number; message?: string }, "Unable to generate wellness insights.");
+      reportError(
+        setNotice,
+        error as { status?: number; message?: string },
+        "Unable to generate wellness insights.",
+      );
     } finally {
       setLoading(false);
     }
@@ -354,13 +508,22 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      reportError(setNotice, error as { status?: number; message?: string }, "Unable to export insight as PDF.");
+      reportError(
+        setNotice,
+        error as { status?: number; message?: string },
+        "Unable to export insight as PDF.",
+      );
     }
   };
 
   const exportAll = () => {
     if (!history.length) return;
-    const lines = ["# SymptoMap AI - Session History", "", `Exported: ${new Date().toLocaleString()}`, ""];
+    const lines = [
+      "# SymptoMap AI - Session History",
+      "",
+      `Exported: ${new Date().toLocaleString()}`,
+      "",
+    ];
     history.forEach((entry, index) => {
       lines.push(`## Entry ${index + 1}`);
       lines.push(`Date: ${new Date(entry.createdAt).toLocaleString()}`);
@@ -368,7 +531,8 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
       lines.push(`Intensity: ${entry.intensity}/10`);
       lines.push(`Duration: ${entry.duration}`);
       lines.push(`Description: ${entry.description}`);
-      if (entry.contextTags.length) lines.push(`Context: ${entry.contextTags.join(", ")}`);
+      if (entry.contextTags.length)
+        lines.push(`Context: ${entry.contextTags.join(", ")}`);
       lines.push("");
       lines.push(entry.response);
       lines.push("", "---", "");
@@ -402,21 +566,33 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
 
   const loadSymptomDocuments = async () => {
     try {
-      const data = await apiFetch<{ documents?: SymptomDocument[] }>("/api/symptom-ai/documents");
+      const data = await apiFetch<{ documents?: SymptomDocument[] }>(
+        "/api/symptom-ai/documents",
+      );
       setSymptomDocuments(data.documents || []);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load your documents.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to load your documents.",
+      );
     }
   };
 
   const loadSymptomChatHistory = async () => {
     try {
-      const data = await apiFetch<{ messages?: ChatMessage[] }>("/api/symptom-ai/chat/history");
+      const data = await apiFetch<{ messages?: ChatMessage[] }>(
+        "/api/symptom-ai/chat/history",
+      );
       setChatMessages(data.messages || []);
       const lastSession = (data.messages || []).slice(-1)[0]?.session_id;
       if (lastSession) setChatSessionId(lastSession);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load chat history.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to load chat history.",
+      );
     }
   };
 
@@ -446,12 +622,18 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw Object.assign(new Error(data.error || "Unable to upload document."), { status: response.status });
+        throw Object.assign(
+          new Error(data.error || "Unable to upload document."),
+          { status: response.status },
+        );
       }
       setDocUploadFile(null);
       await loadSymptomDocuments();
       if (data.graph_updated) {
-        setNotice({ type: "success", message: `${data.filename} processed and added to your knowledge base.` });
+        setNotice({
+          type: "success",
+          message: `${data.filename} processed and added to your knowledge base.`,
+        });
       } else {
         setNotice({
           type: "warning",
@@ -459,7 +641,11 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
         });
       }
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to upload document.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to upload document.",
+      );
     } finally {
       setDocUploadLoading(false);
     }
@@ -467,11 +653,17 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
 
   const handleDocDelete = async (documentId: number) => {
     try {
-      await apiFetch(`/api/symptom-ai/documents/${documentId}`, { method: "DELETE" });
+      await apiFetch(`/api/symptom-ai/documents/${documentId}`, {
+        method: "DELETE",
+      });
       await loadSymptomDocuments();
       setNotice({ type: "success", message: "Document removed." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to remove document.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to remove document.",
+      );
     }
   };
 
@@ -482,14 +674,24 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
     setChatInput("");
     setChatLoading(true);
     try {
-      const data = await apiFetch<{ session_id: string; answer: string }>("/api/symptom-ai/chat", {
-        method: "POST",
-        body: JSON.stringify({ message, session_id: chatSessionId }),
-      });
+      const data = await apiFetch<{ session_id: string; answer: string }>(
+        "/api/symptom-ai/chat",
+        {
+          method: "POST",
+          body: JSON.stringify({ message, session_id: chatSessionId }),
+        },
+      );
       setChatSessionId(data.session_id);
-      setChatMessages((prev) => [...prev, { role: "assistant", content: data.answer }]);
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: data.answer },
+      ]);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to reach your knowledge base.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to reach your knowledge base.",
+      );
       setChatMessages((prev) => prev.slice(0, -1));
       setChatInput(message);
     } finally {
@@ -504,7 +706,11 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
       setChatSessionId(undefined);
       setNotice({ type: "success", message: "Chat history cleared." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to clear chat history.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to clear chat history.",
+      );
     }
   };
 
@@ -513,17 +719,38 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
       <Card className="symptom-disclaimer-card">
         <CardContent>
           <p>
-            <strong>Educational tool only:</strong> SymptoMap AI provides wellness education and is not a substitute for medical advice, diagnosis,
-            or treatment.
+            <strong>Educational tool only:</strong> SymptoMap AI provides
+            wellness education and is not a substitute for medical advice,
+            diagnosis, or treatment.
           </p>
         </CardContent>
       </Card>
 
       <Tabs className="symptom-tabs">
-        <TabsTrigger active={activeSection === "home"} onClick={() => setActiveSection("home")}>Home</TabsTrigger>
-        <TabsTrigger active={activeSection === "documents"} onClick={openDocumentsTab}>Ask About Your Documents</TabsTrigger>
-        <TabsTrigger active={activeSection === "about"} onClick={() => setActiveSection("about")}>About</TabsTrigger>
-        <TabsTrigger active={activeSection === "safety"} onClick={() => setActiveSection("safety")}>Safety</TabsTrigger>
+        <TabsTrigger
+          active={activeSection === "home"}
+          onClick={() => setActiveSection("home")}
+        >
+          Home
+        </TabsTrigger>
+        <TabsTrigger
+          active={activeSection === "documents"}
+          onClick={openDocumentsTab}
+        >
+          Ask About Your Documents
+        </TabsTrigger>
+        <TabsTrigger
+          active={activeSection === "about"}
+          onClick={() => setActiveSection("about")}
+        >
+          About
+        </TabsTrigger>
+        <TabsTrigger
+          active={activeSection === "safety"}
+          onClick={() => setActiveSection("safety")}
+        >
+          Safety
+        </TabsTrigger>
       </Tabs>
       <div className="symptom-history-toggle-wrap">
         <button
@@ -535,8 +762,21 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
           title="Session history"
         >
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-            <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.8" />
-            <path d="M12 7.5v5l3.5 2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            <circle
+              cx="12"
+              cy="12"
+              r="8"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M12 7.5v5l3.5 2"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
           </svg>
         </button>
         <span className="symptom-history-tooltip" role="tooltip">
@@ -550,7 +790,9 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
             <Card>
               <CardHeader>
                 <CardTitle>Describe Your Sensation</CardTitle>
-                <CardDescription>Share context to generate calm, educational wellness insights.</CardDescription>
+                <CardDescription>
+                  Share context to generate calm, educational wellness insights.
+                </CardDescription>
               </CardHeader>
               <CardContent className="symptom-form-grid">
                 <details>
@@ -558,11 +800,30 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
                   <div className="symptom-form-row symptom-three-col">
                     <Label>
                       Age
-                      <Input value={patientInfo.age} type="number" min={1} max={120} onChange={(e) => setPatientInfo((prev) => ({ ...prev, age: e.target.value }))} />
+                      <Input
+                        value={patientInfo.age}
+                        type="number"
+                        min={1}
+                        max={120}
+                        onChange={(e) =>
+                          setPatientInfo((prev) => ({
+                            ...prev,
+                            age: e.target.value,
+                          }))
+                        }
+                      />
                     </Label>
                     <Label>
                       Gender
-                      <Select value={patientInfo.gender} onChange={(e) => setPatientInfo((prev) => ({ ...prev, gender: e.target.value }))}>
+                      <Select
+                        value={patientInfo.gender}
+                        onChange={(e) =>
+                          setPatientInfo((prev) => ({
+                            ...prev,
+                            gender: e.target.value,
+                          }))
+                        }
+                      >
                         <option>Not specified</option>
                         <option>Male</option>
                         <option>Female</option>
@@ -576,9 +837,22 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
                           value={patientInfo.temperature}
                           type="number"
                           step="0.1"
-                          onChange={(e) => setPatientInfo((prev) => ({ ...prev, temperature: e.target.value }))}
+                          onChange={(e) =>
+                            setPatientInfo((prev) => ({
+                              ...prev,
+                              temperature: e.target.value,
+                            }))
+                          }
                         />
-                        <Select value={patientInfo.temp_unit} onChange={(e) => setPatientInfo((prev) => ({ ...prev, temp_unit: e.target.value as "°F" | "°C" }))}>
+                        <Select
+                          value={patientInfo.temp_unit}
+                          onChange={(e) =>
+                            setPatientInfo((prev) => ({
+                              ...prev,
+                              temp_unit: e.target.value as "°F" | "°C",
+                            }))
+                          }
+                        >
                           <option>°F</option>
                           <option>°C</option>
                         </Select>
@@ -588,15 +862,48 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
                   <div className="symptom-form-row symptom-three-col">
                     <Label>
                       Heart Rate (BPM)
-                      <Input value={patientInfo.heart_rate} type="number" min={30} max={250} onChange={(e) => setPatientInfo((prev) => ({ ...prev, heart_rate: e.target.value }))} />
+                      <Input
+                        value={patientInfo.heart_rate}
+                        type="number"
+                        min={30}
+                        max={250}
+                        onChange={(e) =>
+                          setPatientInfo((prev) => ({
+                            ...prev,
+                            heart_rate: e.target.value,
+                          }))
+                        }
+                      />
                     </Label>
                     <Label>
                       Systolic BP
-                      <Input value={patientInfo.systolic} type="number" min={60} max={250} onChange={(e) => setPatientInfo((prev) => ({ ...prev, systolic: e.target.value }))} />
+                      <Input
+                        value={patientInfo.systolic}
+                        type="number"
+                        min={60}
+                        max={250}
+                        onChange={(e) =>
+                          setPatientInfo((prev) => ({
+                            ...prev,
+                            systolic: e.target.value,
+                          }))
+                        }
+                      />
                     </Label>
                     <Label>
                       Diastolic BP
-                      <Input value={patientInfo.diastolic} type="number" min={30} max={150} onChange={(e) => setPatientInfo((prev) => ({ ...prev, diastolic: e.target.value }))} />
+                      <Input
+                        value={patientInfo.diastolic}
+                        type="number"
+                        min={30}
+                        max={150}
+                        onChange={(e) =>
+                          setPatientInfo((prev) => ({
+                            ...prev,
+                            diastolic: e.target.value,
+                          }))
+                        }
+                      />
                     </Label>
                   </div>
                 </details>
@@ -617,7 +924,10 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
                 <div className="symptom-form-row symptom-two-col">
                   <Label>
                     Body Region
-                    <Select value={bodyRegion} onChange={(event) => setBodyRegion(event.target.value)}>
+                    <Select
+                      value={bodyRegion}
+                      onChange={(event) => setBodyRegion(event.target.value)}
+                    >
                       {regions.map((region) => (
                         <option key={region.name} value={region.name}>
                           {region.icon} {region.name}
@@ -628,7 +938,10 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
 
                   <Label>
                     Duration
-                    <Select value={duration} onChange={(event) => setDuration(event.target.value)}>
+                    <Select
+                      value={duration}
+                      onChange={(event) => setDuration(event.target.value)}
+                    >
                       {durationOptions.map((option) => (
                         <option key={option} value={option}>
                           {option}
@@ -640,14 +953,29 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
 
                 <Label>
                   Intensity: {intensity}/10
-                  <input type="range" min={1} max={10} value={intensity} onChange={(event) => setIntensity(Number(event.target.value))} />
+                  <input
+                    type="range"
+                    min={1}
+                    max={10}
+                    value={intensity}
+                    onChange={(event) =>
+                      setIntensity(Number(event.target.value))
+                    }
+                  />
                 </Label>
 
                 <div className="symptom-tag-list">
                   {contextOptions.map((tag) => {
                     const selected = contextTags.includes(tag);
                     return (
-                      <button key={tag} type="button" className={selected ? "symptom-tag selected" : "symptom-tag"} onClick={() => onToggleTag(tag)}>
+                      <button
+                        key={tag}
+                        type="button"
+                        className={
+                          selected ? "symptom-tag selected" : "symptom-tag"
+                        }
+                        onClick={() => onToggleTag(tag)}
+                      >
                         {tag}
                       </button>
                     );
@@ -664,14 +992,15 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
               <CardHeader>
                 <CardTitle>Selected Region</CardTitle>
                 <CardDescription>
-                  <span className="symptom-region-chip" style={{ borderColor: selectedRegion.color }}>
+                  <span
+                    className="symptom-region-chip"
+                    style={{ borderColor: selectedRegion.color }}
+                  >
                     {selectedRegion.icon} {selectedRegion.name}
                   </span>
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                {buildBodySvg(selectedRegion)}
-              </CardContent>
+              <CardContent>{buildBodySvg(selectedRegion)}</CardContent>
             </Card>
           </div>
 
@@ -682,7 +1011,10 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
                   <CardTitle>Wellness Insights</CardTitle>
                   <CardDescription className="symptom-report-meta">
                     <Badge variant="outline">{bodyRegion}</Badge>
-                    <span className="symptom-intensity-badge" style={{ backgroundColor: intensityColor(intensity) }}>
+                    <span
+                      className="symptom-intensity-badge"
+                      style={{ backgroundColor: intensityColor(intensity) }}
+                    >
                       {intensity}/10
                     </span>
                   </CardDescription>
@@ -697,20 +1029,42 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
                 </CardContent>
               </Card>
 
-              <Card className="symptom-report-card" style={{ marginTop: "1rem" }}>
+              <Card
+                className="symptom-report-card"
+                style={{ marginTop: "1rem" }}
+              >
                 <CardHeader>
-                  <CardTitle style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <span>👨‍⚕️</span> Suggested Doctors (Administrative Department)
+                  <CardTitle
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                    }}
+                  >
+                    <span>👨‍⚕️</span> Suggested Doctors (Administrative
+                    Department)
                   </CardTitle>
                   <CardDescription>
-                    Based on your AI assessment for <strong>{bodyRegion}</strong>, here are available specialist doctors added by the Administrative department:
+                    Based on your AI assessment for{" "}
+                    <strong>{bodyRegion}</strong>, here are available specialist
+                    doctors added by the Administrative department:
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {suggestedDoctors.length === 0 ? (
-                    <p className="muted">No specialist doctors currently listed for this department.</p>
+                    <p className="muted">
+                      No specialist doctors currently listed for this
+                      department.
+                    </p>
                   ) : (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "1rem" }}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(auto-fill, minmax(280px, 1fr))",
+                        gap: "1rem",
+                      }}
+                    >
                       {suggestedDoctors.map((doc) => (
                         <div
                           key={doc.id}
@@ -726,16 +1080,44 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
                           }}
                         >
                           <div>
-                            <h4 style={{ margin: 0, fontSize: "1.05rem", color: "var(--text-main, #0F172A)" }}>{doc.doctor_name}</h4>
-                            <p className="muted" style={{ margin: "0.25rem 0", fontSize: "0.875rem" }}>
+                            <h4
+                              style={{
+                                margin: 0,
+                                fontSize: "1.05rem",
+                                color: "var(--text-main, #0F172A)",
+                              }}
+                            >
+                              {doc.doctor_name}
+                            </h4>
+                            <p
+                              className="muted"
+                              style={{
+                                margin: "0.25rem 0",
+                                fontSize: "0.875rem",
+                              }}
+                            >
                               Department: <strong>{doc.department}</strong>
                             </p>
-                            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-                              <Badge variant={doc.status === "available" ? "secondary" : "outline"}>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: "0.5rem",
+                                marginTop: "0.25rem",
+                              }}
+                            >
+                              <Badge
+                                variant={
+                                  doc.status === "available"
+                                    ? "secondary"
+                                    : "outline"
+                                }
+                              >
                                 {doc.status || "available"}
                               </Badge>
                               {doc.consultation_fee ? (
-                                <Badge variant="outline">Fee: ${doc.consultation_fee}</Badge>
+                                <Badge variant="outline">
+                                  Fee: ${doc.consultation_fee}
+                                </Badge>
                               ) : null}
                             </div>
                           </div>
@@ -746,7 +1128,12 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
                                 type: "success",
                                 message: `Opening Appointment Desk for ${doc.doctor_name} (${doc.department})`,
                               });
-                              onNavigate?.("registration", { prefillDoctor: { doctorName: doc.doctor_name, department: doc.department } });
+                              onNavigate?.("registration", {
+                                prefillDoctor: {
+                                  doctorName: doc.doctor_name,
+                                  department: doc.department,
+                                },
+                              });
                             }}
                           >
                             Book Appointment with {doc.doctor_name}
@@ -759,7 +1146,6 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
               </Card>
             </>
           )}
-
         </TabsContent>
       )}
 
@@ -770,8 +1156,9 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
               <CardHeader>
                 <CardTitle>Your Documents</CardTitle>
                 <CardDescription>
-                  Upload a PDF, Word doc, text file, or photo. It's added to your own private knowledge base so you
-                  can ask questions about it below.
+                  Upload a PDF, Word doc, text file, or photo. It's added to
+                  your own private knowledge base so you can ask questions about
+                  it below.
                 </CardDescription>
               </CardHeader>
               <CardContent className="symptom-form-grid">
@@ -782,18 +1169,33 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
                   disabled={docUploadLoading}
                   onFileSelect={setDocUploadFile}
                 />
-                <Button onClick={handleDocUpload} disabled={docUploadLoading || !docUploadFile}>
+                <Button
+                  onClick={handleDocUpload}
+                  disabled={docUploadLoading || !docUploadFile}
+                >
                   {docUploadLoading ? "Processing..." : "Upload & Process"}
                 </Button>
 
                 <div className="symptom-document-list">
-                  {symptomDocuments.length === 0 && <p className="muted">No documents uploaded yet.</p>}
+                  {symptomDocuments.length === 0 && (
+                    <p className="muted">No documents uploaded yet.</p>
+                  )}
                   {symptomDocuments.map((doc) => (
-                    <div key={doc.id} className="module-inline-actions" style={{ justifyContent: "space-between" }}>
+                    <div
+                      key={doc.id}
+                      className="module-inline-actions"
+                      style={{ justifyContent: "space-between" }}
+                    >
                       <p className="muted">
-                        {doc.filename} · {new Date(doc.created_at).toLocaleString()}
+                        {doc.filename} ·{" "}
+                        {new Date(doc.created_at).toLocaleString()}
                       </p>
-                      <Button variant="ghost" size="sm" type="button" onClick={() => void handleDocDelete(doc.id)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        type="button"
+                        onClick={() => void handleDocDelete(doc.id)}
+                      >
                         Remove
                       </Button>
                     </div>
@@ -805,16 +1207,25 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
             <Card>
               <CardHeader>
                 <CardTitle>Chat With Your Documents</CardTitle>
-                <CardDescription>Ask questions grounded in the documents you've uploaded above.</CardDescription>
+                <CardDescription>
+                  Ask questions grounded in the documents you've uploaded above.
+                </CardDescription>
               </CardHeader>
               <CardContent className="symptom-form-grid">
                 <div className="symptom-chat-history">
                   {chatMessages.length === 0 && (
-                    <p className="muted">Upload a document, then ask a question about it here.</p>
+                    <p className="muted">
+                      Upload a document, then ask a question about it here.
+                    </p>
                   )}
                   {chatMessages.map((message, index) => (
-                    <div key={index} className={`symptom-chat-message symptom-chat-${message.role}`}>
-                      <strong>{message.role === "user" ? "You" : "Assistant"}:</strong>{" "}
+                    <div
+                      key={index}
+                      className={`symptom-chat-message symptom-chat-${message.role}`}
+                    >
+                      <strong>
+                        {message.role === "user" ? "You" : "Assistant"}:
+                      </strong>{" "}
                       <MarkdownReport text={message.content} />
                     </div>
                   ))}
@@ -833,11 +1244,18 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
                     }}
                     disabled={chatLoading}
                   />
-                  <Button onClick={handleChatSend} disabled={chatLoading || !chatInput.trim()}>
+                  <Button
+                    onClick={handleChatSend}
+                    disabled={chatLoading || !chatInput.trim()}
+                  >
                     Send
                   </Button>
                 </div>
-                <Button variant="ghost" onClick={handleClearChat} disabled={!chatMessages.length}>
+                <Button
+                  variant="ghost"
+                  onClick={handleClearChat}
+                  disabled={!chatMessages.length}
+                >
                   Clear Chat History
                 </Button>
               </CardContent>
@@ -851,12 +1269,15 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
           <Card>
             <CardHeader>
               <CardTitle>About SymptoMap AI</CardTitle>
-              <CardDescription>Wellness education focused and intentionally non-diagnostic.</CardDescription>
+              <CardDescription>
+                Wellness education focused and intentionally non-diagnostic.
+              </CardDescription>
             </CardHeader>
             <CardContent className="symptom-copy">
               <p>
-                SymptoMap AI helps users understand body sensations in calm, everyday language. It provides educational context only and never replaces
-                professional healthcare guidance.
+                SymptoMap AI helps users understand body sensations in calm,
+                everyday language. It provides educational context only and
+                never replaces professional healthcare guidance.
               </p>
               <h4>What this tool does</h4>
               <ul>
@@ -884,12 +1305,16 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
             </CardHeader>
             <CardContent className="symptom-copy">
               <p>
-                SymptoMap AI is not a medical device and not a healthcare provider. Information is educational only and should not be used as medical
-                advice.
+                SymptoMap AI is not a medical device and not a healthcare
+                provider. Information is educational only and should not be used
+                as medical advice.
               </p>
               <h4>Emergency guidance</h4>
               <ul>
-                <li>Call emergency services for severe pain, breathing difficulty, or urgent symptoms.</li>
+                <li>
+                  Call emergency services for severe pain, breathing difficulty,
+                  or urgent symptoms.
+                </li>
                 <li>Do not rely on this app during emergencies.</li>
               </ul>
               <h4>When to consult a professional</h4>
@@ -903,28 +1328,59 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
         </TabsContent>
       )}
 
-      {historySidebarOpen && <button type="button" className="symptom-history-backdrop" onClick={() => setHistorySidebarOpen(false)} aria-label="Close history panel" />}
-      <aside className={historySidebarOpen ? "symptom-history-drawer open" : "symptom-history-drawer"} aria-label="Session history panel">
+      {historySidebarOpen && (
+        <button
+          type="button"
+          className="symptom-history-backdrop"
+          onClick={() => setHistorySidebarOpen(false)}
+          aria-label="Close history panel"
+        />
+      )}
+      <aside
+        className={
+          historySidebarOpen
+            ? "symptom-history-drawer open"
+            : "symptom-history-drawer"
+        }
+        aria-label="Session history panel"
+      >
         <div className="symptom-history-drawer-head">
           <div>
             <h3>Session History</h3>
             <p className="muted">Local browser history only.</p>
           </div>
-          <button type="button" className="symptom-history-close" onClick={() => setHistorySidebarOpen(false)} aria-label="Close history panel">
+          <button
+            type="button"
+            className="symptom-history-close"
+            onClick={() => setHistorySidebarOpen(false)}
+            aria-label="Close history panel"
+          >
             ✕
           </button>
         </div>
 
         <div className="symptom-actions">
-          <Button variant="secondary" onClick={exportAll} disabled={!history.length}>
+          <Button
+            variant="secondary"
+            onClick={exportAll}
+            disabled={!history.length}
+          >
             Export All History
           </Button>
-          <Button variant="ghost" onClick={clearHistory} disabled={!history.length}>
+          <Button
+            variant="ghost"
+            onClick={clearHistory}
+            disabled={!history.length}
+          >
             Clear History
           </Button>
         </div>
 
-        {!history.length && <p className="muted">History will appear after generating insights.</p>}
+        {!history.length && (
+          <p className="muted">
+            History will appear after generating insights.
+          </p>
+        )}
         {!!history.length && (
           <>
             <div className="symptom-history-list">
@@ -932,13 +1388,19 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
                 <button
                   key={entryKey(entry)}
                   type="button"
-                  className={activeHistoryKey === entryKey(entry) ? "symptom-history-item active" : "symptom-history-item"}
+                  className={
+                    activeHistoryKey === entryKey(entry)
+                      ? "symptom-history-item active"
+                      : "symptom-history-item"
+                  }
                   onClick={() => restoreSession(entry)}
                   aria-label={`Open session from ${new Date(entry.createdAt).toLocaleString()}`}
                 >
                   <div>
                     <strong>{entry.region}</strong>
-                    <p className="muted">{new Date(entry.createdAt).toLocaleString()}</p>
+                    <p className="muted">
+                      {new Date(entry.createdAt).toLocaleString()}
+                    </p>
                   </div>
                   <Badge variant="secondary">{entry.intensity}/10</Badge>
                 </button>
@@ -950,8 +1412,18 @@ export default function SymptomAiPage({ setNotice, onNavigate }: Props) {
                 <p className="muted">Intensity trend (oldest to latest)</p>
                 <div className="symptom-trend-bars">
                   {trendItems.map((item, index) => (
-                    <div key={`${item.createdAt}-${index}`} className="symptom-trend-bar-wrap" title={`${item.intensity}/10`}>
-                      <div className="symptom-trend-bar" style={{ height: `${Math.max(10, item.intensity * 10)}%`, backgroundColor: intensityColor(item.intensity) }} />
+                    <div
+                      key={`${item.createdAt}-${index}`}
+                      className="symptom-trend-bar-wrap"
+                      title={`${item.intensity}/10`}
+                    >
+                      <div
+                        className="symptom-trend-bar"
+                        style={{
+                          height: `${Math.max(10, item.intensity * 10)}%`,
+                          backgroundColor: intensityColor(item.intensity),
+                        }}
+                      />
                     </div>
                   ))}
                 </div>

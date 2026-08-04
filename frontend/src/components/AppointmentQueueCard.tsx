@@ -22,7 +22,11 @@ export default function AppointmentQueueCard({ appointment, actions }: Props) {
       <div className="queue-card-body">
         <div className="queue-card-top">
           <h4 className="queue-card-name">{appointment.patient_name}</h4>
-          <span className={`queue-status-pill queue-status-pill-${statusMeta.tone}`}>{statusMeta.label}</span>
+          <span
+            className={`queue-status-pill queue-status-pill-${statusMeta.tone}`}
+          >
+            {statusMeta.label}
+          </span>
         </div>
         <div className="queue-card-meta">
           <span className="queue-meta-item">
@@ -39,10 +43,13 @@ export default function AppointmentQueueCard({ appointment, actions }: Props) {
             </span>
           ) : null}
           <span className="queue-meta-item">
-            <FiClock aria-hidden /> {formatDateTime(appointment.appointment_date)}
+            <FiClock aria-hidden />{" "}
+            {formatDateTime(appointment.appointment_date)}
           </span>
         </div>
-        {appointment.notes ? <p className="queue-card-notes">{appointment.notes}</p> : null}
+        {appointment.notes ? (
+          <p className="queue-card-notes">{appointment.notes}</p>
+        ) : null}
       </div>
 
       {actions ? <div className="queue-card-actions">{actions}</div> : null}

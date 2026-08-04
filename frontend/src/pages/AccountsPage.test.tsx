@@ -29,17 +29,43 @@ describe("AccountsPage", () => {
       }
       if (requestUrl.includes("/api/accounts/ledger")) {
         return jsonResponse({
-          entries: [{ id: 1, entry_date: "2026-03-04", entry_type: "income", category: "Collections", amount: 10000 }],
+          entries: [
+            {
+              id: 1,
+              entry_date: "2026-03-04",
+              entry_type: "income",
+              category: "Collections",
+              amount: 10000,
+            },
+          ],
         });
       }
       if (requestUrl.includes("/api/accounts/vendors")) {
         return jsonResponse({
-          payments: [{ id: 2, vendor_name: "Acme Pharma", amount: 2000, payment_date: "2026-03-04", status: "paid" }],
+          payments: [
+            {
+              id: 2,
+              vendor_name: "Acme Pharma",
+              amount: 2000,
+              payment_date: "2026-03-04",
+              status: "paid",
+            },
+          ],
         });
       }
       if (requestUrl.includes("/api/accounts/doctors")) {
         return jsonResponse({
-          payouts: [{ id: 3, doctor_name: "Dr. Shah", payout_month: "2026-03", amount: 3000, paid_amount: 2500, due_amount: 500, status: "partial" }],
+          payouts: [
+            {
+              id: 3,
+              doctor_name: "Dr. Shah",
+              payout_month: "2026-03",
+              amount: 3000,
+              paid_amount: 2500,
+              due_amount: 500,
+              status: "partial",
+            },
+          ],
         });
       }
       return jsonResponse({});
@@ -57,9 +83,15 @@ describe("AccountsPage", () => {
     });
 
     expect(container.textContent).toContain("General Ledger");
-    expect(container.querySelector('input[aria-label="Ledger amount"]')).toBeTruthy();
-    expect(container.querySelector('input[aria-label="Vendor payment amount"]')).toBeFalsy();
-    expect(container.querySelector('input[aria-label="Doctor payout amount"]')).toBeFalsy();
+    expect(
+      container.querySelector('input[aria-label="Ledger amount"]'),
+    ).toBeTruthy();
+    expect(
+      container.querySelector('input[aria-label="Vendor payment amount"]'),
+    ).toBeFalsy();
+    expect(
+      container.querySelector('input[aria-label="Doctor payout amount"]'),
+    ).toBeFalsy();
 
     act(() => {
       root.unmount();

@@ -12,21 +12,19 @@ from datetime import datetime
 from io import BytesIO
 
 from app import (
-    require_permissions, 
-    log_audit_event, 
+    require_permissions,
+    log_audit_event,
     validate_required_fields,
     current_hospital_id,
     row_to_dict,
-    rows_to_dicts
+    rows_to_dicts,
 )
 
-from utils.database import (
-    get_all_patients,
-    search_patients
-)
+from utils.database import get_all_patients, search_patients
+
+ai_exports_bp = Blueprint("ai_exports", __name__)
 
 
-ai_exports_bp = Blueprint('ai_exports', __name__)
 @ai_exports_bp.post("/api/ai/patient-history-search")
 @require_permissions("patients.read")
 def ai_patient_history_search():
@@ -46,7 +44,6 @@ def ai_patient_history_search():
     return jsonify(result)
 
 
-
 @ai_exports_bp.post("/api/ocr")
 @require_permissions("symptom_ai.use")
 def ocr_extract():
@@ -60,7 +57,6 @@ def ocr_extract():
         content, language, doc_type, filename=uploaded_file.filename
     )
     return jsonify({"text": text})
-
 
 
 @ai_exports_bp.post("/api/export/pdf")
@@ -81,7 +77,6 @@ def export_pdf():
     )
 
 
-
 @ai_exports_bp.post("/api/export/word")
 @require_permissions("symptom_ai.use")
 def export_word():
@@ -98,7 +93,6 @@ def export_word():
         as_attachment=True,
         download_name="document.docx",
     )
-
 
 
 @ai_exports_bp.get("/api/export/patients/csv")
@@ -148,5 +142,3 @@ def export_patients_csv():
         as_attachment=True,
         download_name=f"patients_{filename_suffix}.csv",
     )
-
-

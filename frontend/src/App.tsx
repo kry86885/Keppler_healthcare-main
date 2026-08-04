@@ -17,10 +17,16 @@ const AdminPage = lazy(() => import("./pages/AdminPage"));
 const DoctorSchedulingPage = lazy(() => import("./pages/DoctorSchedulingPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const EmployeesPage = lazy(() => import("./pages/EmployeesPage"));
-const PatientExperiencePage = lazy(() => import("./pages/PatientExperiencePage"));
-const PaymentCollectionPage = lazy(() => import("./pages/PaymentCollectionPage"));
+const PatientExperiencePage = lazy(
+  () => import("./pages/PatientExperiencePage"),
+);
+const PaymentCollectionPage = lazy(
+  () => import("./pages/PaymentCollectionPage"),
+);
 const RevenueReportsPage = lazy(() => import("./pages/RevenueReportsPage"));
-const DailyMonthlyReportsPage = lazy(() => import("./pages/DailyMonthlyReportsPage"));
+const DailyMonthlyReportsPage = lazy(
+  () => import("./pages/DailyMonthlyReportsPage"),
+);
 const PharmacyPage = lazy(() => import("./pages/PharmacyPage"));
 const HrmsPage = lazy(() => import("./pages/HrmsPage"));
 const PatientsPage = lazy(() => import("./pages/PatientsPage"));
@@ -28,20 +34,34 @@ const ReadmitPage = lazy(() => import("./pages/ReadmitPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const SymptomAiPage = lazy(() => import("./pages/SymptomAiPage"));
 const PlatformAdminPage = lazy(() => import("./pages/PlatformAdminPage"));
-const BedManagementPage = lazy(() => import("./pages/BedManagementPage"));
-const IcuPage = lazy(() => import("./pages/IcuPage"));
 const QueuePage = lazy(() => import("./pages/QueuePage"));
-const DoctorPrescriptionPage = lazy(() => import("./pages/DoctorPrescriptionPage"));
+const DoctorPrescriptionPage = lazy(
+  () => import("./pages/DoctorPrescriptionPage"),
+);
 const EmrPage = lazy(() => import("./pages/EmrPage"));
-const EmergencyPage = lazy(() => import("./pages/EmergencyPage"));
-const AmbulancePage = lazy(() => import("./pages/AmbulancePage"));
-const NurseStationPage = lazy(() => import("./pages/NurseStationPage"));
 const RegistrationDeskPage = lazy(() => import("./pages/RegistrationDeskPage"));
 const BulkPatientAiPage = lazy(() => import("./pages/BulkPatientAiPage"));
-import { API_BASE, EMPTY_STATS, NAV_ITEMS, EMPTY_PATIENT_FORM } from "./lib/constants";
-import { apiFetch, getHospitalCode, reportError, setHospitalCode } from "./lib/api";
+import {
+  API_BASE,
+  EMPTY_STATS,
+  NAV_ITEMS,
+  EMPTY_PATIENT_FORM,
+} from "./lib/constants";
+import {
+  apiFetch,
+  getHospitalCode,
+  reportError,
+  setHospitalCode,
+} from "./lib/api";
 import { resolvePermissions } from "./lib/format";
-import type { DashboardAnalytics, HospitalSummary, Notice, Patient, Stats, User } from "./types";
+import type {
+  DashboardAnalytics,
+  HospitalSummary,
+  Notice,
+  Patient,
+  Stats,
+  User,
+} from "./types";
 
 function greetingForHour(hour: number) {
   if (hour < 12) return "Good morning";
@@ -49,7 +69,20 @@ function greetingForHour(hour: number) {
   return "Good evening";
 }
 
-type SidebarIconName = "dashboard" | "add" | "patients" | "readmit" | "billing" | "pharmacy" | "hrms" | "symptom" | "employees" | "settings" | "logout" | "profile" | "appointment";
+type SidebarIconName =
+  | "dashboard"
+  | "add"
+  | "patients"
+  | "readmit"
+  | "billing"
+  | "pharmacy"
+  | "hrms"
+  | "symptom"
+  | "employees"
+  | "settings"
+  | "logout"
+  | "profile"
+  | "appointment";
 
 const NAV_ICON_MAP: Record<string, SidebarIconName> = {
   dashboard: "dashboard",
@@ -91,7 +124,13 @@ const NAV_ICON_MAP: Record<string, SidebarIconName> = {
 };
 
 function SidebarIcon({ name }: { name: SidebarIconName }) {
-  const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  const stroke = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
 
   const paths: Record<SidebarIconName, ReactNode> = {
     dashboard: (
@@ -136,13 +175,31 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
       </>
     ),
     pharmacy: (
-      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        viewBox="0 0 24 24"
+        width="100%"
+        height="100%"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M10.5 20.5l-6-6a4.243 4.243 0 0 1 6-6l6 6a4.243 4.243 0 0 1-6 6z" />
         <line x1="8.5" y1="8.5" x2="15.5" y2="15.5" />
       </svg>
     ),
     hrms: (
-      <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        viewBox="0 0 24 24"
+        width="100%"
+        height="100%"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
         <circle cx="9" cy="7" r="4" />
         <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
@@ -151,8 +208,14 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
     ),
     symptom: (
       <>
-        <path d="M12 3C9 6 7 8.7 7 12a5 5 0 0 0 10 0c0-3.3-2-6-5-9Z" {...stroke} />
-        <path d="M9.5 12.8c1.2-.1 2.1-.8 2.5-2.1.5 1.3 1.4 2 2.5 2.1" {...stroke} />
+        <path
+          d="M12 3C9 6 7 8.7 7 12a5 5 0 0 0 10 0c0-3.3-2-6-5-9Z"
+          {...stroke}
+        />
+        <path
+          d="M9.5 12.8c1.2-.1 2.1-.8 2.5-2.1.5 1.3 1.4 2 2.5 2.1"
+          {...stroke}
+        />
       </>
     ),
     employees: (
@@ -166,12 +229,18 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
     settings: (
       <>
         <circle cx="12" cy="12" r="3.2" {...stroke} />
-        <path d="M12 3v2.1M12 18.9V21M3 12h2.1M18.9 12H21M5.7 5.7l1.5 1.5M16.8 16.8l1.5 1.5M18.3 5.7l-1.5 1.5M7.2 16.8l-1.5 1.5" {...stroke} />
+        <path
+          d="M12 3v2.1M12 18.9V21M3 12h2.1M18.9 12H21M5.7 5.7l1.5 1.5M16.8 16.8l1.5 1.5M18.3 5.7l-1.5 1.5M7.2 16.8l-1.5 1.5"
+          {...stroke}
+        />
       </>
     ),
     logout: (
       <>
-        <path d="M10 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20H10" {...stroke} />
+        <path
+          d="M10 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20H10"
+          {...stroke}
+        />
         <path d="M14 8l4 4-4 4" {...stroke} />
         <path d="M18 12H9" {...stroke} />
       </>
@@ -200,7 +269,14 @@ type SidebarTabProps = {
   onClick: () => void;
 };
 
-function SidebarTab({ label, icon, active, disabled = false, hint, onClick }: SidebarTabProps) {
+function SidebarTab({
+  label,
+  icon,
+  active,
+  disabled = false,
+  hint,
+  onClick,
+}: SidebarTabProps) {
   return (
     <button
       type="button"
@@ -219,19 +295,27 @@ function SidebarTab({ label, icon, active, disabled = false, hint, onClick }: Si
 }
 
 function App() {
-  const isAdminRoutePath = typeof window !== "undefined" && window.location.pathname === "/admin";
-  const isPlatformAdminRoute = typeof window !== "undefined" && window.location.pathname === "/platform-admin";
+  const isAdminRoutePath =
+    typeof window !== "undefined" && window.location.pathname === "/admin";
+  const isPlatformAdminRoute =
+    typeof window !== "undefined" &&
+    window.location.pathname === "/platform-admin";
   const [user, setUser] = useState<User | null>(null);
   const [page, setPage] = useState(isAdminRoutePath ? "admin" : "dashboard");
   const [patientsPageKey, setPatientsPageKey] = useState(0);
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
-  const [dashboardAnalytics, setDashboardAnalytics] = useState<DashboardAnalytics | null>(null);
-  const [hospitalSummary, setHospitalSummary] = useState<HospitalSummary | null>(null);
-  const [dashboardAnalyticsLoading, setDashboardAnalyticsLoading] = useState(false);
+  const [dashboardAnalytics, setDashboardAnalytics] =
+    useState<DashboardAnalytics | null>(null);
+  const [hospitalSummary, setHospitalSummary] =
+    useState<HospitalSummary | null>(null);
+  const [dashboardAnalyticsLoading, setDashboardAnalyticsLoading] =
+    useState(false);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [patientDetailRefreshToken, setPatientDetailRefreshToken] = useState(0);
-  const [languages, setLanguages] = useState<Record<string, string>>({ en: "English" });
+  const [languages, setLanguages] = useState<Record<string, string>>({
+    en: "English",
+  });
   const [ocrLanguage, setOcrLanguage] = useState("en");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -241,7 +325,10 @@ function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [hospitalCode, setHospitalCodeState] = useState(getHospitalCode());
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [appointmentPrefill, setAppointmentPrefill] = useState<{ doctorName?: string, department?: string } | null>(null);
+  const [appointmentPrefill, setAppointmentPrefill] = useState<{
+    doctorName?: string;
+    department?: string;
+  } | null>(null);
   useEffect(() => {
     if (!notice) return;
     const timeoutId = window.setTimeout(() => setNotice(null), 4200);
@@ -271,23 +358,42 @@ function App() {
   }, [profileActionsOpen]);
 
   const permissions = useMemo(() => resolvePermissions(user), [user]);
-  const hasPermission = (permission?: string) => !permission || permissions.includes(permission);
+  const hasPermission = (permission?: string) =>
+    !permission || permissions.includes(permission);
   const isAdmin = hasPermission("admin.use");
-  const isClinicianUser = user?.access_role === "clinician" || (user?.job_role || "").toLowerCase() === "doctor";
+  const isClinicianUser =
+    user?.access_role === "clinician" ||
+    (user?.job_role || "").toLowerCase() === "doctor";
   // Identity-only flag (personalized greeting + default landing page in
   // getDefaultPage below) -- deliberately does NOT narrow nav visibility the
   // way isClinicianUser does, since a pharmacist's module_access already
   // governs what they can see and there's no equivalent need to hide other
   // granted modules from them.
-  const isPharmacistUser = user?.access_role === "pharmacist" || (user?.job_role || "").toLowerCase() === "pharmacist";
-  const canAccessNavItem = (item: typeof NAV_ITEMS[0], permission?: string) => {
+  const isPharmacistUser =
+    user?.access_role === "pharmacist" ||
+    (user?.job_role || "").toLowerCase() === "pharmacist";
+  const canAccessNavItem = (
+    item: (typeof NAV_ITEMS)[0],
+    permission?: string,
+  ) => {
     if (item.id === "employees") return isAdmin;
 
     // Clinicians should only see a restricted set of pages WITHIN the patients and symptom_ai modules.
     // If the admin gives them access to other modules (like pharmacy or lab), they will see those pages.
     if (isClinicianUser) {
-      if (item.module === "patients" || item.module === "dashboard" || item.module === "symptom_ai") {
-        const allowedForClinician = ["queue", "emr", "dashboard", "patients", "symptom-ai", "doctor-prescription"];
+      if (
+        item.module === "patients" ||
+        item.module === "dashboard" ||
+        item.module === "symptom_ai"
+      ) {
+        const allowedForClinician = [
+          "queue",
+          "emr",
+          "dashboard",
+          "patients",
+          "symptom-ai",
+          "doctor-prescription",
+        ];
         if (!allowedForClinician.includes(item.id)) return false;
       }
     }
@@ -313,14 +419,22 @@ function App() {
     return hasPermission(permission);
   };
   const sidebarNavItems = useMemo(
-    () => NAV_ITEMS.filter((item) => item.id !== "settings" && canAccessNavItem(item, item.permission)),
-    [permissions]
+    () =>
+      NAV_ITEMS.filter(
+        (item) =>
+          item.id !== "settings" && canAccessNavItem(item, item.permission),
+      ),
+    [permissions],
   );
   const sidebarGroups = useMemo(() => {
     // Ordered by how often day-to-day hospital work touches each area: the core patient
     // journey (Overview -> OP Management -> Operations) comes before supporting AI tools,
     // which comes before back-office Finance/Administration.
-    const groups: Array<{ key: string; label: string; items: typeof sidebarNavItems }> = [
+    const groups: Array<{
+      key: string;
+      label: string;
+      items: typeof sidebarNavItems;
+    }> = [
       { key: "overview", label: "Overview", items: [] },
       { key: "registration", label: "OP Management", items: [] },
       { key: "operations", label: "Operations", items: [] },
@@ -329,7 +443,9 @@ function App() {
       { key: "admin", label: "Administration", items: [] },
     ];
     sidebarNavItems.forEach((item) => {
-      const target = groups.find((group) => group.key === (item.group || "overview"));
+      const target = groups.find(
+        (group) => group.key === (item.group || "overview"),
+      );
       target?.items.push(item);
     });
 
@@ -337,7 +453,13 @@ function App() {
     if (user?.access_role === "clinician") {
       const opGroup = groups.find((g) => g.key === "registration");
       if (opGroup) {
-        const order = ["doctor-prescription", "queue", "emr", "appointment-out", "appointment-in"];
+        const order = [
+          "doctor-prescription",
+          "queue",
+          "emr",
+          "appointment-out",
+          "appointment-in",
+        ];
         opGroup.items.sort((a, b) => {
           const indexA = order.indexOf(a.id);
           const indexB = order.indexOf(b.id);
@@ -355,20 +477,29 @@ function App() {
 
     return groups.filter((group) => group.items.length > 0);
   }, [sidebarNavItems]);
-  const groupKeyForPage = (pageId: string) => NAV_ITEMS.find((item) => item.id === pageId)?.group || "overview";
+  const groupKeyForPage = (pageId: string) =>
+    NAV_ITEMS.find((item) => item.id === pageId)?.group || "overview";
   // Accordion behaviour: only the section containing the active page is expanded, so a
   // 13-item "Finance" group and an 8-item "OP Management" group are never both open (and
   // forcing a long scroll) at once -- this is the "sidebar should be systematic" fix.
-  const [openSidebarGroup, setOpenSidebarGroup] = useState<string>(groupKeyForPage(page));
+  const [openSidebarGroup, setOpenSidebarGroup] = useState<string>(
+    groupKeyForPage(page),
+  );
   useEffect(() => {
     setOpenSidebarGroup(groupKeyForPage(page));
   }, [page]);
 
   const getDefaultPage = (currentUser: User | null) => {
-    if (currentUser?.access_role === "clinician" || (currentUser?.job_role || "").toLowerCase() === "doctor") {
+    if (
+      currentUser?.access_role === "clinician" ||
+      (currentUser?.job_role || "").toLowerCase() === "doctor"
+    ) {
       return "queue";
     }
-    if (currentUser?.access_role === "pharmacist" || (currentUser?.job_role || "").toLowerCase() === "pharmacist") {
+    if (
+      currentUser?.access_role === "pharmacist" ||
+      (currentUser?.job_role || "").toLowerCase() === "pharmacist"
+    ) {
       return "pharmacy";
     }
     const candidatePages = [
@@ -412,13 +543,20 @@ function App() {
       // which might be stale during login, so we re-evaluate it with currentUser.
 
       let hasAccess = false;
-      const isAdminCheck = resolvePermissions(currentUser).includes("admin.use");
+      const isAdminCheck =
+        resolvePermissions(currentUser).includes("admin.use");
       if (navItem.id === "employees") {
         hasAccess = isAdminCheck;
-      } else if (currentUser?.user_type !== "admin" && navItem.module && !(currentUser?.module_access || []).includes(navItem.module)) {
+      } else if (
+        currentUser?.user_type !== "admin" &&
+        navItem.module &&
+        !(currentUser?.module_access || []).includes(navItem.module)
+      ) {
         hasAccess = false;
       } else {
-        hasAccess = !navItem.permission || resolvePermissions(currentUser).includes(navItem.permission);
+        hasAccess =
+          !navItem.permission ||
+          resolvePermissions(currentUser).includes(navItem.permission);
       }
 
       if (hasAccess) {
@@ -455,7 +593,7 @@ function App() {
           }
         }
       })
-      .catch(() => { })
+      .catch(() => {})
       .finally(() => {
         if (active) setAuthChecked(true);
       });
@@ -489,21 +627,25 @@ function App() {
       if (!active) return;
       try {
         const now = new Date();
-        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        const data = await apiFetch<{ appointments?: any[] }>(`/api/appointments?date=${today}`);
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+        const data = await apiFetch<{ appointments?: any[] }>(
+          `/api/appointments?date=${today}`,
+        );
         const appointments = data.appointments || [];
 
         const currentStatuses: Record<number, string> = {};
-        appointments.forEach(a => {
+        appointments.forEach((a) => {
           currentStatuses[a.id] = a.status;
         });
 
         const isClinician = user.access_role === "clinician";
-        const isStaff = user.access_role === "receptionist" || user.access_role === "admin";
+        const isStaff =
+          user.access_role === "receptionist" || user.access_role === "admin";
 
         const playAlertSound = () => {
           try {
-            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+            const AudioContext =
+              window.AudioContext || (window as any).webkitAudioContext;
             if (!AudioContext) return;
             const ctx = new AudioContext();
             const osc = ctx.createOscillator();
@@ -526,9 +668,10 @@ function App() {
         if (Object.keys(previousStatusesRef.current).length > 0) {
           if (isClinician) {
             // Find new appointments that are checked_in
-            const newPatients = appointments.filter(a =>
-              (a.status === "checked_in" || a.status === "scheduled") &&
-              !previousStatusesRef.current[a.id]
+            const newPatients = appointments.filter(
+              (a) =>
+                (a.status === "checked_in" || a.status === "scheduled") &&
+                !previousStatusesRef.current[a.id],
             );
 
             if (newPatients.length > 0) {
@@ -536,11 +679,16 @@ function App() {
               // Play sound and show notice
               if (typeof window !== "undefined") {
                 try {
-                  const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                  const audioCtx = new (
+                    window.AudioContext || (window as any).webkitAudioContext
+                  )();
                   const oscillator = audioCtx.createOscillator();
                   const gainNode = audioCtx.createGain();
                   oscillator.type = "sine";
-                  oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+                  oscillator.frequency.setValueAtTime(
+                    880,
+                    audioCtx.currentTime,
+                  ); // A5
                   gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
                   oscillator.connect(gainNode);
                   gainNode.connect(audioCtx.destination);
@@ -563,17 +711,18 @@ function App() {
               }
               setNotice({
                 type: "success",
-                message: `New Patient Arrived: ${newPatient.patient_name} (Token #${newPatient.token_no})`
+                message: `New Patient Arrived: ${newPatient.patient_name} (Token #${newPatient.token_no})`,
               });
             }
           }
 
           if (isStaff) {
             // Find newly completed appointments
-            const completedPatients = appointments.filter(a =>
-              a.status === "completed" &&
-              previousStatusesRef.current[a.id] &&
-              previousStatusesRef.current[a.id] !== "completed"
+            const completedPatients = appointments.filter(
+              (a) =>
+                a.status === "completed" &&
+                previousStatusesRef.current[a.id] &&
+                previousStatusesRef.current[a.id] !== "completed",
             );
 
             if (completedPatients.length > 0) {
@@ -581,7 +730,7 @@ function App() {
               playAlertSound();
               setNotice({
                 type: "success",
-                message: `Consultation Completed: ${patient.patient_name} with Dr. ${patient.doctor_name || "Unknown"}`
+                message: `Consultation Completed: ${patient.patient_name} with Dr. ${patient.doctor_name || "Unknown"}`,
               });
             }
           }
@@ -609,7 +758,11 @@ function App() {
       setStats({ ...EMPTY_STATS, ...data });
       return true;
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load dashboard stats.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to load dashboard stats.",
+      );
       return false;
     }
   };
@@ -620,7 +773,11 @@ function App() {
       setPatients(data.patients || []);
       return true;
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load patient list.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to load patient list.",
+      );
       return false;
     }
   };
@@ -628,11 +785,17 @@ function App() {
   const loadDashboardAnalytics = async () => {
     setDashboardAnalyticsLoading(true);
     try {
-      const data = await apiFetch<DashboardAnalytics>("/api/dashboard/analytics?days=14");
+      const data = await apiFetch<DashboardAnalytics>(
+        "/api/dashboard/analytics?days=14",
+      );
       setDashboardAnalytics(data);
       return true;
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load dashboard analytics.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to load dashboard analytics.",
+      );
       setDashboardAnalytics(null);
       return false;
     } finally {
@@ -642,11 +805,17 @@ function App() {
 
   const loadHospitalSummary = async () => {
     try {
-      const data = await apiFetch<HospitalSummary>("/api/dashboard/hospital-summary");
+      const data = await apiFetch<HospitalSummary>(
+        "/api/dashboard/hospital-summary",
+      );
       setHospitalSummary(data);
       return true;
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load operational hospital summary.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to load operational hospital summary.",
+      );
       setHospitalSummary(null);
       return false;
     }
@@ -673,7 +842,11 @@ function App() {
     const activeNav = NAV_ITEMS.find((item) => item.id === page);
     if (activeNav && !canAccessNavItem(activeNav, activeNav.permission)) {
       setPage(getDefaultPage(user));
-      setNotice({ type: "warning", message: activeNav.deniedHint || "You do not have access to this module." });
+      setNotice({
+        type: "warning",
+        message:
+          activeNav.deniedHint || "You do not have access to this module.",
+      });
       return;
     }
     if (!isAdminRoutePath && page === "admin" && !isAdmin) {
@@ -681,7 +854,10 @@ function App() {
       if (typeof window !== "undefined") {
         window.history.replaceState({}, "", "/");
       }
-      setNotice({ type: "warning", message: "Only admins can access the /admin page." });
+      setNotice({
+        type: "warning",
+        message: "Only admins can access the /admin page.",
+      });
       return;
     }
     if (page === "patients" && hasPermission("patients.read")) {
@@ -701,7 +877,10 @@ function App() {
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
-    const inputHospitalCode = ((form.elements.namedItem("hospital_code") as HTMLInputElement).value || "hosp-default")
+    const inputHospitalCode = (
+      (form.elements.namedItem("hospital_code") as HTMLInputElement).value ||
+      "hosp-default"
+    )
       .trim()
       .toLowerCase();
     const payload = {
@@ -731,16 +910,28 @@ function App() {
       // logged-out visitor and shouldn't toast an error), but a wrong-password attempt on the
       // login form itself is exactly the case the user needs to see.
       const typedError = error as { message?: string; status?: number };
-      setNotice({ type: "error", message: typedError.message || "Unable to sign in. Please try again." });
+      setNotice({
+        type: "error",
+        message: typedError.message || "Unable to sign in. Please try again.",
+      });
     }
   };
 
   const readPlatformAdminCreds = (form: HTMLFormElement) => ({
-    username: ((form.elements.namedItem("platform_admin_username") as HTMLInputElement)?.value || "").trim(),
-    password: (form.elements.namedItem("platform_admin_password") as HTMLInputElement)?.value || "",
+    username: (
+      (form.elements.namedItem("platform_admin_username") as HTMLInputElement)
+        ?.value || ""
+    ).trim(),
+    password:
+      (form.elements.namedItem("platform_admin_password") as HTMLInputElement)
+        ?.value || "",
   });
 
-  const platformHeaders = (platformAdminUsername: string, platformAdminPassword: string, hospitalCodeValue: string) => ({
+  const platformHeaders = (
+    platformAdminUsername: string,
+    platformAdminPassword: string,
+    hospitalCodeValue: string,
+  ) => ({
     "Content-Type": "application/json",
     "X-Hospital-Code": hospitalCodeValue.trim().toLowerCase(),
     "X-Platform-Admin-Username": platformAdminUsername,
@@ -751,40 +942,88 @@ function App() {
     event.preventDefault();
     const form = event.currentTarget;
     const creds = readPlatformAdminCreds(form);
-    const hospitalCodeValue = ((form.elements.namedItem("hospital_code") as HTMLInputElement)?.value || "").trim().toLowerCase();
-    const hospitalNameValue = ((form.elements.namedItem("hospital_name") as HTMLInputElement)?.value || "").trim();
+    const hospitalCodeValue = (
+      (form.elements.namedItem("hospital_code") as HTMLInputElement)?.value ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
+    const hospitalNameValue = (
+      (form.elements.namedItem("hospital_name") as HTMLInputElement)?.value ||
+      ""
+    ).trim();
 
     try {
       const response = await fetch(`${API_BASE}/api/platform/hospitals`, {
         method: "POST",
-        headers: platformHeaders(creds.username, creds.password, hospitalCodeValue),
-        body: JSON.stringify({ hospital_code: hospitalCodeValue, name: hospitalNameValue || undefined }),
+        headers: platformHeaders(
+          creds.username,
+          creds.password,
+          hospitalCodeValue,
+        ),
+        body: JSON.stringify({
+          hospital_code: hospitalCodeValue,
+          name: hospitalNameValue || undefined,
+        }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || payload.message || "Unable to create hospital.");
-      setNotice({ type: "success", message: `Hospital ${hospitalCodeValue} is ready.` });
+      if (!response.ok)
+        throw new Error(
+          payload.error || payload.message || "Unable to create hospital.",
+        );
+      setNotice({
+        type: "success",
+        message: `Hospital ${hospitalCodeValue} is ready.`,
+      });
       setHospitalCode(hospitalCodeValue);
       setHospitalCodeState(hospitalCodeValue);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to create hospital.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to create hospital.",
+      );
     }
   };
 
-  const handleSetupHospitalAdmin = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSetupHospitalAdmin = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
     const form = event.currentTarget;
     const creds = readPlatformAdminCreds(form);
-    const hospitalCodeValue = ((form.elements.namedItem("hospital_code") as HTMLInputElement)?.value || "").trim().toLowerCase();
-    const adminUsername = ((form.elements.namedItem("admin_username") as HTMLInputElement)?.value || "").trim();
-    const adminPassword = (form.elements.namedItem("admin_password") as HTMLInputElement)?.value || "";
-    const adminFullName = ((form.elements.namedItem("admin_full_name") as HTMLInputElement)?.value || "").trim();
-    const adminEmail = ((form.elements.namedItem("admin_email") as HTMLInputElement)?.value || "").trim();
-    const adminPhone = ((form.elements.namedItem("admin_phone") as HTMLInputElement)?.value || "").trim();
+    const hospitalCodeValue = (
+      (form.elements.namedItem("hospital_code") as HTMLInputElement)?.value ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
+    const adminUsername = (
+      (form.elements.namedItem("admin_username") as HTMLInputElement)?.value ||
+      ""
+    ).trim();
+    const adminPassword =
+      (form.elements.namedItem("admin_password") as HTMLInputElement)?.value ||
+      "";
+    const adminFullName = (
+      (form.elements.namedItem("admin_full_name") as HTMLInputElement)?.value ||
+      ""
+    ).trim();
+    const adminEmail = (
+      (form.elements.namedItem("admin_email") as HTMLInputElement)?.value || ""
+    ).trim();
+    const adminPhone = (
+      (form.elements.namedItem("admin_phone") as HTMLInputElement)?.value || ""
+    ).trim();
 
     try {
       const response = await fetch(`${API_BASE}/api/auth/setup-admin`, {
         method: "POST",
-        headers: platformHeaders(creds.username, creds.password, hospitalCodeValue),
+        headers: platformHeaders(
+          creds.username,
+          creds.password,
+          hospitalCodeValue,
+        ),
         body: JSON.stringify({
           username: adminUsername,
           password: adminPassword,
@@ -794,63 +1033,142 @@ function App() {
         }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || payload.message || "Unable to onboard hospital admin.");
-      setNotice({ type: "success", message: `Admin created for ${hospitalCodeValue}.` });
+      if (!response.ok)
+        throw new Error(
+          payload.error ||
+            payload.message ||
+            "Unable to onboard hospital admin.",
+        );
+      setNotice({
+        type: "success",
+        message: `Admin created for ${hospitalCodeValue}.`,
+      });
       setHospitalCode(hospitalCodeValue);
       setHospitalCodeState(hospitalCodeValue);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to onboard hospital admin.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to onboard hospital admin.",
+      );
     }
   };
 
-  const handleResetHospitalAdminPassword = async (event: FormEvent<HTMLFormElement>) => {
+  const handleResetHospitalAdminPassword = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
     const form = event.currentTarget;
     const creds = readPlatformAdminCreds(form);
-    const hospitalCodeValue = ((form.elements.namedItem("hospital_code") as HTMLInputElement)?.value || "").trim().toLowerCase();
-    const adminUsername = ((form.elements.namedItem("admin_username") as HTMLInputElement)?.value || "").trim();
-    const newPassword = (form.elements.namedItem("new_password") as HTMLInputElement)?.value || "";
+    const hospitalCodeValue = (
+      (form.elements.namedItem("hospital_code") as HTMLInputElement)?.value ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
+    const adminUsername = (
+      (form.elements.namedItem("admin_username") as HTMLInputElement)?.value ||
+      ""
+    ).trim();
+    const newPassword =
+      (form.elements.namedItem("new_password") as HTMLInputElement)?.value ||
+      "";
 
     try {
-      const response = await fetch(`${API_BASE}/api/platform/hospitals/${encodeURIComponent(hospitalCodeValue)}/admin/reset-password`, {
-        method: "POST",
-        headers: platformHeaders(creds.username, creds.password, hospitalCodeValue),
-        body: JSON.stringify({ username: adminUsername, new_password: newPassword }),
-      });
+      const response = await fetch(
+        `${API_BASE}/api/platform/hospitals/${encodeURIComponent(hospitalCodeValue)}/admin/reset-password`,
+        {
+          method: "POST",
+          headers: platformHeaders(
+            creds.username,
+            creds.password,
+            hospitalCodeValue,
+          ),
+          body: JSON.stringify({
+            username: adminUsername,
+            new_password: newPassword,
+          }),
+        },
+      );
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || payload.message || "Unable to reset admin password.");
-      setNotice({ type: "success", message: `Admin password reset for ${hospitalCodeValue}.` });
+      if (!response.ok)
+        throw new Error(
+          payload.error || payload.message || "Unable to reset admin password.",
+        );
+      setNotice({
+        type: "success",
+        message: `Admin password reset for ${hospitalCodeValue}.`,
+      });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to reset admin password.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to reset admin password.",
+      );
     }
   };
 
-  const handleToggleHospitalAccess = async (event: FormEvent<HTMLFormElement>) => {
+  const handleToggleHospitalAccess = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
     const form = event.currentTarget;
     const creds = readPlatformAdminCreds(form);
-    const hospitalCodeValue = ((form.elements.namedItem("hospital_code") as HTMLInputElement)?.value || "").trim().toLowerCase();
-    const action = ((form.elements.namedItem("action") as HTMLInputElement)?.value || "").trim().toLowerCase();
-    const reason = ((form.elements.namedItem("reason") as HTMLInputElement)?.value || "").trim();
+    const hospitalCodeValue = (
+      (form.elements.namedItem("hospital_code") as HTMLInputElement)?.value ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
+    const action = (
+      (form.elements.namedItem("action") as HTMLInputElement)?.value || ""
+    )
+      .trim()
+      .toLowerCase();
+    const reason = (
+      (form.elements.namedItem("reason") as HTMLInputElement)?.value || ""
+    ).trim();
     const endpoint = action === "enable" ? "enable" : "disable";
 
     try {
-      const response = await fetch(`${API_BASE}/api/platform/hospitals/${encodeURIComponent(hospitalCodeValue)}/${endpoint}`, {
-        method: "POST",
-        headers: platformHeaders(creds.username, creds.password, hospitalCodeValue),
-        body: JSON.stringify(endpoint === "disable" ? { reason } : {}),
-      });
+      const response = await fetch(
+        `${API_BASE}/api/platform/hospitals/${encodeURIComponent(hospitalCodeValue)}/${endpoint}`,
+        {
+          method: "POST",
+          headers: platformHeaders(
+            creds.username,
+            creds.password,
+            hospitalCodeValue,
+          ),
+          body: JSON.stringify(endpoint === "disable" ? { reason } : {}),
+        },
+      );
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || payload.message || "Unable to update hospital status.");
-      setNotice({ type: "success", message: `Hospital ${hospitalCodeValue} is now ${endpoint === "disable" ? "disabled" : "enabled"}.` });
+      if (!response.ok)
+        throw new Error(
+          payload.error ||
+            payload.message ||
+            "Unable to update hospital status.",
+        );
+      setNotice({
+        type: "success",
+        message: `Hospital ${hospitalCodeValue} is now ${endpoint === "disable" ? "disabled" : "enabled"}.`,
+      });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to update hospital status.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to update hospital status.",
+      );
     }
   };
 
   const handleLogout = () => {
-    void apiFetch("/api/auth/logout", { method: "POST" }).catch(() => { });
-    if (typeof window !== "undefined" && window.location.pathname === "/admin") {
+    void apiFetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    if (
+      typeof window !== "undefined" &&
+      window.location.pathname === "/admin"
+    ) {
       window.history.replaceState({}, "", "/");
     }
     setUser(null);
@@ -886,10 +1204,13 @@ function App() {
     payload: Record<string, unknown>,
     setForm: Dispatch<SetStateAction<any>>,
     setDuplicateInfo?: Dispatch<SetStateAction<any>>,
-    refreshPatientId?: () => Promise<void>
+    refreshPatientId?: () => Promise<void>,
   ): Promise<{ patient_id: string; admission_id?: string } | null> => {
     try {
-      const data = await apiFetch<{ patient_id: string; admission_id?: string }>("/api/patients", {
+      const data = await apiFetch<{
+        patient_id: string;
+        admission_id?: string;
+      }>("/api/patients", {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -904,15 +1225,25 @@ function App() {
         middle_name: String(payload.middle_name || ""),
       });
       setDuplicateInfo?.(null);
-      setNotice({ type: "success", message: `Patient ${data.patient_id} registered.` });
+      setNotice({
+        type: "success",
+        message: `Patient ${data.patient_id} registered.`,
+      });
       setForm(EMPTY_PATIENT_FORM);
       await refreshPatientId?.();
       return data;
     } catch (error) {
-      const typedError = error as { status?: number; payload?: any; message?: string };
+      const typedError = error as {
+        status?: number;
+        payload?: any;
+        message?: string;
+      };
       if (typedError.status === 409) {
         setDuplicateInfo?.(typedError.payload?.duplicate || null);
-        setNotice({ type: "warning", message: typedError.message || "Possible duplicate" });
+        setNotice({
+          type: "warning",
+          message: typedError.message || "Possible duplicate",
+        });
         return null;
       }
       reportError(setNotice, typedError);
@@ -937,12 +1268,17 @@ function App() {
 
   const handleExportPatientsCsv = async (query = "") => {
     try {
-      const params = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
-      const response = await fetch(`${API_BASE}/api/export/patients/csv${params}`, {
-        method: "GET",
-        credentials: "include",
-        headers: { "X-Hospital-Code": getHospitalCode() },
-      });
+      const params = query.trim()
+        ? `?q=${encodeURIComponent(query.trim())}`
+        : "";
+      const response = await fetch(
+        `${API_BASE}/api/export/patients/csv${params}`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: { "X-Hospital-Code": getHospitalCode() },
+        },
+      );
       if (!response.ok) {
         throw new Error("Unable to export patients CSV.");
       }
@@ -955,7 +1291,11 @@ function App() {
       window.URL.revokeObjectURL(url);
       setNotice({ type: "success", message: "Patients CSV exported." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to export patients CSV.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to export patients CSV.",
+      );
     }
   };
 
@@ -973,9 +1313,15 @@ function App() {
   };
 
   const refreshPatientData = async (patientId?: string) => {
-    await Promise.allSettled([loadStats(), loadPatients(), loadHospitalSummary()]);
+    await Promise.allSettled([
+      loadStats(),
+      loadPatients(),
+      loadHospitalSummary(),
+    ]);
     if (patientId) {
-      setSelectedPatient((prev) => (prev?.patient_id === patientId ? { ...prev } : prev));
+      setSelectedPatient((prev) =>
+        prev?.patient_id === patientId ? { ...prev } : prev,
+      );
     }
     setPatientDetailRefreshToken((prev) => prev + 1);
   };
@@ -1043,11 +1389,17 @@ function App() {
 
   return (
     <div className="app-shell">
-      <div className={`sidebar-overlay ${isMobileMenuOpen ? "open" : ""}`} onClick={() => setIsMobileMenuOpen(false)}></div>
+      <div
+        className={`sidebar-overlay ${isMobileMenuOpen ? "open" : ""}`}
+        onClick={() => setIsMobileMenuOpen(false)}
+      ></div>
       <aside className={`sidebar ${isMobileMenuOpen ? "open" : ""}`}>
         <div className="sidebar-top">
           <div className="brand brand-logo-full">
-            <img src="/logo.png" alt="HospAI - AI Driven Healthcare Optimization" />
+            <img
+              src="/logo.png"
+              alt="HospAI - AI Driven Healthcare Optimization"
+            />
           </div>
         </div>
         <div className="sidebar-scroll-region">
@@ -1059,16 +1411,38 @@ function App() {
                   <button
                     type="button"
                     className="sidebar-nav-toggle"
-                    onClick={() => setOpenSidebarGroup((current) => (current === group.key ? "" : group.key))}
+                    onClick={() =>
+                      setOpenSidebarGroup((current) =>
+                        current === group.key ? "" : group.key,
+                      )
+                    }
                     aria-expanded={isOpen}
                   >
                     <span className="sidebar-nav-heading">
                       <span className="sidebar-nav-title">{group.label}</span>
-                      <span className="sidebar-nav-count">{group.items.length}</span>
+                      <span className="sidebar-nav-count">
+                        {group.items.length}
+                      </span>
                     </span>
-                    <span className={isOpen ? "sidebar-nav-chevron" : "sidebar-nav-chevron collapsed"} aria-hidden="true">
+                    <span
+                      className={
+                        isOpen
+                          ? "sidebar-nav-chevron"
+                          : "sidebar-nav-chevron collapsed"
+                      }
+                      aria-hidden="true"
+                    >
                       <span className="sidebar-nav-chevron-chip">
-                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                        <svg
+                          viewBox="0 0 24 24"
+                          width="12"
+                          height="12"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
                           <path d="M6 9l6 6 6-6" />
                         </svg>
                       </span>
@@ -1077,7 +1451,8 @@ function App() {
                   {isOpen && (
                     <div className="sidebar-nav-items">
                       {group.items.map((item) => {
-                        const blocked = !!item.permission && !hasPermission(item.permission);
+                        const blocked =
+                          !!item.permission && !hasPermission(item.permission);
                         const isActive = page === item.id;
                         return (
                           <SidebarTab
@@ -1089,7 +1464,10 @@ function App() {
                             hint={blocked ? item.deniedHint : ""}
                             onClick={() => {
                               if (blocked) {
-                                setNotice({ type: "warning", message: item.deniedHint || "Access denied." });
+                                setNotice({
+                                  type: "warning",
+                                  message: item.deniedHint || "Access denied.",
+                                });
                                 return;
                               }
                               navigateToPage(item.id);
@@ -1106,13 +1484,22 @@ function App() {
         </div>
         <div className="sidebar-bottom">
           <div className="sidebar-profile-row" ref={profileActionsRef}>
-            <div className="employee-static-info" aria-label="Employee information">
+            <div
+              className="employee-static-info"
+              aria-label="Employee information"
+            >
               <span className="profile-trigger-icon" aria-hidden="true">
                 <SidebarIcon name="profile" />
               </span>
               <span className="profile-trigger-text">
-                <span className="profile-name">{user.full_name || user.username}</span>
-                <span className="profile-subtext">{user.employee_id ? `ID ${user.employee_id}` : "No employee ID"}</span>
+                <span className="profile-name">
+                  {user.full_name || user.username}
+                </span>
+                <span className="profile-subtext">
+                  {user.employee_id
+                    ? `ID ${user.employee_id}`
+                    : "No employee ID"}
+                </span>
               </span>
             </div>
             <button
@@ -1127,7 +1514,11 @@ function App() {
               <FiSettings size={16} aria-hidden="true" />
             </button>
             {profileActionsOpen && (
-              <div className="sidebar-profile-actions" role="menu" aria-label="Profile actions">
+              <div
+                className="sidebar-profile-actions"
+                role="menu"
+                aria-label="Profile actions"
+              >
                 <Button
                   className="settings-footer-btn"
                   variant="ghost"
@@ -1158,7 +1549,11 @@ function App() {
         <Container size="full">
           <header className="topbar">
             <div className="topbar-header-content">
-              <button className="mobile-menu-btn" onClick={() => setIsMobileMenuOpen(true)} aria-label="Open menu">
+              <button
+                className="mobile-menu-btn"
+                onClick={() => setIsMobileMenuOpen(true)}
+                aria-label="Open menu"
+              >
                 <FiMenu size={24} />
               </button>
               <div>
@@ -1166,112 +1561,202 @@ function App() {
                   {page === "admin"
                     ? "Admin"
                     : page === "pharmacy" && isPharmacistUser && user?.full_name
-                    ? `${greetingForHour(new Date().getHours())}, ${user.full_name.split(" ")[0]}`
-                    : NAV_ITEMS.find((item) => item.id === page)?.label || "Dashboard"}
+                      ? `${greetingForHour(new Date().getHours())}, ${user.full_name.split(" ")[0]}`
+                      : NAV_ITEMS.find((item) => item.id === page)?.label ||
+                        "Dashboard"}
                 </h2>
                 <p className="muted">
-                  {NAV_ITEMS.find((item) => item.id === page)?.subtitle || "Stay ahead with real-time care intelligence."}
+                  {NAV_ITEMS.find((item) => item.id === page)?.subtitle ||
+                    "Stay ahead with real-time care intelligence."}
                 </p>
               </div>
             </div>
           </header>
 
-        <Suspense fallback={<p className="muted">Loading...</p>}>
-        {page === "dashboard" && (
-          <DashboardPage
-            stats={stats}
-            recentPatients={recentPatients}
-            analytics={dashboardAnalytics}
-            hospitalSummary={hospitalSummary}
-            analyticsLoading={dashboardAnalyticsLoading}
-            onNavigate={navigateToPage}
-            permissions={permissions}
-          />
-        )}
+          <Suspense fallback={<p className="muted">Loading...</p>}>
+            {page === "dashboard" && (
+              <DashboardPage
+                stats={stats}
+                recentPatients={recentPatients}
+                analytics={dashboardAnalytics}
+                hospitalSummary={hospitalSummary}
+                analyticsLoading={dashboardAnalyticsLoading}
+                onNavigate={navigateToPage}
+                permissions={permissions}
+              />
+            )}
 
-        {page === "add" && (
-          <AddPatientPage onCreate={handleCreatePatient} setNotice={setNotice} onNavigate={navigateToPage} />
-        )}
-        {page === "ocr" && hasPermission("patients.documents.write") && <OcrPage setNotice={setNotice} />}
+            {page === "add" && (
+              <AddPatientPage
+                onCreate={handleCreatePatient}
+                setNotice={setNotice}
+                onNavigate={navigateToPage}
+              />
+            )}
+            {page === "ocr" && hasPermission("patients.documents.write") && (
+              <OcrPage setNotice={setNotice} />
+            )}
 
-        {page === "appointment-in" && hasPermission("patients.read") && (
-          <RegistrationDeskPage mode="appointment-in" selectedPatient={selectedPatient} setNotice={setNotice} onNavigate={navigateToPage} prefillData={appointmentPrefill} />
-        )}
-        {page === "appointment-out" && hasPermission("patients.appointments.write") && (
-          <RegistrationDeskPage mode="appointment-out" selectedPatient={selectedPatient} setNotice={setNotice} onNavigate={navigateToPage} prefillData={appointmentPrefill} />
-        )}
-        {page === "queue" && hasPermission("patients.read") && (
-          <QueuePage setNotice={setNotice} onNavigate={navigateToPage} canManageConsultation={isClinicianUser || isAdmin} />
-        )}
-        {page === "doctor-prescription" && hasPermission("patients.read") && (isClinicianUser || isAdmin) && <DoctorPrescriptionPage setNotice={setNotice} onNavigate={navigateToPage} isAdmin={isAdmin} user={user} />}
-        {page === "emr" && hasPermission("patients.read") && <EmrPage setNotice={setNotice} />}
+            {page === "appointment-in" && hasPermission("patients.read") && (
+              <RegistrationDeskPage
+                mode="appointment-in"
+                selectedPatient={selectedPatient}
+                setNotice={setNotice}
+                onNavigate={navigateToPage}
+                prefillData={appointmentPrefill}
+              />
+            )}
+            {page === "appointment-out" &&
+              hasPermission("patients.appointments.write") && (
+                <RegistrationDeskPage
+                  mode="appointment-out"
+                  selectedPatient={selectedPatient}
+                  setNotice={setNotice}
+                  onNavigate={navigateToPage}
+                  prefillData={appointmentPrefill}
+                />
+              )}
+            {page === "queue" && hasPermission("patients.read") && (
+              <QueuePage
+                setNotice={setNotice}
+                onNavigate={navigateToPage}
+                canManageConsultation={isClinicianUser || isAdmin}
+              />
+            )}
+            {page === "doctor-prescription" &&
+              hasPermission("patients.read") &&
+              (isClinicianUser || isAdmin) && (
+                <DoctorPrescriptionPage
+                  setNotice={setNotice}
+                  onNavigate={navigateToPage}
+                  isAdmin={isAdmin}
+                  user={user}
+                />
+              )}
+            {page === "emr" && hasPermission("patients.read") && (
+              <EmrPage setNotice={setNotice} />
+            )}
 
-        {page === "consent-desk" && hasPermission("patients.consent.write") && (
-          <RegistrationDeskPage mode="consent" selectedPatient={selectedPatient} setNotice={setNotice} />
-        )}
+            {page === "consent-desk" &&
+              hasPermission("patients.consent.write") && (
+                <RegistrationDeskPage
+                  mode="consent"
+                  selectedPatient={selectedPatient}
+                  setNotice={setNotice}
+                />
+              )}
 
-        {page === "insurance-desk" && hasPermission("patients.insurance.write") && (
-          <RegistrationDeskPage mode="insurance" selectedPatient={selectedPatient} setNotice={setNotice} />
-        )}
+            {page === "insurance-desk" &&
+              hasPermission("patients.insurance.write") && (
+                <RegistrationDeskPage
+                  mode="insurance"
+                  selectedPatient={selectedPatient}
+                  setNotice={setNotice}
+                />
+              )}
 
-        {page === "op-desk" && hasPermission("op.read") && (
-          <DoctorSchedulingPage
-            setNotice={setNotice}
-            canEdit={hasPermission("op.schedules.write") || hasPermission("op.doctors.write")}
-          />
-        )}
+            {page === "op-desk" && hasPermission("op.read") && (
+              <DoctorSchedulingPage
+                setNotice={setNotice}
+                canEdit={
+                  hasPermission("op.schedules.write") ||
+                  hasPermission("op.doctors.write")
+                }
+              />
+            )}
 
-          {page === "patients" && (
-            <PatientsPage
-              key={patientsPageKey}
-              patients={patients}
-              onSelect={handleSelectPatient}
-              onDelete={handleDeletePatient}
-              onPatientUpdated={refreshPatientData}
-              onExportCsv={handleExportPatientsCsv}
-              selectedPatient={selectedPatient}
-              setNotice={setNotice}
-              canEdit={hasPermission("patients.write")}
-              canDelete={hasPermission("patients.delete")}
-              canReadBilling={hasPermission("billing.read")}
-              ocrLanguage={ocrLanguage}
-              languages={languages}
-              refreshToken={patientDetailRefreshToken}
-            />
-          )}
+            {page === "patients" && (
+              <PatientsPage
+                key={patientsPageKey}
+                patients={patients}
+                onSelect={handleSelectPatient}
+                onDelete={handleDeletePatient}
+                onPatientUpdated={refreshPatientData}
+                onExportCsv={handleExportPatientsCsv}
+                selectedPatient={selectedPatient}
+                setNotice={setNotice}
+                canEdit={hasPermission("patients.write")}
+                canDelete={hasPermission("patients.delete")}
+                canReadBilling={hasPermission("billing.read")}
+                ocrLanguage={ocrLanguage}
+                languages={languages}
+                refreshToken={patientDetailRefreshToken}
+              />
+            )}
 
-          {page === "readmit" && (
-            <ReadmitPage onSelect={handleSelectPatient} setNotice={setNotice} onReadmitComplete={refreshPatientData} ocrLanguage={ocrLanguage} />
-          )}
+            {page === "readmit" && (
+              <ReadmitPage
+                onSelect={handleSelectPatient}
+                setNotice={setNotice}
+                onReadmitComplete={refreshPatientData}
+                ocrLanguage={ocrLanguage}
+              />
+            )}
 
-        {page === "symptom-ai" && <SymptomAiPage setNotice={setNotice} onNavigate={navigateToPage} />}
-        {page === "bulk-ai" && hasPermission("patients.bulk_ai.write") && <BulkPatientAiPage setNotice={setNotice} />}
+            {page === "symptom-ai" && (
+              <SymptomAiPage
+                setNotice={setNotice}
+                onNavigate={navigateToPage}
+              />
+            )}
+            {page === "bulk-ai" && hasPermission("patients.bulk_ai.write") && (
+              <BulkPatientAiPage setNotice={setNotice} />
+            )}
 
-        {page === "billing-payment-collection" && hasPermission("billing.read") && <PaymentCollectionPage setNotice={setNotice} onNavigate={navigateToPage} />}
-        {page === "billing-revenue-reports" && hasPermission("billing.read") && <RevenueReportsPage setNotice={setNotice} onNavigate={navigateToPage} />}
-        {page === "billing-daily-monthly-reports" && hasPermission("billing.read") && <DailyMonthlyReportsPage setNotice={setNotice} onNavigate={navigateToPage} />}
+            {page === "billing-payment-collection" &&
+              hasPermission("billing.read") && (
+                <PaymentCollectionPage
+                  setNotice={setNotice}
+                  onNavigate={navigateToPage}
+                />
+              )}
+            {page === "billing-revenue-reports" &&
+              hasPermission("billing.read") && (
+                <RevenueReportsPage
+                  setNotice={setNotice}
+                  onNavigate={navigateToPage}
+                />
+              )}
+            {page === "billing-daily-monthly-reports" &&
+              hasPermission("billing.read") && (
+                <DailyMonthlyReportsPage
+                  setNotice={setNotice}
+                  onNavigate={navigateToPage}
+                />
+              )}
 
-          {page === "pharmacy" && hasPermission("pharmacy.read") && (
-            <PharmacyPage setNotice={setNotice} />
-          )}
+            {page === "pharmacy" && hasPermission("pharmacy.read") && (
+              <PharmacyPage setNotice={setNotice} />
+            )}
 
-          {page === "hrms" && hasPermission("hr.read") && <HrmsPage setNotice={setNotice} />}
+            {page === "hrms" && hasPermission("hr.read") && (
+              <HrmsPage setNotice={setNotice} />
+            )}
 
-        {page === "employees" && hasPermission("employees.read") && (
-          <EmployeesPage
-            setNotice={setNotice}
-            canEditProfile={hasPermission("employees.profile.write")}
-            canManageAccess={hasPermission("employees.access.write")}
-            canCreateOrDelete={isAdmin}
-          />
-        )}
+            {page === "employees" && hasPermission("employees.read") && (
+              <EmployeesPage
+                setNotice={setNotice}
+                canEditProfile={hasPermission("employees.profile.write")}
+                canManageAccess={hasPermission("employees.access.write")}
+                canCreateOrDelete={isAdmin}
+              />
+            )}
 
-        {page === "patient-experience" && hasPermission("patient_experience.read") && <PatientExperiencePage setNotice={setNotice} />}
+            {page === "patient-experience" &&
+              hasPermission("patient_experience.read") && (
+                <PatientExperiencePage setNotice={setNotice} />
+              )}
 
-        {page === "admin" && isAdmin && <AdminPage setNotice={setNotice} />}
+            {page === "admin" && isAdmin && <AdminPage setNotice={setNotice} />}
 
-        {page === "settings" && <SettingsPage stats={stats} user={user} canReadAudit={hasPermission("audit.read")} />}
-        </Suspense>
+            {page === "settings" && (
+              <SettingsPage
+                stats={stats}
+                user={user}
+                canReadAudit={hasPermission("audit.read")}
+              />
+            )}
+          </Suspense>
         </Container>
       </main>
       <SettingsModal
@@ -1298,6 +1783,3 @@ function App() {
 }
 
 export default App;
-
-
-

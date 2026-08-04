@@ -16,13 +16,23 @@ export default function SettingsModal({
   onOcrLanguageChange,
 }: Props) {
   return (
-    <Modal open={open} onClose={onClose} title="Settings" description="OCR preferences." className="ui-modal-compact">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Settings"
+      description="OCR preferences."
+      className="ui-modal-compact"
+    >
       <div className="settings-modal-grid">
         <div>
           <h4>OCR Preferences</h4>
           <Label htmlFor="modal-ocr-language">
             OCR Language
-            <Select id="modal-ocr-language" value={ocrLanguage} onChange={(event) => onOcrLanguageChange(event.target.value)}>
+            <Select
+              id="modal-ocr-language"
+              value={ocrLanguage}
+              onChange={(event) => onOcrLanguageChange(event.target.value)}
+            >
               {Object.entries(languages).map(([key, label]) => (
                 <option key={key} value={key}>
                   {label}

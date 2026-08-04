@@ -33,7 +33,14 @@ _FIELD_KEYWORDS = {
     "age": ["age"],
     "gender": ["gender", "sex"],
     "area": ["area", "city", "location", "address", "locality"],
-    "medical_condition": ["disease", "diagnosis", "condition", "ailment", "symptom", "illness"],
+    "medical_condition": [
+        "disease",
+        "diagnosis",
+        "condition",
+        "ailment",
+        "symptom",
+        "illness",
+    ],
 }
 
 
@@ -65,7 +72,9 @@ def _read_header_and_rows(file_bytes: bytes, filename: str, max_rows=None):
     if _is_xlsx(filename):
         import openpyxl
 
-        workbook = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+        workbook = openpyxl.load_workbook(
+            io.BytesIO(file_bytes), read_only=True, data_only=True
+        )
         worksheet = workbook.active
         row_iter = worksheet.iter_rows(values_only=True)
         headers = [str(h).strip() if h is not None else "" for h in next(row_iter)]
@@ -135,7 +144,9 @@ that don't map to any target field. Do not invent target fields outside the list
         parsed = json.loads(raw)
         return {k: v for k, v in parsed.items() if v in MAPPABLE_FIELDS}
     except Exception:
-        logger.exception("LLM column-mapping suggestion failed, falling back to heuristic")
+        logger.exception(
+            "LLM column-mapping suggestion failed, falling back to heuristic"
+        )
         return None
 
 
@@ -155,7 +166,9 @@ def suggest_mapping_task(job_id):
         if file_bytes is None:
             raise RuntimeError("Uploaded file could not be read from storage.")
 
-        headers, row_iter = _read_header_and_rows(file_bytes, job["original_filename"], max_rows=SAMPLE_ROWS)
+        headers, row_iter = _read_header_and_rows(
+            file_bytes, job["original_filename"], max_rows=SAMPLE_ROWS
+        )
         sample_rows = list(row_iter)
 
         # Start from the keyword heuristic, then let the LLM's guess override per-header --
@@ -193,7 +206,11 @@ def import_rows_task(job_id, confirmed_mapping):
     job = get_bulk_import_job_internal(job_id)
     if not job:
         return
-    update_bulk_import_job(job_id, status="IMPORTING", confirmed_mapping=json.dumps(confirmed_mapping, separators=(",", ":")))
+    update_bulk_import_job(
+        job_id,
+        status="IMPORTING",
+        confirmed_mapping=json.dumps(confirmed_mapping, separators=(",", ":")),
+    )
 
     try:
         file_bytes = ObjectStorage().read(job["storage_path"])
@@ -241,7 +258,10 @@ def import_rows_task(job_id, confirmed_mapping):
                 upsert_bulk_import_patients_batch(hospital_id, batch)
                 batch = []
                 update_bulk_import_job(
-                    job_id, processed_rows=processed, imported_count=imported, skipped_count=skipped
+                    job_id,
+                    processed_rows=processed,
+                    imported_count=imported,
+                    skipped_count=skipped,
                 )
 
         if batch:

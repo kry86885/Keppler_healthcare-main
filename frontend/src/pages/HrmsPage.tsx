@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
 import StatCard from "../components/StatCard";
-import { Button, Input, Select, Table, TableCell, TableHead, TableRow, Tabs, TabsContent, TabsTrigger } from "../components/ui";
+import {
+  Button,
+  Input,
+  Select,
+  Table,
+  TableCell,
+  TableHead,
+  TableRow,
+  Tabs,
+  TabsContent,
+  TabsTrigger,
+} from "../components/ui";
 import { apiFetch, reportError } from "../lib/api";
 import { formatDate } from "../lib/format";
 import type { Notice } from "../types";
@@ -139,7 +150,11 @@ const DEFAULT_HRMS_FILTERS: HrmsFilters = {
 };
 
 function formatCurrency(amount?: number) {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount || 0);
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount || 0);
 }
 
 export default function HrmsPage({ setNotice }: Props) {
@@ -147,10 +162,15 @@ export default function HrmsPage({ setNotice }: Props) {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [tab, setTab] = useState("attendance");
-  const [attendanceForm, setAttendanceForm] = useState<AttendanceForm>(DEFAULT_ATTENDANCE_FORM);
-  const [payrollForm, setPayrollForm] = useState<PayrollForm>(DEFAULT_PAYROLL_FORM);
+  const [attendanceForm, setAttendanceForm] = useState<AttendanceForm>(
+    DEFAULT_ATTENDANCE_FORM,
+  );
+  const [payrollForm, setPayrollForm] =
+    useState<PayrollForm>(DEFAULT_PAYROLL_FORM);
   const [leaveForm, setLeaveForm] = useState<LeaveForm>(DEFAULT_LEAVE_FORM);
-  const [departmentForm, setDepartmentForm] = useState<DepartmentForm>(DEFAULT_DEPARTMENT_FORM);
+  const [departmentForm, setDepartmentForm] = useState<DepartmentForm>(
+    DEFAULT_DEPARTMENT_FORM,
+  );
   const [filters, setFilters] = useState<HrmsFilters>(DEFAULT_HRMS_FILTERS);
   const [savingAttendance, setSavingAttendance] = useState(false);
   const [savingPayroll, setSavingPayroll] = useState(false);
@@ -169,12 +189,19 @@ export default function HrmsPage({ setNotice }: Props) {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const [departmentsRes, attendanceRes, payrollRes, leavesRes] = await Promise.all([
-        apiFetch<{ departments?: Department[] }>("/api/hr/departments"),
-        apiFetch<{ attendance?: Attendance[] }>(buildEmployeePath("/api/hr/attendance", nextFilters.employee_id)),
-        apiFetch<{ payroll?: Payroll[] }>(buildEmployeePath("/api/hr/payroll", nextFilters.employee_id)),
-        apiFetch<{ leaves?: LeaveRequest[] }>(buildEmployeePath("/api/hr/leaves", nextFilters.employee_id)),
-      ]);
+      const [departmentsRes, attendanceRes, payrollRes, leavesRes] =
+        await Promise.all([
+          apiFetch<{ departments?: Department[] }>("/api/hr/departments"),
+          apiFetch<{ attendance?: Attendance[] }>(
+            buildEmployeePath("/api/hr/attendance", nextFilters.employee_id),
+          ),
+          apiFetch<{ payroll?: Payroll[] }>(
+            buildEmployeePath("/api/hr/payroll", nextFilters.employee_id),
+          ),
+          apiFetch<{ leaves?: LeaveRequest[] }>(
+            buildEmployeePath("/api/hr/leaves", nextFilters.employee_id),
+          ),
+        ]);
 
       setData({
         departments: departmentsRes.departments || [],
@@ -197,7 +224,9 @@ export default function HrmsPage({ setNotice }: Props) {
 
   const visibleLeaves = useMemo(() => {
     if (!filters.leave_status) return data.leaves;
-    return data.leaves.filter((leave) => (leave.status || "pending") === filters.leave_status);
+    return data.leaves.filter(
+      (leave) => (leave.status || "pending") === filters.leave_status,
+    );
   }, [data.leaves, filters.leave_status]);
 
   const handleFilterSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -213,13 +242,18 @@ export default function HrmsPage({ setNotice }: Props) {
   const handleAttendanceSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!attendanceForm.employee_id.trim() || !attendanceForm.attendance_date) {
-      setNotice({ type: "error", message: "Employee ID and attendance date are required." });
+      setNotice({
+        type: "error",
+        message: "Employee ID and attendance date are required.",
+      });
       return;
     }
     setSavingAttendance(true);
     try {
       const attendanceId = Number(attendanceForm.id);
-      const path = attendanceId ? `/api/hr/attendance/${attendanceId}` : "/api/hr/attendance";
+      const path = attendanceId
+        ? `/api/hr/attendance/${attendanceId}`
+        : "/api/hr/attendance";
       await apiFetch(path, {
         method: attendanceId ? "PUT" : "POST",
         body: JSON.stringify({
@@ -231,10 +265,19 @@ export default function HrmsPage({ setNotice }: Props) {
         }),
       });
       setAttendanceForm({ ...DEFAULT_ATTENDANCE_FORM });
-      setNotice({ type: "success", message: attendanceId ? "Attendance record updated." : "Attendance record created." });
+      setNotice({
+        type: "success",
+        message: attendanceId
+          ? "Attendance record updated."
+          : "Attendance record created.",
+      });
       await loadHrms(filters);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to create attendance record.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to create attendance record.",
+      );
     } finally {
       setSavingAttendance(false);
     }
@@ -243,14 +286,23 @@ export default function HrmsPage({ setNotice }: Props) {
   const handlePayrollSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const basicSalary = Number(payrollForm.basic_salary) || 0;
-    if (!payrollForm.employee_id.trim() || !payrollForm.payroll_month || basicSalary <= 0) {
-      setNotice({ type: "error", message: "Employee ID, payroll month, and basic salary are required." });
+    if (
+      !payrollForm.employee_id.trim() ||
+      !payrollForm.payroll_month ||
+      basicSalary <= 0
+    ) {
+      setNotice({
+        type: "error",
+        message: "Employee ID, payroll month, and basic salary are required.",
+      });
       return;
     }
     setSavingPayroll(true);
     try {
       const payrollId = Number(payrollForm.id);
-      const path = payrollId ? `/api/hr/payroll/${payrollId}` : "/api/hr/payroll";
+      const path = payrollId
+        ? `/api/hr/payroll/${payrollId}`
+        : "/api/hr/payroll";
       await apiFetch(path, {
         method: payrollId ? "PUT" : "POST",
         body: JSON.stringify({
@@ -264,10 +316,19 @@ export default function HrmsPage({ setNotice }: Props) {
         }),
       });
       setPayrollForm({ ...DEFAULT_PAYROLL_FORM });
-      setNotice({ type: "success", message: payrollId ? "Payroll record updated." : "Payroll record created." });
+      setNotice({
+        type: "success",
+        message: payrollId
+          ? "Payroll record updated."
+          : "Payroll record created.",
+      });
       await loadHrms(filters);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to create payroll record.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to create payroll record.",
+      );
     } finally {
       setSavingPayroll(false);
     }
@@ -275,16 +336,28 @@ export default function HrmsPage({ setNotice }: Props) {
 
   const handleLeaveSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!leaveForm.employee_id.trim() || !leaveForm.start_date || !leaveForm.end_date) {
-      setNotice({ type: "error", message: "Employee ID, start date, and end date are required." });
+    if (
+      !leaveForm.employee_id.trim() ||
+      !leaveForm.start_date ||
+      !leaveForm.end_date
+    ) {
+      setNotice({
+        type: "error",
+        message: "Employee ID, start date, and end date are required.",
+      });
       return;
     }
     setSavingLeave(true);
     try {
       const leaveId = Number(leaveForm.id);
-      const path = leaveId ? `/api/hr/leaves/${leaveId}/status` : "/api/hr/leaves";
+      const path = leaveId
+        ? `/api/hr/leaves/${leaveId}/status`
+        : "/api/hr/leaves";
       const body = leaveId
-        ? { status: leaveForm.reason.trim() === "rejected" ? "rejected" : "approved" }
+        ? {
+            status:
+              leaveForm.reason.trim() === "rejected" ? "rejected" : "approved",
+          }
         : {
             employee_id: leaveForm.employee_id.trim(),
             leave_type: leaveForm.leave_type,
@@ -305,7 +378,11 @@ export default function HrmsPage({ setNotice }: Props) {
       }
       await loadHrms(filters);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to create leave request.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to create leave request.",
+      );
     } finally {
       setSavingLeave(false);
     }
@@ -321,19 +398,29 @@ export default function HrmsPage({ setNotice }: Props) {
     setSavingDepartment(true);
     try {
       const departmentId = Number(departmentForm.id);
-      const path = departmentId ? `/api/hr/departments/${departmentId}` : "/api/hr/departments";
+      const path = departmentId
+        ? `/api/hr/departments/${departmentId}`
+        : "/api/hr/departments";
       await apiFetch(path, {
         method: departmentId ? "PUT" : "POST",
         body: JSON.stringify({
           department_name: departmentName,
-          mapped_head_employee_id: departmentForm.mapped_head_employee_id.trim() || undefined,
+          mapped_head_employee_id:
+            departmentForm.mapped_head_employee_id.trim() || undefined,
         }),
       });
       setDepartmentForm({ ...DEFAULT_DEPARTMENT_FORM });
-      setNotice({ type: "success", message: departmentId ? "Department updated." : "Department created." });
+      setNotice({
+        type: "success",
+        message: departmentId ? "Department updated." : "Department created.",
+      });
       await loadHrms(filters);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to create department.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to create department.",
+      );
     } finally {
       setSavingDepartment(false);
     }
@@ -357,7 +444,11 @@ export default function HrmsPage({ setNotice }: Props) {
       setNotice({ type: "success", message: "Attendance record deleted." });
       await loadHrms(filters);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to delete attendance record.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to delete attendance record.",
+      );
     }
   };
 
@@ -381,7 +472,11 @@ export default function HrmsPage({ setNotice }: Props) {
       setNotice({ type: "success", message: "Payroll record deleted." });
       await loadHrms(filters);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to delete payroll record.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to delete payroll record.",
+      );
     }
   };
 
@@ -403,7 +498,11 @@ export default function HrmsPage({ setNotice }: Props) {
       setNotice({ type: "success", message: "Leave request deleted." });
       await loadHrms(filters);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to delete leave request.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to delete leave request.",
+      );
     }
   };
 
@@ -416,17 +515,29 @@ export default function HrmsPage({ setNotice }: Props) {
   };
 
   const handleDeleteDepartment = async (record: Department) => {
-    if (!window.confirm(`Delete department ${record.department_name || record.id}?`)) return;
+    if (
+      !window.confirm(
+        `Delete department ${record.department_name || record.id}?`,
+      )
+    )
+      return;
     try {
       await apiFetch(`/api/hr/departments/${record.id}`, { method: "DELETE" });
       setNotice({ type: "success", message: "Department deleted." });
       await loadHrms(filters);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to delete department.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to delete department.",
+      );
     }
   };
 
-  const handleLeaveStatusUpdate = async (leaveId: number, status: "approved" | "rejected") => {
+  const handleLeaveStatusUpdate = async (
+    leaveId: number,
+    status: "approved" | "rejected",
+  ) => {
     setUpdatingLeaveId(leaveId);
     try {
       await apiFetch(`/api/hr/leaves/${leaveId}/status`, {
@@ -436,14 +547,20 @@ export default function HrmsPage({ setNotice }: Props) {
       setNotice({ type: "success", message: `Leave request ${status}.` });
       await loadHrms(filters);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to update leave status.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to update leave status.",
+      );
     } finally {
       setUpdatingLeaveId(null);
     }
   };
 
   const stats = useMemo(() => {
-    const pendingLeaves = data.leaves.filter((leave) => (leave.status || "pending") === "pending").length;
+    const pendingLeaves = data.leaves.filter(
+      (leave) => (leave.status || "pending") === "pending",
+    ).length;
     return {
       departments: data.departments.length,
       attendance: data.attendance.length,
@@ -466,16 +583,29 @@ export default function HrmsPage({ setNotice }: Props) {
           <h3>HR Operations</h3>
         </div>
 
-        <form className="module-form-grid module-filter-grid" onSubmit={handleFilterSubmit}>
+        <form
+          className="module-form-grid module-filter-grid"
+          onSubmit={handleFilterSubmit}
+        >
           <Input
             value={filters.employee_id}
-            onChange={(event) => setFilters((current) => ({ ...current, employee_id: event.target.value }))}
+            onChange={(event) =>
+              setFilters((current) => ({
+                ...current,
+                employee_id: event.target.value,
+              }))
+            }
             placeholder="Filter by employee ID"
             aria-label="HR filter employee"
           />
           <Select
             value={filters.leave_status}
-            onChange={(event) => setFilters((current) => ({ ...current, leave_status: event.target.value }))}
+            onChange={(event) =>
+              setFilters((current) => ({
+                ...current,
+                leave_status: event.target.value,
+              }))
+            }
             aria-label="HR filter leave status"
           >
             <option value="">All Leave Statuses</option>
@@ -485,7 +615,13 @@ export default function HrmsPage({ setNotice }: Props) {
           </Select>
           <div className="module-inline-actions">
             <Button type="submit">Apply</Button>
-            <Button type="button" variant="ghost" onClick={() => void clearFilters()}>Clear</Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => void clearFilters()}
+            >
+              Clear
+            </Button>
           </div>
         </form>
 
@@ -495,32 +631,69 @@ export default function HrmsPage({ setNotice }: Props) {
         {!loading && !errorMessage ? (
           <>
             <Tabs>
-              <TabsTrigger active={tab === "attendance"} onClick={() => setTab("attendance")}>Attendance</TabsTrigger>
-              <TabsTrigger active={tab === "payroll"} onClick={() => setTab("payroll")}>Payroll</TabsTrigger>
-              <TabsTrigger active={tab === "leaves"} onClick={() => setTab("leaves")}>Leaves</TabsTrigger>
-              <TabsTrigger active={tab === "departments"} onClick={() => setTab("departments")}>Departments</TabsTrigger>
+              <TabsTrigger
+                active={tab === "attendance"}
+                onClick={() => setTab("attendance")}
+              >
+                Attendance
+              </TabsTrigger>
+              <TabsTrigger
+                active={tab === "payroll"}
+                onClick={() => setTab("payroll")}
+              >
+                Payroll
+              </TabsTrigger>
+              <TabsTrigger
+                active={tab === "leaves"}
+                onClick={() => setTab("leaves")}
+              >
+                Leaves
+              </TabsTrigger>
+              <TabsTrigger
+                active={tab === "departments"}
+                onClick={() => setTab("departments")}
+              >
+                Departments
+              </TabsTrigger>
             </Tabs>
 
             <TabsContent>
               {tab === "attendance" && (
                 <div className="module-tab-panel">
-                  <form className="module-form-grid module-sales-grid" onSubmit={handleAttendanceSubmit}>
+                  <form
+                    className="module-form-grid module-sales-grid"
+                    onSubmit={handleAttendanceSubmit}
+                  >
                     <Input
                       value={attendanceForm.employee_id}
-                      onChange={(event) => setAttendanceForm((current) => ({ ...current, employee_id: event.target.value }))}
+                      onChange={(event) =>
+                        setAttendanceForm((current) => ({
+                          ...current,
+                          employee_id: event.target.value,
+                        }))
+                      }
                       placeholder="Employee ID"
                       aria-label="HR attendance employee"
                     />
                     <Input
                       type="date"
                       value={attendanceForm.attendance_date}
-                      onChange={(event) => setAttendanceForm((current) => ({ ...current, attendance_date: event.target.value }))}
+                      onChange={(event) =>
+                        setAttendanceForm((current) => ({
+                          ...current,
+                          attendance_date: event.target.value,
+                        }))
+                      }
                       aria-label="HR attendance date"
                     />
                     <Select
                       value={attendanceForm.status}
                       onChange={(event) =>
-                        setAttendanceForm((current) => ({ ...current, status: event.target.value as "present" | "absent" | "leave" }))
+                        setAttendanceForm((current) => ({
+                          ...current,
+                          status: event.target.value as
+                            "present" | "absent" | "leave",
+                        }))
                       }
                       aria-label="HR attendance status"
                     >
@@ -531,24 +704,50 @@ export default function HrmsPage({ setNotice }: Props) {
                     <Input
                       type="time"
                       value={attendanceForm.in_time}
-                      onChange={(event) => setAttendanceForm((current) => ({ ...current, in_time: event.target.value }))}
+                      onChange={(event) =>
+                        setAttendanceForm((current) => ({
+                          ...current,
+                          in_time: event.target.value,
+                        }))
+                      }
                       aria-label="HR attendance in time"
                     />
                     <Input
                       type="time"
                       value={attendanceForm.out_time}
-                      onChange={(event) => setAttendanceForm((current) => ({ ...current, out_time: event.target.value }))}
+                      onChange={(event) =>
+                        setAttendanceForm((current) => ({
+                          ...current,
+                          out_time: event.target.value,
+                        }))
+                      }
                       aria-label="HR attendance out time"
                     />
-                    <Button type="submit" disabled={savingAttendance}>{savingAttendance ? "Saving..." : "Add Attendance"}</Button>
+                    <Button type="submit" disabled={savingAttendance}>
+                      {savingAttendance ? "Saving..." : "Add Attendance"}
+                    </Button>
                     {attendanceForm.id ? (
-                      <Button type="button" variant="ghost" onClick={() => setAttendanceForm({ ...DEFAULT_ATTENDANCE_FORM })}>Cancel Edit</Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() =>
+                          setAttendanceForm({ ...DEFAULT_ATTENDANCE_FORM })
+                        }
+                      >
+                        Cancel Edit
+                      </Button>
                     ) : null}
                   </form>
-                  {data.attendance.length === 0 ? <p className="muted">No attendance records available.</p> : null}
+                  {data.attendance.length === 0 ? (
+                    <p className="muted">No attendance records available.</p>
+                  ) : null}
                   {data.attendance.length > 0 ? (
                     <>
-                      <Table className="module-table module-table-hr" role="table" aria-label="HR attendance table">
+                      <Table
+                        className="module-table module-table-hr"
+                        role="table"
+                        aria-label="HR attendance table"
+                      >
                         <TableHead>
                           <TableCell>Employee</TableCell>
                           <TableCell>Date</TableCell>
@@ -560,30 +759,77 @@ export default function HrmsPage({ setNotice }: Props) {
                         {data.attendance.slice(0, 12).map((record) => (
                           <TableRow key={record.id}>
                             <TableCell>{record.employee_id || "-"}</TableCell>
-                            <TableCell>{formatDate(record.attendance_date)}</TableCell>
+                            <TableCell>
+                              {formatDate(record.attendance_date)}
+                            </TableCell>
                             <TableCell>{record.status || "-"}</TableCell>
                             <TableCell>{record.in_time || "-"}</TableCell>
                             <TableCell>{record.out_time || "-"}</TableCell>
                             <TableCell>
                               <div className="module-inline-actions">
-                                <Button type="button" size="sm" onClick={() => handleEditAttendance(record)}>Edit</Button>
-                                <Button type="button" size="sm" variant="destructive" onClick={() => void handleDeleteAttendance(record)}>Delete</Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => handleEditAttendance(record)}
+                                >
+                                  Edit
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() =>
+                                    void handleDeleteAttendance(record)
+                                  }
+                                >
+                                  Delete
+                                </Button>
                               </div>
                             </TableCell>
                           </TableRow>
                         ))}
                       </Table>
-                      <div className="module-mobile-list" aria-label="HR attendance cards">
+                      <div
+                        className="module-mobile-list"
+                        aria-label="HR attendance cards"
+                      >
                         {data.attendance.slice(0, 12).map((record) => (
-                          <article className="module-mobile-card" key={`attendance-mobile-${record.id}`}>
+                          <article
+                            className="module-mobile-card"
+                            key={`attendance-mobile-${record.id}`}
+                          >
                             <h4>{record.employee_id || "Employee"}</h4>
-                            <p><strong>Date:</strong> {formatDate(record.attendance_date)}</p>
-                            <p><strong>Status:</strong> {record.status || "-"}</p>
-                            <p><strong>In:</strong> {record.in_time || "-"}</p>
-                            <p><strong>Out:</strong> {record.out_time || "-"}</p>
+                            <p>
+                              <strong>Date:</strong>{" "}
+                              {formatDate(record.attendance_date)}
+                            </p>
+                            <p>
+                              <strong>Status:</strong> {record.status || "-"}
+                            </p>
+                            <p>
+                              <strong>In:</strong> {record.in_time || "-"}
+                            </p>
+                            <p>
+                              <strong>Out:</strong> {record.out_time || "-"}
+                            </p>
                             <div className="module-card-actions">
-                              <Button type="button" size="sm" onClick={() => handleEditAttendance(record)}>Edit</Button>
-                              <Button type="button" size="sm" variant="destructive" onClick={() => void handleDeleteAttendance(record)}>Delete</Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => handleEditAttendance(record)}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="destructive"
+                                onClick={() =>
+                                  void handleDeleteAttendance(record)
+                                }
+                              >
+                                Delete
+                              </Button>
                             </div>
                           </article>
                         ))}
@@ -595,24 +841,42 @@ export default function HrmsPage({ setNotice }: Props) {
 
               {tab === "payroll" && (
                 <div className="module-tab-panel">
-                  <form className="module-form-grid module-sales-grid" onSubmit={handlePayrollSubmit}>
+                  <form
+                    className="module-form-grid module-sales-grid"
+                    onSubmit={handlePayrollSubmit}
+                  >
                     <Input
                       value={payrollForm.employee_id}
-                      onChange={(event) => setPayrollForm((current) => ({ ...current, employee_id: event.target.value }))}
+                      onChange={(event) =>
+                        setPayrollForm((current) => ({
+                          ...current,
+                          employee_id: event.target.value,
+                        }))
+                      }
                       placeholder="Employee ID"
                       aria-label="HR payroll employee"
                     />
                     <Input
                       type="month"
                       value={payrollForm.payroll_month}
-                      onChange={(event) => setPayrollForm((current) => ({ ...current, payroll_month: event.target.value }))}
+                      onChange={(event) =>
+                        setPayrollForm((current) => ({
+                          ...current,
+                          payroll_month: event.target.value,
+                        }))
+                      }
                       aria-label="HR payroll month"
                     />
                     <Input
                       type="number"
                       min={0}
                       value={payrollForm.basic_salary}
-                      onChange={(event) => setPayrollForm((current) => ({ ...current, basic_salary: event.target.value }))}
+                      onChange={(event) =>
+                        setPayrollForm((current) => ({
+                          ...current,
+                          basic_salary: event.target.value,
+                        }))
+                      }
                       placeholder="Basic salary"
                       aria-label="HR payroll basic"
                     />
@@ -620,7 +884,12 @@ export default function HrmsPage({ setNotice }: Props) {
                       type="number"
                       min={0}
                       value={payrollForm.allowances}
-                      onChange={(event) => setPayrollForm((current) => ({ ...current, allowances: event.target.value }))}
+                      onChange={(event) =>
+                        setPayrollForm((current) => ({
+                          ...current,
+                          allowances: event.target.value,
+                        }))
+                      }
                       placeholder="Allowances"
                       aria-label="HR payroll allowances"
                     />
@@ -628,13 +897,23 @@ export default function HrmsPage({ setNotice }: Props) {
                       type="number"
                       min={0}
                       value={payrollForm.deductions}
-                      onChange={(event) => setPayrollForm((current) => ({ ...current, deductions: event.target.value }))}
+                      onChange={(event) =>
+                        setPayrollForm((current) => ({
+                          ...current,
+                          deductions: event.target.value,
+                        }))
+                      }
                       placeholder="Deductions"
                       aria-label="HR payroll deductions"
                     />
                     <Select
                       value={payrollForm.paid_status}
-                      onChange={(event) => setPayrollForm((current) => ({ ...current, paid_status: event.target.value as "pending" | "paid" }))}
+                      onChange={(event) =>
+                        setPayrollForm((current) => ({
+                          ...current,
+                          paid_status: event.target.value as "pending" | "paid",
+                        }))
+                      }
                       aria-label="HR payroll paid status"
                     >
                       <option value="pending">Pending</option>
@@ -643,18 +922,39 @@ export default function HrmsPage({ setNotice }: Props) {
                     <Input
                       type="date"
                       value={payrollForm.paid_date}
-                      onChange={(event) => setPayrollForm((current) => ({ ...current, paid_date: event.target.value }))}
+                      onChange={(event) =>
+                        setPayrollForm((current) => ({
+                          ...current,
+                          paid_date: event.target.value,
+                        }))
+                      }
                       aria-label="HR payroll paid date"
                     />
-                    <Button type="submit" disabled={savingPayroll}>{savingPayroll ? "Saving..." : "Add Payroll"}</Button>
+                    <Button type="submit" disabled={savingPayroll}>
+                      {savingPayroll ? "Saving..." : "Add Payroll"}
+                    </Button>
                     {payrollForm.id ? (
-                      <Button type="button" variant="ghost" onClick={() => setPayrollForm({ ...DEFAULT_PAYROLL_FORM })}>Cancel Edit</Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() =>
+                          setPayrollForm({ ...DEFAULT_PAYROLL_FORM })
+                        }
+                      >
+                        Cancel Edit
+                      </Button>
                     ) : null}
                   </form>
-                  {data.payroll.length === 0 ? <p className="muted">No payroll records available.</p> : null}
+                  {data.payroll.length === 0 ? (
+                    <p className="muted">No payroll records available.</p>
+                  ) : null}
                   {data.payroll.length > 0 ? (
                     <>
-                      <Table className="module-table module-table-hr" role="table" aria-label="HR payroll table">
+                      <Table
+                        className="module-table module-table-hr"
+                        role="table"
+                        aria-label="HR payroll table"
+                      >
                         <TableHead>
                           <TableCell>Employee</TableCell>
                           <TableCell>Month</TableCell>
@@ -667,29 +967,81 @@ export default function HrmsPage({ setNotice }: Props) {
                           <TableRow key={record.id}>
                             <TableCell>{record.employee_id || "-"}</TableCell>
                             <TableCell>{record.payroll_month || "-"}</TableCell>
-                            <TableCell>{formatCurrency(record.net_salary)}</TableCell>
-                            <TableCell>{record.paid_status || "pending"}</TableCell>
-                            <TableCell>{formatDate(record.paid_date)}</TableCell>
+                            <TableCell>
+                              {formatCurrency(record.net_salary)}
+                            </TableCell>
+                            <TableCell>
+                              {record.paid_status || "pending"}
+                            </TableCell>
+                            <TableCell>
+                              {formatDate(record.paid_date)}
+                            </TableCell>
                             <TableCell>
                               <div className="module-inline-actions">
-                                <Button type="button" size="sm" onClick={() => handleEditPayroll(record)}>Edit</Button>
-                                <Button type="button" size="sm" variant="destructive" onClick={() => void handleDeletePayroll(record)}>Delete</Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => handleEditPayroll(record)}
+                                >
+                                  Edit
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() =>
+                                    void handleDeletePayroll(record)
+                                  }
+                                >
+                                  Delete
+                                </Button>
                               </div>
                             </TableCell>
                           </TableRow>
                         ))}
                       </Table>
-                      <div className="module-mobile-list" aria-label="HR payroll cards">
+                      <div
+                        className="module-mobile-list"
+                        aria-label="HR payroll cards"
+                      >
                         {data.payroll.slice(0, 12).map((record) => (
-                          <article className="module-mobile-card" key={`payroll-mobile-${record.id}`}>
+                          <article
+                            className="module-mobile-card"
+                            key={`payroll-mobile-${record.id}`}
+                          >
                             <h4>{record.employee_id || "Employee"}</h4>
-                            <p><strong>Month:</strong> {record.payroll_month || "-"}</p>
-                            <p><strong>Net Salary:</strong> {formatCurrency(record.net_salary)}</p>
-                            <p><strong>Paid Status:</strong> {record.paid_status || "pending"}</p>
-                            <p><strong>Paid Date:</strong> {formatDate(record.paid_date)}</p>
+                            <p>
+                              <strong>Month:</strong>{" "}
+                              {record.payroll_month || "-"}
+                            </p>
+                            <p>
+                              <strong>Net Salary:</strong>{" "}
+                              {formatCurrency(record.net_salary)}
+                            </p>
+                            <p>
+                              <strong>Paid Status:</strong>{" "}
+                              {record.paid_status || "pending"}
+                            </p>
+                            <p>
+                              <strong>Paid Date:</strong>{" "}
+                              {formatDate(record.paid_date)}
+                            </p>
                             <div className="module-card-actions">
-                              <Button type="button" size="sm" onClick={() => handleEditPayroll(record)}>Edit</Button>
-                              <Button type="button" size="sm" variant="destructive" onClick={() => void handleDeletePayroll(record)}>Delete</Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => handleEditPayroll(record)}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => void handleDeletePayroll(record)}
+                              >
+                                Delete
+                              </Button>
                             </div>
                           </article>
                         ))}
@@ -701,16 +1053,29 @@ export default function HrmsPage({ setNotice }: Props) {
 
               {tab === "leaves" && (
                 <div className="module-tab-panel">
-                  <form className="module-form-grid module-sales-grid" onSubmit={handleLeaveSubmit}>
+                  <form
+                    className="module-form-grid module-sales-grid"
+                    onSubmit={handleLeaveSubmit}
+                  >
                     <Input
                       value={leaveForm.employee_id}
-                      onChange={(event) => setLeaveForm((current) => ({ ...current, employee_id: event.target.value }))}
+                      onChange={(event) =>
+                        setLeaveForm((current) => ({
+                          ...current,
+                          employee_id: event.target.value,
+                        }))
+                      }
                       placeholder="Employee ID"
                       aria-label="HR leave employee"
                     />
                     <Select
                       value={leaveForm.leave_type}
-                      onChange={(event) => setLeaveForm((current) => ({ ...current, leave_type: event.target.value }))}
+                      onChange={(event) =>
+                        setLeaveForm((current) => ({
+                          ...current,
+                          leave_type: event.target.value,
+                        }))
+                      }
                       aria-label="HR leave type"
                     >
                       <option value="sick">Sick</option>
@@ -721,30 +1086,61 @@ export default function HrmsPage({ setNotice }: Props) {
                     <Input
                       type="date"
                       value={leaveForm.start_date}
-                      onChange={(event) => setLeaveForm((current) => ({ ...current, start_date: event.target.value }))}
+                      onChange={(event) =>
+                        setLeaveForm((current) => ({
+                          ...current,
+                          start_date: event.target.value,
+                        }))
+                      }
                       aria-label="HR leave start"
                     />
                     <Input
                       type="date"
                       value={leaveForm.end_date}
-                      onChange={(event) => setLeaveForm((current) => ({ ...current, end_date: event.target.value }))}
+                      onChange={(event) =>
+                        setLeaveForm((current) => ({
+                          ...current,
+                          end_date: event.target.value,
+                        }))
+                      }
                       aria-label="HR leave end"
                     />
                     <Input
                       value={leaveForm.reason}
-                      onChange={(event) => setLeaveForm((current) => ({ ...current, reason: event.target.value }))}
+                      onChange={(event) =>
+                        setLeaveForm((current) => ({
+                          ...current,
+                          reason: event.target.value,
+                        }))
+                      }
                       placeholder="Reason"
                       aria-label="HR leave reason"
                     />
-                    <Button type="submit" disabled={savingLeave}>{savingLeave ? "Saving..." : "Request Leave"}</Button>
+                    <Button type="submit" disabled={savingLeave}>
+                      {savingLeave ? "Saving..." : "Request Leave"}
+                    </Button>
                     {leaveForm.id ? (
-                      <Button type="button" variant="ghost" onClick={() => setLeaveForm({ ...DEFAULT_LEAVE_FORM })}>Cancel Edit</Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setLeaveForm({ ...DEFAULT_LEAVE_FORM })}
+                      >
+                        Cancel Edit
+                      </Button>
                     ) : null}
                   </form>
-                  {visibleLeaves.length === 0 ? <p className="muted">No leave requests available for this filter.</p> : null}
+                  {visibleLeaves.length === 0 ? (
+                    <p className="muted">
+                      No leave requests available for this filter.
+                    </p>
+                  ) : null}
                   {visibleLeaves.length > 0 ? (
                     <>
-                      <Table className="module-table module-table-hr" role="table" aria-label="HR leaves table">
+                      <Table
+                        className="module-table module-table-hr"
+                        role="table"
+                        aria-label="HR leaves table"
+                      >
                         <TableHead>
                           <TableCell>Employee</TableCell>
                           <TableCell>Type</TableCell>
@@ -757,7 +1153,9 @@ export default function HrmsPage({ setNotice }: Props) {
                           <TableRow key={record.id}>
                             <TableCell>{record.employee_id || "-"}</TableCell>
                             <TableCell>{record.leave_type || "-"}</TableCell>
-                            <TableCell>{formatDate(record.start_date)}</TableCell>
+                            <TableCell>
+                              {formatDate(record.start_date)}
+                            </TableCell>
                             <TableCell>{formatDate(record.end_date)}</TableCell>
                             <TableCell>{record.status || "pending"}</TableCell>
                             <TableCell>
@@ -766,7 +1164,12 @@ export default function HrmsPage({ setNotice }: Props) {
                                   <Button
                                     type="button"
                                     size="sm"
-                                    onClick={() => void handleLeaveStatusUpdate(record.id, "approved")}
+                                    onClick={() =>
+                                      void handleLeaveStatusUpdate(
+                                        record.id,
+                                        "approved",
+                                      )
+                                    }
                                     disabled={updatingLeaveId === record.id}
                                   >
                                     Approve
@@ -775,7 +1178,12 @@ export default function HrmsPage({ setNotice }: Props) {
                                     type="button"
                                     size="sm"
                                     variant="destructive"
-                                    onClick={() => void handleLeaveStatusUpdate(record.id, "rejected")}
+                                    onClick={() =>
+                                      void handleLeaveStatusUpdate(
+                                        record.id,
+                                        "rejected",
+                                      )
+                                    }
                                     disabled={updatingLeaveId === record.id}
                                   >
                                     Reject
@@ -783,30 +1191,70 @@ export default function HrmsPage({ setNotice }: Props) {
                                 </div>
                               ) : (
                                 <div className="module-inline-actions">
-                                  <Button type="button" size="sm" onClick={() => handleEditLeave(record)}>Edit</Button>
-                                  <Button type="button" size="sm" variant="destructive" onClick={() => void handleDeleteLeave(record)}>Delete</Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={() => handleEditLeave(record)}
+                                  >
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() =>
+                                      void handleDeleteLeave(record)
+                                    }
+                                  >
+                                    Delete
+                                  </Button>
                                 </div>
                               )}
                             </TableCell>
                           </TableRow>
                         ))}
                       </Table>
-                      <div className="module-mobile-list" aria-label="HR leaves cards">
+                      <div
+                        className="module-mobile-list"
+                        aria-label="HR leaves cards"
+                      >
                         {visibleLeaves.slice(0, 12).map((record) => (
-                          <article className="module-mobile-card" key={`leave-mobile-${record.id}`}>
+                          <article
+                            className="module-mobile-card"
+                            key={`leave-mobile-${record.id}`}
+                          >
                             <h4>{record.employee_id || "Employee"}</h4>
-                            <p><strong>Type:</strong> {record.leave_type || "-"}</p>
-                            <p><strong>Start:</strong> {formatDate(record.start_date)}</p>
-                            <p><strong>End:</strong> {formatDate(record.end_date)}</p>
-                            <p><strong>Status:</strong> {record.status || "pending"}</p>
-                            <p><strong>Decision By:</strong> {record.decided_by || "-"}</p>
+                            <p>
+                              <strong>Type:</strong> {record.leave_type || "-"}
+                            </p>
+                            <p>
+                              <strong>Start:</strong>{" "}
+                              {formatDate(record.start_date)}
+                            </p>
+                            <p>
+                              <strong>End:</strong>{" "}
+                              {formatDate(record.end_date)}
+                            </p>
+                            <p>
+                              <strong>Status:</strong>{" "}
+                              {record.status || "pending"}
+                            </p>
+                            <p>
+                              <strong>Decision By:</strong>{" "}
+                              {record.decided_by || "-"}
+                            </p>
                             <div className="module-card-actions">
                               {(record.status || "pending") === "pending" ? (
                                 <>
                                   <Button
                                     type="button"
                                     size="sm"
-                                    onClick={() => void handleLeaveStatusUpdate(record.id, "approved")}
+                                    onClick={() =>
+                                      void handleLeaveStatusUpdate(
+                                        record.id,
+                                        "approved",
+                                      )
+                                    }
                                     disabled={updatingLeaveId === record.id}
                                   >
                                     Approve
@@ -815,15 +1263,33 @@ export default function HrmsPage({ setNotice }: Props) {
                                     type="button"
                                     size="sm"
                                     variant="destructive"
-                                    onClick={() => void handleLeaveStatusUpdate(record.id, "rejected")}
+                                    onClick={() =>
+                                      void handleLeaveStatusUpdate(
+                                        record.id,
+                                        "rejected",
+                                      )
+                                    }
                                     disabled={updatingLeaveId === record.id}
                                   >
                                     Reject
                                   </Button>
                                 </>
                               ) : null}
-                              <Button type="button" size="sm" onClick={() => handleEditLeave(record)}>Edit</Button>
-                              <Button type="button" size="sm" variant="destructive" onClick={() => void handleDeleteLeave(record)}>Delete</Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => handleEditLeave(record)}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => void handleDeleteLeave(record)}
+                              >
+                                Delete
+                              </Button>
                             </div>
                           </article>
                         ))}
@@ -835,28 +1301,57 @@ export default function HrmsPage({ setNotice }: Props) {
 
               {tab === "departments" && (
                 <div className="module-tab-panel">
-                  <form className="module-form-grid" onSubmit={handleDepartmentSubmit}>
+                  <form
+                    className="module-form-grid"
+                    onSubmit={handleDepartmentSubmit}
+                  >
                     <Input
                       value={departmentForm.department_name}
-                      onChange={(event) => setDepartmentForm((current) => ({ ...current, department_name: event.target.value }))}
+                      onChange={(event) =>
+                        setDepartmentForm((current) => ({
+                          ...current,
+                          department_name: event.target.value,
+                        }))
+                      }
                       placeholder="Department name"
                       aria-label="HR department name"
                     />
                     <Input
                       value={departmentForm.mapped_head_employee_id}
-                      onChange={(event) => setDepartmentForm((current) => ({ ...current, mapped_head_employee_id: event.target.value }))}
+                      onChange={(event) =>
+                        setDepartmentForm((current) => ({
+                          ...current,
+                          mapped_head_employee_id: event.target.value,
+                        }))
+                      }
                       placeholder="Head employee ID"
                       aria-label="HR department head"
                     />
-                    <Button type="submit" disabled={savingDepartment}>{savingDepartment ? "Saving..." : "Add Department"}</Button>
+                    <Button type="submit" disabled={savingDepartment}>
+                      {savingDepartment ? "Saving..." : "Add Department"}
+                    </Button>
                     {departmentForm.id ? (
-                      <Button type="button" variant="ghost" onClick={() => setDepartmentForm({ ...DEFAULT_DEPARTMENT_FORM })}>Cancel Edit</Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() =>
+                          setDepartmentForm({ ...DEFAULT_DEPARTMENT_FORM })
+                        }
+                      >
+                        Cancel Edit
+                      </Button>
                     ) : null}
                   </form>
-                  {data.departments.length === 0 ? <p className="muted">No department records available.</p> : null}
+                  {data.departments.length === 0 ? (
+                    <p className="muted">No department records available.</p>
+                  ) : null}
                   {data.departments.length > 0 ? (
                     <>
-                      <Table className="module-table module-table-hr" role="table" aria-label="HR departments table">
+                      <Table
+                        className="module-table module-table-hr"
+                        role="table"
+                        aria-label="HR departments table"
+                      >
                         <TableHead>
                           <TableCell>Department</TableCell>
                           <TableCell>Head Employee</TableCell>
@@ -867,12 +1362,33 @@ export default function HrmsPage({ setNotice }: Props) {
                         </TableHead>
                         {data.departments.slice(0, 12).map((department) => (
                           <TableRow key={department.id}>
-                            <TableCell>{department.department_name || "-"}</TableCell>
-                            <TableCell>{department.mapped_head_employee_id || "-"}</TableCell>
+                            <TableCell>
+                              {department.department_name || "-"}
+                            </TableCell>
+                            <TableCell>
+                              {department.mapped_head_employee_id || "-"}
+                            </TableCell>
                             <TableCell>
                               <div className="module-inline-actions">
-                                <Button type="button" size="sm" onClick={() => handleEditDepartment(department)}>Edit</Button>
-                                <Button type="button" size="sm" variant="destructive" onClick={() => void handleDeleteDepartment(department)}>Delete</Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() =>
+                                    handleEditDepartment(department)
+                                  }
+                                >
+                                  Edit
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() =>
+                                    void handleDeleteDepartment(department)
+                                  }
+                                >
+                                  Delete
+                                </Button>
                               </div>
                             </TableCell>
                             <TableCell />
@@ -881,14 +1397,40 @@ export default function HrmsPage({ setNotice }: Props) {
                           </TableRow>
                         ))}
                       </Table>
-                      <div className="module-mobile-list" aria-label="HR department cards">
+                      <div
+                        className="module-mobile-list"
+                        aria-label="HR department cards"
+                      >
                         {data.departments.slice(0, 12).map((department) => (
-                          <article className="module-mobile-card" key={`department-mobile-${department.id}`}>
-                            <h4>{department.department_name || "Department"}</h4>
-                            <p><strong>Head Employee:</strong> {department.mapped_head_employee_id || "-"}</p>
+                          <article
+                            className="module-mobile-card"
+                            key={`department-mobile-${department.id}`}
+                          >
+                            <h4>
+                              {department.department_name || "Department"}
+                            </h4>
+                            <p>
+                              <strong>Head Employee:</strong>{" "}
+                              {department.mapped_head_employee_id || "-"}
+                            </p>
                             <div className="module-card-actions">
-                              <Button type="button" size="sm" onClick={() => handleEditDepartment(department)}>Edit</Button>
-                              <Button type="button" size="sm" variant="destructive" onClick={() => void handleDeleteDepartment(department)}>Delete</Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => handleEditDepartment(department)}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="destructive"
+                                onClick={() =>
+                                  void handleDeleteDepartment(department)
+                                }
+                              >
+                                Delete
+                              </Button>
                             </div>
                           </article>
                         ))}

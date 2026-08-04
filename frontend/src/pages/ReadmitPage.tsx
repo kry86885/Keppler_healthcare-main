@@ -2,10 +2,32 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import DocumentUploadDropzone from "../components/DocumentUploadDropzone";
 import MarkdownReport from "../components/MarkdownReport";
-import { Button, Checkbox, Input, Label, Select, Table, TableCell, TableHead, TableRow, Textarea } from "../components/ui";
-import { API_BASE, DOC_TYPES, SUPPORTED_DOCUMENT_ACCEPT, SUPPORTED_DOCUMENT_EXTENSIONS, isSupportedDocumentFile } from "../lib/constants";
+import {
+  Button,
+  Checkbox,
+  Input,
+  Label,
+  Select,
+  Table,
+  TableCell,
+  TableHead,
+  TableRow,
+  Textarea,
+} from "../components/ui";
+import {
+  API_BASE,
+  DOC_TYPES,
+  SUPPORTED_DOCUMENT_ACCEPT,
+  SUPPORTED_DOCUMENT_EXTENSIONS,
+  isSupportedDocumentFile,
+} from "../lib/constants";
 import { apiFetch, reportError, withAuthHeaders } from "../lib/api";
-import { formatDateTimeIST, getISTDateTimeKey, getTimestamp, stripUploadTimestampPrefix } from "../lib/format";
+import {
+  formatDateTimeIST,
+  getISTDateTimeKey,
+  getTimestamp,
+  stripUploadTimestampPrefix,
+} from "../lib/format";
 import type { DocumentItem, Notice, Patient } from "../types";
 
 type ProfileUpdates = {
@@ -49,14 +71,21 @@ function OriginalDocumentPreview({ file }: { file?: File }) {
 
   const mime = (file.type || "").toLowerCase();
   const isPdf = mime === "application/pdf" || /\.pdf$/i.test(file.name);
-  const isImage = mime.startsWith("image/") || IMAGE_NAME_PATTERN.test(file.name);
+  const isImage =
+    mime.startsWith("image/") || IMAGE_NAME_PATTERN.test(file.name);
 
   if (isImage) {
     return <img className="ocr-source-image" src={url} alt={file.name} />;
   }
 
   if (isPdf) {
-    return <iframe className="ocr-source-pdf" src={url} title={`Preview ${file.name}`} />;
+    return (
+      <iframe
+        className="ocr-source-pdf"
+        src={url}
+        title={`Preview ${file.name}`}
+      />
+    );
   }
 
   return (
@@ -66,7 +95,12 @@ function OriginalDocumentPreview({ file }: { file?: File }) {
   );
 }
 
-export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, ocrLanguage }: Props) {
+export default function ReadmitPage({
+  onSelect,
+  setNotice,
+  onReadmitComplete,
+  ocrLanguage,
+}: Props) {
   const [query, setQuery] = useState("");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [activePatient, setActivePatient] = useState<Patient | null>(null);
@@ -84,8 +118,11 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
   const [docFiles, setDocFiles] = useState<Record<string, File>>({});
   const [ocrResults, setOcrResults] = useState<OcrResultMap>({});
   const [ocrStatus, setOcrStatus] = useState<Record<string, string>>({});
-  const [previousDocuments, setPreviousDocuments] = useState<DocumentItem[]>([]);
-  const [previousDocumentsLoading, setPreviousDocumentsLoading] = useState(false);
+  const [previousDocuments, setPreviousDocuments] = useState<DocumentItem[]>(
+    [],
+  );
+  const [previousDocumentsLoading, setPreviousDocumentsLoading] =
+    useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const normalizeProfile = (patient: Patient): ProfileUpdates => ({
@@ -105,7 +142,11 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
         const data = await apiFetch<{ patients?: Patient[] }>("/api/patients");
         setPatients(data.patients || []);
       } catch (error) {
-        reportError(setNotice, error as { message?: string; status?: number }, "Unable to load patients.");
+        reportError(
+          setNotice,
+          error as { message?: string; status?: number },
+          "Unable to load patients.",
+        );
       }
     };
     void loadPatients();
@@ -114,7 +155,14 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
   const normalizedQuery = query.trim().toLowerCase();
   const results = normalizedQuery
     ? patients.filter((patient) => {
-        const fields = [patient.name, patient.middle_name, patient.last_name, patient.patient_id, patient.phone, patient.dob]
+        const fields = [
+          patient.name,
+          patient.middle_name,
+          patient.last_name,
+          patient.patient_id,
+          patient.phone,
+          patient.dob,
+        ]
           .filter(Boolean)
           .map((value) => String(value).toLowerCase());
         return fields.some((value) => value.includes(normalizedQuery));
@@ -122,7 +170,9 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
     : patients;
 
   const previousDocumentGroups = useMemo(() => {
-    const sorted = [...previousDocuments].sort((a, b) => getTimestamp(b.created_at) - getTimestamp(a.created_at));
+    const sorted = [...previousDocuments].sort(
+      (a, b) => getTimestamp(b.created_at) - getTimestamp(a.created_at),
+    );
     const groups = new Map<string, { label: string; items: DocumentItem[] }>();
     sorted.forEach((doc) => {
       const key = getISTDateTimeKey(doc.created_at) || "unknown";
@@ -132,17 +182,25 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
       }
       groups.get(key)?.items.push(doc);
     });
-    return Array.from(groups.entries()).map(([key, value]) => ({ key, ...value }));
+    return Array.from(groups.entries()).map(([key, value]) => ({
+      key,
+      ...value,
+    }));
   }, [previousDocuments]);
 
   const loadPreviousDocuments = async (patientId: string) => {
     setPreviousDocumentsLoading(true);
     try {
-      const data = await apiFetch<{ documents?: DocumentItem[] }>(`/api/patients/${patientId}/documents`);
+      const data = await apiFetch<{ documents?: DocumentItem[] }>(
+        `/api/patients/${patientId}/documents`,
+      );
       setPreviousDocuments(data.documents || []);
     } catch {
       setPreviousDocuments([]);
-      setNotice({ type: "warning", message: "Unable to load previous documents." });
+      setNotice({
+        type: "warning",
+        message: "Unable to load previous documents.",
+      });
     } finally {
       setPreviousDocumentsLoading(false);
     }
@@ -158,13 +216,18 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
     onSelect(patient);
     void loadPreviousDocuments(patient.patient_id);
     try {
-      const detail = await apiFetch<{ patient?: Patient }>(`/api/patients/${patient.patient_id}`);
+      const detail = await apiFetch<{ patient?: Patient }>(
+        `/api/patients/${patient.patient_id}`,
+      );
       if (detail?.patient) {
         setActivePatient(detail.patient);
         setProfileUpdates(normalizeProfile(detail.patient));
       }
     } catch {
-      setNotice({ type: "warning", message: "Loaded limited patient details for readmission edit." });
+      setNotice({
+        type: "warning",
+        message: "Loaded limited patient details for readmission edit.",
+      });
     }
   };
 
@@ -186,7 +249,11 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
     }
 
     if (!isSupportedDocumentFile(file)) {
-      setOcrStatus((prev) => ({ ...prev, [docType]: "Unsupported file type. Use PDF, JPG, PNG, WEBP, TIFF, BMP, GIF, HEIC, or HEIF." }));
+      setOcrStatus((prev) => ({
+        ...prev,
+        [docType]:
+          "Unsupported file type. Use PDF, JPG, PNG, WEBP, TIFF, BMP, GIF, HEIC, or HEIF.",
+      }));
       setDocFiles((prev) => {
         const next = { ...prev };
         delete next[docType];
@@ -208,25 +275,34 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
     body.append("doc_type", docType);
 
     try {
-      const response = await fetch(`${API_BASE}/api/ocr`, { method: "POST", headers: withAuthHeaders({}, "POST"), body, credentials: "include" });
+      const response = await fetch(`${API_BASE}/api/ocr`, {
+        method: "POST",
+        headers: withAuthHeaders({}, "POST"),
+        body,
+        credentials: "include",
+      });
       const data = await response.json();
       setOcrResults((prev) => ({
         ...prev,
         [docType]: { text: data.text || "", file },
       }));
-      setOcrStatus((prev) => ({ ...prev, [docType]: "OCR complete. Text will be saved with readmission." }));
+      setOcrStatus((prev) => ({
+        ...prev,
+        [docType]: "OCR complete. Text will be saved with readmission.",
+      }));
     } catch {
       setOcrStatus((prev) => ({ ...prev, [docType]: "OCR failed." }));
     }
   };
 
-  const handleOcrTextChange = (docType: string) => (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = event.target.value;
-    setOcrResults((prev) => ({
-      ...prev,
-      [docType]: { ...prev[docType], text: value },
-    }));
-  };
+  const handleOcrTextChange =
+    (docType: string) => (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const value = event.target.value;
+      setOcrResults((prev) => ({
+        ...prev,
+        [docType]: { ...prev[docType], text: value },
+      }));
+    };
 
   const clearOcrEntry = (docType: string) => {
     setOcrResults((prev) => {
@@ -236,10 +312,19 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
     });
   };
 
-  const handleProfileChange = (field: keyof ProfileUpdates) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const value = field === "pregnant" ? (event.target as HTMLInputElement).checked : event.target.value;
-    setProfileUpdates((prev) => ({ ...prev, [field]: value }));
-  };
+  const handleProfileChange =
+    (field: keyof ProfileUpdates) =>
+    (
+      event: React.ChangeEvent<
+        HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+      >,
+    ) => {
+      const value =
+        field === "pregnant"
+          ? (event.target as HTMLInputElement).checked
+          : event.target.value;
+      setProfileUpdates((prev) => ({ ...prev, [field]: value }));
+    };
 
   const handleReadmit = async () => {
     if (!activePatient) return;
@@ -264,12 +349,17 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
           pregnant: profileUpdates.pregnant,
         }),
       });
-      const data = await apiFetch<{ admission_id: string }>(`/api/patients/${activePatient.patient_id}/admissions`, {
-        method: "POST",
-        body: JSON.stringify({ notes }),
-      });
+      const data = await apiFetch<{ admission_id: string }>(
+        `/api/patients/${activePatient.patient_id}/admissions`,
+        {
+          method: "POST",
+          body: JSON.stringify({ notes }),
+        },
+      );
 
-      const docsToUpload = DOC_TYPES.filter((doc) => docFiles[doc.value]).map((doc) => doc.value);
+      const docsToUpload = DOC_TYPES.filter((doc) => docFiles[doc.value]).map(
+        (doc) => doc.value,
+      );
       let uploadedCount = 0;
       for (const docType of docsToUpload) {
         const file = docFiles[docType];
@@ -280,12 +370,15 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
         body.append("admission_id", data.admission_id);
         body.append("ocr_text", ocrResults[docType]?.text || "");
         body.append("ocr_language", ocrLanguage);
-        const uploadResponse = await fetch(`${API_BASE}/api/patients/${activePatient.patient_id}/documents`, {
-          method: "POST",
-          headers: withAuthHeaders({}, "POST"),
-          body,
-          credentials: "include",
-        });
+        const uploadResponse = await fetch(
+          `${API_BASE}/api/patients/${activePatient.patient_id}/documents`,
+          {
+            method: "POST",
+            headers: withAuthHeaders({}, "POST"),
+            body,
+            credentials: "include",
+          },
+        );
         if (!uploadResponse.ok) {
           throw new Error("Unable to upload readmission document.");
         }
@@ -303,10 +396,18 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
       setOcrResults({});
       setOcrStatus({});
       await loadPreviousDocuments(activePatient.patient_id);
-      onSelect({ ...activePatient, ...profileUpdates, admission_id: data.admission_id });
+      onSelect({
+        ...activePatient,
+        ...profileUpdates,
+        admission_id: data.admission_id,
+      });
       await onReadmitComplete?.(activePatient.patient_id);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to re-admit patient.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to re-admit patient.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -315,7 +416,11 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
   return (
     <section className="panel">
       <div className="search-bar">
-        <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name, phone, or DOB" />
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search by name, phone, or DOB"
+        />
       </div>
       <div className="list-meta">
         <p className="muted">
@@ -366,54 +471,92 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
                   <div className="table-row-expand">
                     <div className="readmit-form">
                       <h4>
-                        Re-admitting: {activePatient.name} {activePatient.last_name}
+                        Re-admitting: {activePatient.name}{" "}
+                        {activePatient.last_name}
                       </h4>
                       <Label>
                         Admission Notes
-                        <Textarea className="readmit-notes" value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} />
+                        <Textarea
+                          className="readmit-notes"
+                          value={notes}
+                          onChange={(event) => setNotes(event.target.value)}
+                          rows={3}
+                        />
                       </Label>
                       <h5>Update Patient Details</h5>
                       <div className="readmit-profile-grid">
                         <Label>
                           Age
-                          <Input type="number" value={profileUpdates.age} onChange={handleProfileChange("age")} />
+                          <Input
+                            type="number"
+                            value={profileUpdates.age}
+                            onChange={handleProfileChange("age")}
+                          />
                         </Label>
                         <Label>
                           Weight (kg)
-                          <Input type="number" value={profileUpdates.weight} onChange={handleProfileChange("weight")} />
+                          <Input
+                            type="number"
+                            value={profileUpdates.weight}
+                            onChange={handleProfileChange("weight")}
+                          />
                         </Label>
                         <Label>
                           Height (cm)
-                          <Input type="number" value={profileUpdates.height} onChange={handleProfileChange("height")} />
+                          <Input
+                            type="number"
+                            value={profileUpdates.height}
+                            onChange={handleProfileChange("height")}
+                          />
                         </Label>
                         <Label>
                           Phone
-                          <Input value={profileUpdates.phone} onChange={handleProfileChange("phone")} />
+                          <Input
+                            value={profileUpdates.phone}
+                            onChange={handleProfileChange("phone")}
+                          />
                         </Label>
                         <Label>
                           Gender
-                          <Select value={profileUpdates.gender} onChange={handleProfileChange("gender")}>
+                          <Select
+                            value={profileUpdates.gender}
+                            onChange={handleProfileChange("gender")}
+                          >
                             <option>Male</option>
                             <option>Female</option>
                             <option>Other</option>
                           </Select>
                         </Label>
                         <Label className="checkbox">
-                          <Checkbox checked={profileUpdates.pregnant} onChange={handleProfileChange("pregnant")} />
+                          <Checkbox
+                            checked={profileUpdates.pregnant}
+                            onChange={handleProfileChange("pregnant")}
+                          />
                           Pregnant
                         </Label>
                         <Label className="span-2">
                           Allergies
-                          <Textarea value={profileUpdates.allergies} onChange={handleProfileChange("allergies")} rows={2} />
+                          <Textarea
+                            value={profileUpdates.allergies}
+                            onChange={handleProfileChange("allergies")}
+                            rows={2}
+                          />
                         </Label>
                         <Label className="span-2">
                           Current Symptoms
-                          <Textarea value={profileUpdates.symptoms} onChange={handleProfileChange("symptoms")} rows={3} />
+                          <Textarea
+                            value={profileUpdates.symptoms}
+                            onChange={handleProfileChange("symptoms")}
+                            rows={3}
+                          />
                         </Label>
                       </div>
 
                       <h4>Upload Documents</h4>
-                      <p className="muted">Same workflow as admission: choose per type, run OCR, edit text, then confirm re-admission.</p>
+                      <p className="muted">
+                        Same workflow as admission: choose per type, run OCR,
+                        edit text, then confirm re-admission.
+                      </p>
 
                       <div className="documents">
                         <h4>Previous Documents</h4>
@@ -423,22 +566,43 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
                           <p className="muted">No previous documents found.</p>
                         ) : (
                           previousDocumentGroups.map((group) => (
-                            <details key={group.key} className="doc-date-section" open>
+                            <details
+                              key={group.key}
+                              className="doc-date-section"
+                              open
+                            >
                               <summary>
                                 {group.label} ({group.items.length})
                               </summary>
                               <div className="doc-date-content">
                                 {group.items.map((doc) => {
-                                  const label = DOC_TYPES.find((item) => item.value === doc.doc_type)?.label || doc.doc_type;
+                                  const label =
+                                    DOC_TYPES.find(
+                                      (item) => item.value === doc.doc_type,
+                                    )?.label || doc.doc_type;
                                   return (
                                     <details key={doc.id} className="doc-item">
-                                      <summary>
-                                        {label.toLowerCase()}
-                                      </summary>
-                                      {doc.file_name && <p className="muted">File: {stripUploadTimestampPrefix(doc.file_name)}</p>}
-                                      {doc.ocr_language && <p className="muted">OCR Language: {doc.ocr_language}</p>}
+                                      <summary>{label.toLowerCase()}</summary>
+                                      {doc.file_name && (
+                                        <p className="muted">
+                                          File:{" "}
+                                          {stripUploadTimestampPrefix(
+                                            doc.file_name,
+                                          )}
+                                        </p>
+                                      )}
+                                      {doc.ocr_language && (
+                                        <p className="muted">
+                                          OCR Language: {doc.ocr_language}
+                                        </p>
+                                      )}
                                       <div className="form-actions">
-                                        <a className="link" href={`${API_BASE}/api/documents/${doc.id}/file`} target="_blank" rel="noreferrer">
+                                        <a
+                                          className="link"
+                                          href={`${API_BASE}/api/documents/${doc.id}/file`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                        >
                                           Open file
                                         </a>
                                       </div>
@@ -446,7 +610,9 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
                                         <details>
                                           <summary>View OCR Text</summary>
                                           <div className="ocr-text-display">
-                                            <MarkdownReport text={doc.ocr_text} />
+                                            <MarkdownReport
+                                              text={doc.ocr_text}
+                                            />
                                           </div>
                                         </details>
                                       )}
@@ -469,10 +635,16 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
                               helperText={`Supported: ${SUPPORTED_DOCUMENT_EXTENSIONS.map((ext) => ext.toUpperCase()).join(", ")}`}
                               onFileSelect={handleFileSelect(doc.value)}
                             />
-                            <Button variant="secondary" type="button" onClick={() => void handleOCR(doc.value)}>
+                            <Button
+                              variant="secondary"
+                              type="button"
+                              onClick={() => void handleOCR(doc.value)}
+                            >
                               Process OCR
                             </Button>
-                            {ocrStatus[doc.value] && <p className="muted">{ocrStatus[doc.value]}</p>}
+                            {ocrStatus[doc.value] && (
+                              <p className="muted">{ocrStatus[doc.value]}</p>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -481,7 +653,9 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
                         <div className="ocr-results">
                           <h4>OCR Results</h4>
                           {Object.entries(ocrResults).map(([docType, data]) => {
-                            const label = DOC_TYPES.find((item) => item.value === docType)?.label || docType;
+                            const label =
+                              DOC_TYPES.find((item) => item.value === docType)
+                                ?.label || docType;
                             return (
                               <details key={docType} className="doc-item" open>
                                 <summary>{label}</summary>
@@ -495,9 +669,17 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
                                     <MarkdownReport text={data.text || ""} />
                                   </div>
                                 </div>
-                                <Textarea className="ocr-text" value={data.text || ""} onChange={handleOcrTextChange(docType)} />
+                                <Textarea
+                                  className="ocr-text"
+                                  value={data.text || ""}
+                                  onChange={handleOcrTextChange(docType)}
+                                />
                                 <div className="form-actions">
-                                  <Button variant="secondary" type="button" onClick={() => clearOcrEntry(docType)}>
+                                  <Button
+                                    variant="secondary"
+                                    type="button"
+                                    onClick={() => clearOcrEntry(docType)}
+                                  >
                                     Clear
                                   </Button>
                                 </div>
@@ -507,7 +689,11 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
                         </div>
                       )}
 
-                      <Button variant="primary" onClick={() => void handleReadmit()} disabled={submitting}>
+                      <Button
+                        variant="primary"
+                        onClick={() => void handleReadmit()}
+                        disabled={submitting}
+                      >
                         {submitting ? "Submitting..." : "Confirm Re-admission"}
                       </Button>
                     </div>

@@ -13,7 +13,7 @@ from app import (
     require_razorpay_configured,
     current_hospital_id,
     RAZORPAY_KEY_ID,
-    normalize_payment_mode
+    normalize_payment_mode,
 )
 
 from utils.database import (
@@ -23,11 +23,11 @@ from utils.database import (
     get_appointment_by_id,
     get_patient,
     create_invoice,
-    record_invoice_payment
+    record_invoice_payment,
 )
 from core.whatsapp import send_whatsapp_message
 
-appointments_bp = Blueprint('appointments', __name__)
+appointments_bp = Blueprint("appointments", __name__)
 logger = logging.getLogger(__name__)
 
 
@@ -48,14 +48,20 @@ def _notify_patient_consultation_started(appointment_id, hospital_id):
             return
         doctor = appointment["doctor_name"] or "your doctor"
         department = (appointment["department"] or "").strip()
-        location = f"the {department} department" if department else "the consultation room"
+        location = (
+            f"the {department} department" if department else "the consultation room"
+        )
         body = (
             f"Hi {appointment['patient_name']}, Dr. {doctor} is ready to see you now in "
             f"{location}. Please proceed with Token #{appointment['token_no']}."
         )
         send_whatsapp_message(phone, body)
     except Exception:
-        logger.exception("Failed to send consultation-start WhatsApp notification for appointment %s", appointment_id)
+        logger.exception(
+            "Failed to send consultation-start WhatsApp notification for appointment %s",
+            appointment_id,
+        )
+
 
 def _notify_next_patient_to_be_ready(appointment_id, hospital_id):
     """Notify the next patient in the queue for the same doctor that they are next."""
@@ -63,39 +69,40 @@ def _notify_next_patient_to_be_ready(appointment_id, hospital_id):
         appointment = get_appointment_by_id(appointment_id, hospital_id=hospital_id)
         if not appointment:
             return
-            
+
         doctor_name = appointment.get("doctor_name")
         appointment_date = appointment.get("appointment_date")
-        
+
         if not doctor_name or not appointment_date:
             return
-            
+
         today_appts = list_appointments(
             appointment_date=appointment_date,
             doctor_name=doctor_name,
-            hospital_id=hospital_id
+            hospital_id=hospital_id,
         )
-        
+
         # Filter patients who are waiting
         waiting_appts = [
-            a for a in today_appts 
+            a
+            for a in today_appts
             if a.get("status") in ("scheduled", "waiting", "checked_in")
         ]
         waiting_appts.sort(key=lambda x: x.get("token_no") or 999999)
-        
+
         if not waiting_appts:
             return
-            
+
         next_appt = waiting_appts[0]
         patient_id = next_appt.get("patient_id")
         phone = None
         if patient_id:
             patient = get_patient(patient_id, hospital_id=hospital_id)
             phone = patient.get("phone") if patient else None
-            
+
         if not phone:
             return
-            
+
         doctor = next_appt.get("doctor_name") or "your doctor"
         body = (
             f"Hi {next_appt.get('patient_name')}, please be ready! "
@@ -104,9 +111,13 @@ def _notify_next_patient_to_be_ready(appointment_id, hospital_id):
         )
         send_whatsapp_message(phone, body)
     except Exception:
-        logger.exception("Failed to send be-ready WhatsApp notification for next patient.")
+        logger.exception(
+            "Failed to send be-ready WhatsApp notification for next patient."
+        )
+
 
 # NOTE: Add your utils.database imports here after extraction.
+
 
 @appointments_bp.get("/api/appointments")
 @require_permissions("patients.read")
@@ -115,11 +126,14 @@ def appointments_list():
     status = request.args.get("status")
     visit_type = request.args.get("visit_type")
     doctor_name = request.args.get("doctor_name")
-    
+
     # Clinician Isolation
     doctor_name = None
     current_user = getattr(g, "current_user", {})
-    if current_user.get("access_role") == "clinician" or (current_user.get("job_role") or "").strip().lower() == "doctor":
+    if (
+        current_user.get("access_role") == "clinician"
+        or (current_user.get("job_role") or "").strip().lower() == "doctor"
+    ):
         doctor_name = current_user.get("full_name") or current_user.get("username")
 
     patient_id = request.args.get("patient_id")
@@ -139,7 +153,6 @@ def appointments_list():
     )
 
 
-
 @appointments_bp.post("/api/appointments")
 @require_permissions("patients.appointments.write")
 def appointments_create():
@@ -149,9 +162,11 @@ def appointments_create():
     )
     if validation_error:
         return validation_error
-        
-    appointment_id, token_no = create_appointment(payload, hospital_id=current_hospital_id())
-    
+
+    appointment_id, token_no = create_appointment(
+        payload, hospital_id=current_hospital_id()
+    )
+
     # Handle consultation fee invoice if provided
     consultation_fee = float(payload.get("consultation_fee") or 0)
     if consultation_fee > 0:
@@ -167,7 +182,9 @@ def appointments_create():
                 "advance_amount": 0,
                 "refunded_amount": 0,
                 "payment_status": "paid",
-                "created_by": g.current_user.get("username") if hasattr(g, "current_user") else "",
+                "created_by": (
+                    g.current_user.get("username") if hasattr(g, "current_user") else ""
+                ),
             },
             hospital_id=current_hospital_id(),
         )
@@ -178,8 +195,10 @@ def appointments_create():
                 "amount": consultation_fee,
                 "payment_mode": payment_mode,
                 "gateway_ref": None,
-                "created_by": g.current_user.get("username") if hasattr(g, "current_user") else ""
-            }
+                "created_by": (
+                    g.current_user.get("username") if hasattr(g, "current_user") else ""
+                ),
+            },
         )
 
     log_audit_event(
@@ -189,7 +208,6 @@ def appointments_create():
         {"patient_name": payload.get("patient_name"), "token_no": token_no},
     )
     return jsonify({"appointment_id": appointment_id, "token_no": token_no})
-
 
 
 @appointments_bp.put("/api/appointments/<int:appointment_id>")
@@ -211,7 +229,6 @@ def appointments_update(appointment_id):
     return jsonify({"status": "ok"})
 
 
-
 @appointments_bp.post("/api/appointments/razorpay/order")
 @require_permissions("patients.appointments.write")
 def appointments_razorpay_order():
@@ -227,7 +244,9 @@ def appointments_razorpay_order():
     if amount_paise is None:
         return jsonify({"error": "Amount must be greater than zero."}), 400
 
-    receipt = payload.get("receipt") or f"appt-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    receipt = (
+        payload.get("receipt") or f"appt-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    )
     notes = payload.get("notes") if isinstance(payload.get("notes"), dict) else {}
     notes = {
         **notes,
@@ -253,7 +272,6 @@ def appointments_razorpay_order():
             "receipt": order.get("receipt"),
         }
     )
-
 
 
 @appointments_bp.post("/api/appointments/razorpay/verify")
@@ -359,5 +377,3 @@ def appointments_razorpay_verify():
             "payment_id": payment_id,
         }
     )
-
-

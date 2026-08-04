@@ -22,6 +22,7 @@ pre-approved Content Template rather than a raw body string. Get templates
 approved in the Twilio console before relying on this in production; until
 then, sends outside a session window will fail and are logged, not raised.
 """
+
 import logging
 import os
 import re
@@ -43,6 +44,7 @@ def _get_client():
         return None
     try:
         from twilio.rest import Client
+
         _client = Client(account_sid, auth_token)
     except Exception:
         logger.exception("Failed to initialize Twilio client")
@@ -72,7 +74,9 @@ def send_whatsapp_message(to_phone: str, body: str, media_url: str = None) -> bo
     """Send a WhatsApp message; returns True only on a confirmed Twilio accept."""
     client = _get_client()
     if not client:
-        logger.info("WhatsApp not configured (missing Twilio credentials); skipping send.")
+        logger.info(
+            "WhatsApp not configured (missing Twilio credentials); skipping send."
+        )
         return False
 
     from_number = os.getenv("TWILIO_WHATSAPP_FROM")

@@ -4,18 +4,34 @@ import app
 from core.limiter import limiter
 
 from app import (
-    require_permissions, log_audit_event, rows_to_dicts, to_amount_paise, create_razorpay_order, 
-    require_razorpay_configured, current_hospital_id, normalize_payment_mode, validate_required_fields,
-    RAZORPAY_KEY_ID
+    require_permissions,
+    log_audit_event,
+    rows_to_dicts,
+    to_amount_paise,
+    create_razorpay_order,
+    require_razorpay_configured,
+    current_hospital_id,
+    normalize_payment_mode,
+    validate_required_fields,
+    RAZORPAY_KEY_ID,
 )
 from utils.database import (
-    create_invoice, update_invoice, list_invoices, record_invoice_payment,
-    delete_invoice, get_invoice_by_id, list_all_invoice_payments,
-    get_revenue_summary, list_insurance_claims, create_insurance_claim, update_insurance_claim,
-    delete_insurance_claim
+    create_invoice,
+    update_invoice,
+    list_invoices,
+    record_invoice_payment,
+    delete_invoice,
+    get_invoice_by_id,
+    list_all_invoice_payments,
+    get_revenue_summary,
+    list_insurance_claims,
+    create_insurance_claim,
+    update_insurance_claim,
+    delete_insurance_claim,
 )
 
-billing_bp = Blueprint('billing', __name__)
+billing_bp = Blueprint("billing", __name__)
+
 
 @billing_bp.get("/api/billing/invoices")
 @require_permissions("billing.read")
@@ -23,7 +39,15 @@ def billing_invoices():
     patient_id = request.args.get("patient_id")
     module = request.args.get("module")
     return jsonify(
-        {"invoices": rows_to_dicts(list_invoices(patient_id=patient_id, module=module, hospital_id=current_hospital_id()))}
+        {
+            "invoices": rows_to_dicts(
+                list_invoices(
+                    patient_id=patient_id,
+                    module=module,
+                    hospital_id=current_hospital_id(),
+                )
+            )
+        }
     )
 
 
@@ -31,9 +55,12 @@ def billing_invoices():
 @require_permissions("billing.read")
 def billing_payments():
     return jsonify(
-        {"payments": rows_to_dicts(list_all_invoice_payments(hospital_id=current_hospital_id()))}
+        {
+            "payments": rows_to_dicts(
+                list_all_invoice_payments(hospital_id=current_hospital_id())
+            )
+        }
     )
-
 
 
 @billing_bp.post("/api/billing/invoices")
@@ -72,7 +99,6 @@ def billing_create_invoice():
     return jsonify({"invoice_id": invoice_id, "invoice_no": invoice_no})
 
 
-
 @billing_bp.put("/api/billing/invoices/<int:invoice_id>")
 @require_permissions("billing.invoices.write")
 def billing_update_invoice(invoice_id):
@@ -86,7 +112,6 @@ def billing_update_invoice(invoice_id):
     return jsonify({"status": "ok"})
 
 
-
 @billing_bp.delete("/api/billing/invoices/<int:invoice_id>")
 @require_permissions("billing.invoices.write")
 def billing_delete_invoice(invoice_id):
@@ -97,7 +122,6 @@ def billing_delete_invoice(invoice_id):
         "delete", "billing_invoices", str(invoice_id), {"invoice_id": invoice_id}
     )
     return jsonify({"status": "ok"})
-
 
 
 @billing_bp.post("/api/billing/razorpay/order")
@@ -122,7 +146,10 @@ def billing_razorpay_order():
         return jsonify({"error": "invoice_id must be a valid number."}), 400
     if not get_invoice_by_id(invoice_id):
         return jsonify({"error": "Invoice not found"}), 404
-    receipt = payload.get("receipt") or f"bill-{invoice_id}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    receipt = (
+        payload.get("receipt")
+        or f"bill-{invoice_id}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    )
     notes = payload.get("notes") if isinstance(payload.get("notes"), dict) else {}
     notes = {
         **notes,
@@ -148,7 +175,6 @@ def billing_razorpay_order():
             "receipt": order.get("receipt"),
         }
     )
-
 
 
 @billing_bp.post("/api/billing/razorpay/verify")
@@ -212,7 +238,6 @@ def billing_razorpay_verify():
     return jsonify({"payment_id": payment_id})
 
 
-
 @billing_bp.post("/api/billing/invoices/<int:invoice_id>/payments")
 @require_permissions("billing.invoices.write")
 def billing_record_payment(invoice_id):
@@ -238,12 +263,10 @@ def billing_record_payment(invoice_id):
     return jsonify({"payment_id": payment_id})
 
 
-
 @billing_bp.get("/api/billing/revenue-summary")
 @require_permissions("billing.read")
 def billing_revenue_summary():
     return jsonify(get_revenue_summary(hospital_id=current_hospital_id()))
-
 
 
 @billing_bp.get("/api/billing/claims")
@@ -252,22 +275,31 @@ def billing_claims():
     invoice_id = request.args.get("invoice_id", type=int)
     status = request.args.get("status")
     return jsonify(
-        {"claims": rows_to_dicts(list_insurance_claims(invoice_id=invoice_id, status=status))}
+        {
+            "claims": rows_to_dicts(
+                list_insurance_claims(invoice_id=invoice_id, status=status)
+            )
+        }
     )
-
 
 
 @billing_bp.post("/api/billing/claims")
 @require_permissions("billing.claims.write")
 def billing_create_claim():
     payload = request.get_json(force=True)
-    validation_error = validate_required_fields(payload, ["invoice_id", "insurer_name", "claim_amount"])
+    validation_error = validate_required_fields(
+        payload, ["invoice_id", "insurer_name", "claim_amount"]
+    )
     if validation_error:
         return validation_error
     claim_id = create_insurance_claim(payload)
-    log_audit_event("create", "insurance_claims", str(claim_id), {"invoice_id": payload.get("invoice_id")})
+    log_audit_event(
+        "create",
+        "insurance_claims",
+        str(claim_id),
+        {"invoice_id": payload.get("invoice_id")},
+    )
     return jsonify({"claim_id": claim_id})
-
 
 
 @billing_bp.put("/api/billing/claims/<int:claim_id>")
@@ -281,7 +313,6 @@ def billing_update_claim(claim_id):
     return jsonify({"status": "ok"})
 
 
-
 @billing_bp.delete("/api/billing/claims/<int:claim_id>")
 @require_permissions("billing.claims.write")
 def billing_delete_claim(claim_id):
@@ -290,5 +321,3 @@ def billing_delete_claim(claim_id):
         return jsonify({"error": "Claim not found"}), 404
     log_audit_event("delete", "insurance_claims", str(claim_id), {"claim_id": claim_id})
     return jsonify({"status": "ok"})
-
-

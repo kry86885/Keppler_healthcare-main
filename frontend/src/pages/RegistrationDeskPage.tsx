@@ -11,14 +11,15 @@ import PatientAutocomplete from "../components/PatientAutocomplete";
 
 import AppointmentQueueCard from "../components/AppointmentQueueCard";
 import StatCard from "../components/StatCard";
-type RegistrationMode = "appointment-in" | "appointment-out" | "consent" | "insurance";
+type RegistrationMode =
+  "appointment-in" | "appointment-out" | "consent" | "insurance";
 
 type Props = {
   mode: RegistrationMode;
   selectedPatient: Patient | null;
   setNotice: Dispatch<SetStateAction<Notice | null>>;
   onNavigate?: (page: string, extraData?: any) => void;
-  prefillData?: { doctorName?: string, department?: string } | null;
+  prefillData?: { doctorName?: string; department?: string } | null;
 };
 
 type Department = {
@@ -80,7 +81,13 @@ function patientFullName(patient: Patient | null) {
   return `${patient?.name || ""} ${patient?.middle_name || ""} ${patient?.last_name || ""}`.trim();
 }
 
-export default function RegistrationDeskPage({ mode, selectedPatient, setNotice, onNavigate, prefillData }: Props) {
+export default function RegistrationDeskPage({
+  mode,
+  selectedPatient,
+  setNotice,
+  onNavigate,
+  prefillData,
+}: Props) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [savingAppointment, setSavingAppointment] = useState(false);
@@ -91,25 +98,42 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
   const [savingDepartment, setSavingDepartment] = useState(false);
 
   const [doctorSuggestions, setDoctorSuggestions] = useState<string[]>([]);
-  const [doctors, setDoctors] = useState<{ doctor_name?: string | null, department?: string | null, consultation_fee?: string | number, status?: string | null }[]>([]);
+  const [doctors, setDoctors] = useState<
+    {
+      doctor_name?: string | null;
+      department?: string | null;
+      consultation_fee?: string | number;
+      status?: string | null;
+    }[]
+  >([]);
 
   const [consents, setConsents] = useState<ConsentRecord[]>([]);
   const [insuranceChecks, setInsuranceChecks] = useState<InsuranceRecord[]>([]);
   const [savingConsent, setSavingConsent] = useState(false);
   const [savingInsurance, setSavingInsurance] = useState(false);
   const [editingConsentId, setEditingConsentId] = useState<number | null>(null);
-  const [editingInsuranceId, setEditingInsuranceId] = useState<number | null>(null);
+  const [editingInsuranceId, setEditingInsuranceId] = useState<number | null>(
+    null,
+  );
 
-  const [appointmentForm, setAppointmentForm] = useState({ ...DEFAULT_APPOINTMENT_FORM });
+  const [appointmentForm, setAppointmentForm] = useState({
+    ...DEFAULT_APPOINTMENT_FORM,
+  });
   const [consentForm, setConsentForm] = useState({ ...DEFAULT_CONSENT_FORM });
-  const [insuranceForm, setInsuranceForm] = useState({ ...DEFAULT_INSURANCE_FORM });
+  const [insuranceForm, setInsuranceForm] = useState({
+    ...DEFAULT_INSURANCE_FORM,
+  });
 
   useEffect(() => {
     if (prefillData) {
-      setAppointmentForm(prev => {
+      setAppointmentForm((prev) => {
         let nextFee = prev.consultation_fee;
         if (doctors.length > 0 && prefillData.doctorName) {
-          const doc = doctors.find(d => (d.doctor_name || "").toLowerCase() === (prefillData.doctorName || "").toLowerCase());
+          const doc = doctors.find(
+            (d) =>
+              (d.doctor_name || "").toLowerCase() ===
+              (prefillData.doctorName || "").toLowerCase(),
+          );
           if (doc && doc.consultation_fee != null) {
             nextFee = String(doc.consultation_fee);
           }
@@ -118,7 +142,7 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
           ...prev,
           department: prefillData.department || prev.department,
           doctor_name: prefillData.doctorName || prev.doctor_name,
-          consultation_fee: nextFee
+          consultation_fee: nextFee,
         };
       });
     }
@@ -126,16 +150,25 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
 
   const [symptomsText, setSymptomsText] = useState("");
   const [triageLoading, setTriageLoading] = useState(false);
-  const [triageResult, setTriageResult] = useState<{ urgency?: string; reasoning?: string } | null>(null);
+  const [triageResult, setTriageResult] = useState<{
+    urgency?: string;
+    reasoning?: string;
+  } | null>(null);
 
   const loadAppointments = async () => {
     setAppointmentsLoading(true);
     try {
-      const today = new Date().toLocaleDateString('en-CA');
-      const data = await apiFetch<{ appointments?: Appointment[] }>(`/api/appointments?date=${today}`);
+      const today = new Date().toLocaleDateString("en-CA");
+      const data = await apiFetch<{ appointments?: Appointment[] }>(
+        `/api/appointments?date=${today}`,
+      );
       setAppointments(data.appointments || []);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load appointments.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to load appointments.",
+      );
     } finally {
       setAppointmentsLoading(false);
     }
@@ -143,23 +176,38 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
 
   const loadDepartmentOptions = async () => {
     try {
-      const data = await apiFetch<{ departments?: Department[] }>("/api/registration/departments");
+      const data = await apiFetch<{ departments?: Department[] }>(
+        "/api/registration/departments",
+      );
       setDepartments(data.departments || []);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load departments.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to load departments.",
+      );
     }
   };
 
   const loadDoctorSuggestions = async () => {
     try {
-      const doctorsData = await apiFetch<{ doctors?: { doctor_name?: string | null, department?: string | null, consultation_fee?: string | number, status?: string | null }[] }>("/api/op/doctors");
+      const doctorsData = await apiFetch<{
+        doctors?: {
+          doctor_name?: string | null;
+          department?: string | null;
+          consultation_fee?: string | number;
+          status?: string | null;
+        }[];
+      }>("/api/op/doctors");
       setDoctors(doctorsData.doctors || []);
       const names = new Set<string>();
       (doctorsData.doctors || []).forEach((row) => {
         const value = (row.doctor_name || "").trim();
         if (value) names.add(value);
       });
-      setDoctorSuggestions(Array.from(names).sort((a, b) => a.localeCompare(b)));
+      setDoctorSuggestions(
+        Array.from(names).sort((a, b) => a.localeCompare(b)),
+      );
     } catch {
       setDoctorSuggestions([]);
       setDoctors([]);
@@ -170,49 +218,73 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
     setAppointmentForm((prev) => {
       const safeDept = (dept || "").trim().toLowerCase();
       // Match case-insensitively against departments list and doctors list, fallback to fuzzy substring match
-      let matchedDeptObj = departments.find(d => (d.department_name || "").trim().toLowerCase() === safeDept);
+      let matchedDeptObj = departments.find(
+        (d) => (d.department_name || "").trim().toLowerCase() === safeDept,
+      );
       if (!matchedDeptObj) {
-        matchedDeptObj = departments.find(d => {
+        matchedDeptObj = departments.find((d) => {
           const dbName = (d.department_name || "").trim().toLowerCase();
           return dbName.includes(safeDept) || safeDept.includes(dbName);
         });
       }
 
-      let matchedDocDept = doctors.find(d => (d.department || "").trim().toLowerCase() === safeDept);
+      let matchedDocDept = doctors.find(
+        (d) => (d.department || "").trim().toLowerCase() === safeDept,
+      );
       if (!matchedDocDept) {
-        matchedDocDept = doctors.find(d => {
+        matchedDocDept = doctors.find((d) => {
           const dbName = (d.department || "").trim().toLowerCase();
           return dbName.includes(safeDept) || safeDept.includes(dbName);
         });
       }
 
-      const targetDeptName = matchedDeptObj ? matchedDeptObj.department_name : (matchedDocDept?.department || dept);
+      const targetDeptName = matchedDeptObj
+        ? matchedDeptObj.department_name
+        : matchedDocDept?.department || dept;
 
       let nextDoctor = prev.doctor_name;
       let nextFee = prev.consultation_fee;
 
       if (targetDeptName && doctors.length > 0) {
         // Find doctors belonging to target department (case-insensitive)
-        const inDeptDocs = doctors.filter(d => (d.department || "").toLowerCase() === targetDeptName.toLowerCase());
-        const isCurrentDoctorInDept = inDeptDocs.some(d => (d.doctor_name || "").toLowerCase() === (prev.doctor_name || "").toLowerCase());
+        const inDeptDocs = doctors.filter(
+          (d) =>
+            (d.department || "").toLowerCase() === targetDeptName.toLowerCase(),
+        );
+        const isCurrentDoctorInDept = inDeptDocs.some(
+          (d) =>
+            (d.doctor_name || "").toLowerCase() ===
+            (prev.doctor_name || "").toLowerCase(),
+        );
 
         if (!isCurrentDoctorInDept && inDeptDocs.length > 0) {
-          const availableDocs = inDeptDocs.filter(d => d.status === "available");
-          const targetDoc = availableDocs.length > 0 ? availableDocs[0] : inDeptDocs[0];
-          
+          const availableDocs = inDeptDocs.filter(
+            (d) => d.status === "available",
+          );
+          const targetDoc =
+            availableDocs.length > 0 ? availableDocs[0] : inDeptDocs[0];
+
           if (targetDoc) {
             nextDoctor = targetDoc.doctor_name || "";
-            nextFee = targetDoc.consultation_fee != null ? String(targetDoc.consultation_fee) : "0";
+            nextFee =
+              targetDoc.consultation_fee != null
+                ? String(targetDoc.consultation_fee)
+                : "0";
           }
         } else if (inDeptDocs.length === 0 && dept !== "General") {
-          // If the AI or user selected a department that has no doctors, 
+          // If the AI or user selected a department that has no doctors,
           // leave the doctor field blank so they can type a guest doctor name.
           nextDoctor = "";
           nextFee = "0";
         }
       }
 
-      return { ...prev, department: targetDeptName || "General", doctor_name: nextDoctor, consultation_fee: nextFee };
+      return {
+        ...prev,
+        department: targetDeptName || "General",
+        doctor_name: nextDoctor,
+        consultation_fee: nextFee,
+      };
     });
   };
 
@@ -225,39 +297,61 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
       if (docName && doctors.length > 0) {
         const cleanDocName = docName.trim().toLowerCase();
         // 1. Try exact match
-        let foundDoc = doctors.find(d => (d.doctor_name || "").trim().toLowerCase() === cleanDocName);
-        
+        let foundDoc = doctors.find(
+          (d) => (d.doctor_name || "").trim().toLowerCase() === cleanDocName,
+        );
+
         // 2. Try substring match (e.g. "Emily Chen" matches "Dr. Emily Chen")
         if (!foundDoc) {
-          foundDoc = doctors.find(d => {
+          foundDoc = doctors.find((d) => {
             const dbName = (d.doctor_name || "").trim().toLowerCase();
-            return dbName.includes(cleanDocName) || cleanDocName.includes(dbName);
+            return (
+              dbName.includes(cleanDocName) || cleanDocName.includes(dbName)
+            );
           });
         }
 
         if (foundDoc) {
           targetDocName = foundDoc.doctor_name || docName;
           nextDept = foundDoc.department || prev.department;
-          nextFee = foundDoc.consultation_fee != null ? String(foundDoc.consultation_fee) : prev.consultation_fee;
+          nextFee =
+            foundDoc.consultation_fee != null
+              ? String(foundDoc.consultation_fee)
+              : prev.consultation_fee;
         }
       }
 
-      return { ...prev, doctor_name: targetDocName, department: nextDept, consultation_fee: nextFee };
+      return {
+        ...prev,
+        doctor_name: targetDocName,
+        department: nextDept,
+        consultation_fee: nextFee,
+      };
     });
   };
 
   const loadRegistrationOps = async () => {
     try {
       const patientId = selectedPatient?.patient_id || "";
-      const suffix = patientId ? `?patient_id=${encodeURIComponent(patientId)}` : "";
+      const suffix = patientId
+        ? `?patient_id=${encodeURIComponent(patientId)}`
+        : "";
       const [consentData, insuranceData] = await Promise.all([
-        apiFetch<{ consents?: ConsentRecord[] }>(`/api/registration/consents${suffix}`),
-        apiFetch<{ verifications?: InsuranceRecord[] }>(`/api/registration/insurance${suffix}`),
+        apiFetch<{ consents?: ConsentRecord[] }>(
+          `/api/registration/consents${suffix}`,
+        ),
+        apiFetch<{ verifications?: InsuranceRecord[] }>(
+          `/api/registration/insurance${suffix}`,
+        ),
       ]);
       setConsents(consentData.consents || []);
       setInsuranceChecks(insuranceData.verifications || []);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load registration records.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to load registration records.",
+      );
     }
   };
 
@@ -276,7 +370,10 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
 
   const handleAITriage = async () => {
     if (!symptomsText.trim()) {
-      setNotice({ type: "warning", message: "Please enter patient symptoms first." });
+      setNotice({
+        type: "warning",
+        message: "Please enter patient symptoms first.",
+      });
       return;
     }
     setTriageLoading(true);
@@ -285,17 +382,30 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
       const availableDepartments = Array.from(
         new Set([
           ...departments.map((d) => d.department_name),
-          ...doctors.map((doc) => doc.department)
-        ])
+          ...doctors.map((doc) => doc.department),
+        ]),
       ).filter(Boolean) as string[];
 
       const availableDoctors = Array.from(
-        new Set(doctors.map((doc) => `${doc.doctor_name} (${doc.department || 'General'})`))
+        new Set(
+          doctors.map(
+            (doc) => `${doc.doctor_name} (${doc.department || "General"})`,
+          ),
+        ),
       ).filter(Boolean) as string[];
 
-      const res = await apiFetch<{ department?: string; urgency?: string; reasoning?: string; doctor?: string }>("/api/symptom-ai/triage", {
+      const res = await apiFetch<{
+        department?: string;
+        urgency?: string;
+        reasoning?: string;
+        doctor?: string;
+      }>("/api/symptom-ai/triage", {
         method: "POST",
-        body: JSON.stringify({ symptoms: symptomsText, available_departments: availableDepartments, available_doctors: availableDoctors }),
+        body: JSON.stringify({
+          symptoms: symptomsText,
+          available_departments: availableDepartments,
+          available_doctors: availableDoctors,
+        }),
       });
       if (res.department) {
         handleDepartmentChange(res.department);
@@ -305,7 +415,11 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
       }
       setTriageResult({ urgency: res.urgency, reasoning: res.reasoning });
     } catch (error) {
-      reportError(setNotice, error as { message?: string }, "Unable to get AI triage recommendation.");
+      reportError(
+        setNotice,
+        error as { message?: string },
+        "Unable to get AI triage recommendation.",
+      );
     } finally {
       setTriageLoading(false);
     }
@@ -313,11 +427,16 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
 
   const ensureRazorpayConfigured = async () => {
     try {
-      const config = await apiFetch<{ configured?: boolean }>("/api/payments/razorpay/config");
+      const config = await apiFetch<{ configured?: boolean }>(
+        "/api/payments/razorpay/config",
+      );
       const configured = config.configured !== false;
       setIsRazorpayReady(configured);
       if (!configured) {
-        setNotice({ type: "warning", message: "Razorpay is not configured. Add keys in backend .env." });
+        setNotice({
+          type: "warning",
+          message: "Razorpay is not configured. Add keys in backend .env.",
+        });
         return false;
       }
       return true;
@@ -353,28 +472,46 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
     }
     setSavingDepartment(true);
     try {
-      const data = await apiFetch<{ department_id: number; department_name?: string; already_exists?: boolean }>("/api/registration/departments", {
+      const data = await apiFetch<{
+        department_id: number;
+        department_name?: string;
+        already_exists?: boolean;
+      }>("/api/registration/departments", {
         method: "POST",
         body: JSON.stringify({ department_name: departmentName }),
       });
       setDepartmentInput("");
       await loadDepartmentOptions();
       if (data.already_exists) {
-        setNotice({ type: "warning", message: `Department ${data.department_name || departmentName} already exists.` });
+        setNotice({
+          type: "warning",
+          message: `Department ${data.department_name || departmentName} already exists.`,
+        });
       } else {
-        setNotice({ type: "success", message: `Department ${departmentName} added.` });
+        setNotice({
+          type: "success",
+          message: `Department ${departmentName} added.`,
+        });
       }
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to add department.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to add department.",
+      );
     } finally {
       setSavingDepartment(false);
     }
   };
 
   const handleCreateAppointment = async () => {
-    const patientName = appointmentForm.patient_name.trim() || patientFullName(selectedPatient);
+    const patientName =
+      appointmentForm.patient_name.trim() || patientFullName(selectedPatient);
     if (!patientName || !appointmentForm.appointment_date) {
-      setNotice({ type: "warning", message: "Patient name and appointment date/time are required." });
+      setNotice({
+        type: "warning",
+        message: "Patient name and appointment date/time are required.",
+      });
       return;
     }
     setSavingAppointment(true);
@@ -382,7 +519,10 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
       const data = await apiFetch<{ token_no: number }>("/api/appointments", {
         method: "POST",
         body: JSON.stringify({
-          patient_id: appointmentForm.patient_id.trim() || selectedPatient?.patient_id || undefined,
+          patient_id:
+            appointmentForm.patient_id.trim() ||
+            selectedPatient?.patient_id ||
+            undefined,
           patient_name: patientName,
           visit_type: appointmentForm.visit_type,
           department: appointmentForm.department.trim() || undefined,
@@ -403,10 +543,17 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
       }));
       await loadAppointments();
       await loadDoctorSuggestions();
-      setNotice({ type: "success", message: `Appointment scheduled. Token #${data.token_no}. Redirecting to queue...` });
+      setNotice({
+        type: "success",
+        message: `Appointment scheduled. Token #${data.token_no}. Redirecting to queue...`,
+      });
       onNavigate?.("queue");
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to schedule appointment.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to schedule appointment.",
+      );
     } finally {
       setSavingAppointment(false);
     }
@@ -416,19 +563,30 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
     if (!(await ensureRazorpayConfigured())) {
       return;
     }
-    const patientName = appointmentForm.patient_name.trim() || patientFullName(selectedPatient);
+    const patientName =
+      appointmentForm.patient_name.trim() || patientFullName(selectedPatient);
     if (!patientName || !appointmentForm.appointment_date) {
-      setNotice({ type: "warning", message: "Patient name and appointment date/time are required." });
+      setNotice({
+        type: "warning",
+        message: "Patient name and appointment date/time are required.",
+      });
       return;
     }
     const consultationFee = Number(appointmentForm.consultation_fee) || 0;
     if (consultationFee <= 0) {
-      setNotice({ type: "warning", message: "Consultation fee must be greater than zero for Razorpay payment." });
+      setNotice({
+        type: "warning",
+        message:
+          "Consultation fee must be greater than zero for Razorpay payment.",
+      });
       return;
     }
 
     const appointmentPayload = {
-      patient_id: appointmentForm.patient_id.trim() || selectedPatient?.patient_id || undefined,
+      patient_id:
+        appointmentForm.patient_id.trim() ||
+        selectedPatient?.patient_id ||
+        undefined,
       patient_name: patientName,
       visit_type: appointmentForm.visit_type,
       department: appointmentForm.department.trim() || undefined,
@@ -474,17 +632,20 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
         },
       });
 
-      const verification = await apiFetch<{ token_no: number }>("/api/appointments/razorpay/verify", {
-        method: "POST",
-        body: JSON.stringify({
-          amount: consultationFee,
-          payment_mode: appointmentForm.payment_mode,
-          appointment: appointmentPayload,
-          razorpay_order_id: paymentResult.razorpay_order_id,
-          razorpay_payment_id: paymentResult.razorpay_payment_id,
-          razorpay_signature: paymentResult.razorpay_signature,
-        }),
-      });
+      const verification = await apiFetch<{ token_no: number }>(
+        "/api/appointments/razorpay/verify",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            amount: consultationFee,
+            payment_mode: appointmentForm.payment_mode,
+            appointment: appointmentPayload,
+            razorpay_order_id: paymentResult.razorpay_order_id,
+            razorpay_payment_id: paymentResult.razorpay_payment_id,
+            razorpay_signature: paymentResult.razorpay_signature,
+          }),
+        },
+      );
 
       setAppointmentForm((prev) => ({
         ...DEFAULT_APPOINTMENT_FORM,
@@ -496,20 +657,33 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
       }));
       await loadAppointments();
       await loadDoctorSuggestions();
-      setNotice({ type: "success", message: `Appointment scheduled with Razorpay. Token #${verification.token_no}. Redirecting to queue...` });
+      setNotice({
+        type: "success",
+        message: `Appointment scheduled with Razorpay. Token #${verification.token_no}. Redirecting to queue...`,
+      });
       onNavigate?.("queue");
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to schedule appointment via Razorpay.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to schedule appointment via Razorpay.",
+      );
     } finally {
       setSavingAppointment(false);
     }
   };
 
-  const updateAppointmentStatus = async (appointmentId: number, status: string) => {
+  const updateAppointmentStatus = async (
+    appointmentId: number,
+    status: string,
+  ) => {
     try {
       await putAppointmentStatus(appointmentId, status);
       await loadAppointments();
-      setNotice({ type: "success", message: `Token status updated to ${status.replace("_", " ")}.` });
+      setNotice({
+        type: "success",
+        message: `Token status updated to ${status.replace("_", " ")}.`,
+      });
       // Starting the visit hands the patient off to the doctor's consultation
       // desk; "completed" is only reachable from the appointment-out desk
       // itself, so there's nowhere further to send the operator for that one.
@@ -517,27 +691,42 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
         onNavigate?.("doctor-prescription");
       }
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to update appointment status.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to update appointment status.",
+      );
     }
   };
 
   const handleSaveConsent = async () => {
-    const patientName = consentForm.patient_name.trim() || patientFullName(selectedPatient);
+    const patientName =
+      consentForm.patient_name.trim() || patientFullName(selectedPatient);
     if (!patientName || !consentForm.signed_by.trim()) {
-      setNotice({ type: "warning", message: "Patient name and signer are required for consent." });
+      setNotice({
+        type: "warning",
+        message: "Patient name and signer are required for consent.",
+      });
       return;
     }
     setSavingConsent(true);
     try {
       const body = JSON.stringify({
-        patient_id: consentForm.patient_id.trim() || selectedPatient?.patient_id || undefined,
+        patient_id:
+          consentForm.patient_id.trim() ||
+          selectedPatient?.patient_id ||
+          undefined,
         patient_name: patientName,
         consent_type: consentForm.consent_type,
         signed_by: consentForm.signed_by.trim(),
-        relation_to_patient: consentForm.relation_to_patient.trim() || undefined,
+        relation_to_patient:
+          consentForm.relation_to_patient.trim() || undefined,
       });
       if (editingConsentId != null) {
-        await apiFetch(`/api/registration/consents/${editingConsentId}`, { method: "PUT", body });
+        await apiFetch(`/api/registration/consents/${editingConsentId}`, {
+          method: "PUT",
+          body,
+        });
       } else {
         await apiFetch("/api/registration/consents", { method: "POST", body });
       }
@@ -548,9 +737,19 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
       });
       setEditingConsentId(null);
       await loadRegistrationOps();
-      setNotice({ type: "success", message: editingConsentId != null ? "Consent updated." : "Digital consent recorded." });
+      setNotice({
+        type: "success",
+        message:
+          editingConsentId != null
+            ? "Consent updated."
+            : "Digital consent recorded.",
+      });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to save consent.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to save consent.",
+      );
     } finally {
       setSavingConsent(false);
     }
@@ -577,15 +776,23 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
   };
 
   const handleSaveInsuranceVerification = async () => {
-    const patientName = insuranceForm.patient_name.trim() || patientFullName(selectedPatient);
+    const patientName =
+      insuranceForm.patient_name.trim() || patientFullName(selectedPatient);
     if (!patientName || !insuranceForm.insurer_name.trim()) {
-      setNotice({ type: "warning", message: "Patient name and insurer are required for insurance verification." });
+      setNotice({
+        type: "warning",
+        message:
+          "Patient name and insurer are required for insurance verification.",
+      });
       return;
     }
     setSavingInsurance(true);
     try {
       const body = JSON.stringify({
-        patient_id: insuranceForm.patient_id.trim() || selectedPatient?.patient_id || undefined,
+        patient_id:
+          insuranceForm.patient_id.trim() ||
+          selectedPatient?.patient_id ||
+          undefined,
         patient_name: patientName,
         insurer_name: insuranceForm.insurer_name.trim(),
         policy_number: insuranceForm.policy_number.trim() || undefined,
@@ -594,7 +801,10 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
         coverage_notes: insuranceForm.coverage_notes.trim() || undefined,
       });
       if (editingInsuranceId != null) {
-        await apiFetch(`/api/registration/insurance/${editingInsuranceId}`, { method: "PUT", body });
+        await apiFetch(`/api/registration/insurance/${editingInsuranceId}`, {
+          method: "PUT",
+          body,
+        });
       } else {
         await apiFetch("/api/registration/insurance", { method: "POST", body });
       }
@@ -605,9 +815,19 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
       });
       setEditingInsuranceId(null);
       await loadRegistrationOps();
-      setNotice({ type: "success", message: editingInsuranceId != null ? "Insurance verification updated." : "Insurance verification saved." });
+      setNotice({
+        type: "success",
+        message:
+          editingInsuranceId != null
+            ? "Insurance verification updated."
+            : "Insurance verification saved.",
+      });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to save insurance verification.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to save insurance verification.",
+      );
     } finally {
       setSavingInsurance(false);
     }
@@ -636,27 +856,33 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
   };
 
   const appointmentInQueue = useMemo(
-    () => appointments.filter((item) => ["scheduled", "checked_in", "in_consultation"].includes(item.status)),
-    [appointments]
+    () =>
+      appointments.filter((item) =>
+        ["scheduled", "checked_in", "in_consultation"].includes(item.status),
+      ),
+    [appointments],
   );
 
   const appointmentOutActiveQueue = useMemo(
-    () => appointments.filter((item) => ["checked_in", "in_consultation"].includes(item.status)),
-    [appointments]
+    () =>
+      appointments.filter((item) =>
+        ["checked_in", "in_consultation"].includes(item.status),
+      ),
+    [appointments],
   );
 
   const appointmentOutCompletedQueue = useMemo(
     () => appointments.filter((item) => item.status === "completed"),
-    [appointments]
+    [appointments],
   );
 
   const allDepartments = useMemo(() => {
     const map = new Map<string, string>();
-    departments.forEach(d => {
+    departments.forEach((d) => {
       const name = (d.department_name || "").trim();
       if (name) map.set(name.toLowerCase(), name);
     });
-    doctors.forEach(d => {
+    doctors.forEach((d) => {
       const name = (d.department || "").trim();
       if (name && !map.has(name.toLowerCase())) {
         map.set(name.toLowerCase(), name);
@@ -674,7 +900,12 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               Patient Name
               <Input
                 value={consentForm.patient_name}
-                onChange={(event) => setConsentForm((prev) => ({ ...prev, patient_name: event.target.value }))}
+                onChange={(event) =>
+                  setConsentForm((prev) => ({
+                    ...prev,
+                    patient_name: event.target.value,
+                  }))
+                }
                 placeholder="Patient or guardian context"
               />
             </Label>
@@ -682,7 +913,12 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               Consent Type
               <Select
                 value={consentForm.consent_type}
-                onChange={(event) => setConsentForm((prev) => ({ ...prev, consent_type: event.target.value }))}
+                onChange={(event) =>
+                  setConsentForm((prev) => ({
+                    ...prev,
+                    consent_type: event.target.value,
+                  }))
+                }
               >
                 <option value="general">General</option>
                 <option value="procedure">Procedure</option>
@@ -694,7 +930,12 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               Signed By
               <Input
                 value={consentForm.signed_by}
-                onChange={(event) => setConsentForm((prev) => ({ ...prev, signed_by: event.target.value }))}
+                onChange={(event) =>
+                  setConsentForm((prev) => ({
+                    ...prev,
+                    signed_by: event.target.value,
+                  }))
+                }
                 placeholder="Patient / Guardian"
               />
             </Label>
@@ -702,27 +943,56 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               Relation
               <Input
                 value={consentForm.relation_to_patient}
-                onChange={(event) => setConsentForm((prev) => ({ ...prev, relation_to_patient: event.target.value }))}
+                onChange={(event) =>
+                  setConsentForm((prev) => ({
+                    ...prev,
+                    relation_to_patient: event.target.value,
+                  }))
+                }
                 placeholder="Self / Spouse / Parent"
               />
             </Label>
           </div>
           <div className="form-actions">
-            <Button variant="secondary" type="button" onClick={() => void handleSaveConsent()} disabled={savingConsent}>
-              {savingConsent ? "Saving Consent..." : editingConsentId != null ? "Update Consent" : "Save Consent"}
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => void handleSaveConsent()}
+              disabled={savingConsent}
+            >
+              {savingConsent
+                ? "Saving Consent..."
+                : editingConsentId != null
+                  ? "Update Consent"
+                  : "Save Consent"}
             </Button>
             {editingConsentId != null ? (
-              <Button variant="ghost" type="button" onClick={handleCancelConsentEdit} disabled={savingConsent}>
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={handleCancelConsentEdit}
+                disabled={savingConsent}
+              >
                 Cancel Edit
               </Button>
             ) : null}
           </div>
           {consents.slice(0, 10).map((consent) => (
-            <div key={consent.id} className="module-inline-actions" style={{ justifyContent: "space-between" }}>
+            <div
+              key={consent.id}
+              className="module-inline-actions"
+              style={{ justifyContent: "space-between" }}
+            >
               <p className="muted">
-                {consent.patient_name} · {consent.consent_type} · {consent.signed_by}
+                {consent.patient_name} · {consent.consent_type} ·{" "}
+                {consent.signed_by}
               </p>
-              <Button variant="ghost" size="sm" type="button" onClick={() => handleEditConsent(consent)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                onClick={() => handleEditConsent(consent)}
+              >
                 Edit
               </Button>
             </div>
@@ -741,7 +1011,12 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               Patient Name
               <Input
                 value={insuranceForm.patient_name}
-                onChange={(event) => setInsuranceForm((prev) => ({ ...prev, patient_name: event.target.value }))}
+                onChange={(event) =>
+                  setInsuranceForm((prev) => ({
+                    ...prev,
+                    patient_name: event.target.value,
+                  }))
+                }
                 placeholder="Patient name"
               />
             </Label>
@@ -749,7 +1024,12 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               Insurer
               <Input
                 value={insuranceForm.insurer_name}
-                onChange={(event) => setInsuranceForm((prev) => ({ ...prev, insurer_name: event.target.value }))}
+                onChange={(event) =>
+                  setInsuranceForm((prev) => ({
+                    ...prev,
+                    insurer_name: event.target.value,
+                  }))
+                }
                 placeholder="Insurance provider"
               />
             </Label>
@@ -757,7 +1037,12 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               Policy Number
               <Input
                 value={insuranceForm.policy_number}
-                onChange={(event) => setInsuranceForm((prev) => ({ ...prev, policy_number: event.target.value }))}
+                onChange={(event) =>
+                  setInsuranceForm((prev) => ({
+                    ...prev,
+                    policy_number: event.target.value,
+                  }))
+                }
                 placeholder="Policy no."
               />
             </Label>
@@ -765,7 +1050,12 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               Member ID
               <Input
                 value={insuranceForm.member_id}
-                onChange={(event) => setInsuranceForm((prev) => ({ ...prev, member_id: event.target.value }))}
+                onChange={(event) =>
+                  setInsuranceForm((prev) => ({
+                    ...prev,
+                    member_id: event.target.value,
+                  }))
+                }
                 placeholder="Member ID"
               />
             </Label>
@@ -773,7 +1063,12 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               Status
               <Select
                 value={insuranceForm.verification_status}
-                onChange={(event) => setInsuranceForm((prev) => ({ ...prev, verification_status: event.target.value }))}
+                onChange={(event) =>
+                  setInsuranceForm((prev) => ({
+                    ...prev,
+                    verification_status: event.target.value,
+                  }))
+                }
               >
                 <option value="pending">Pending</option>
                 <option value="verified">Verified</option>
@@ -784,27 +1079,56 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               Coverage Notes
               <Textarea
                 value={insuranceForm.coverage_notes}
-                onChange={(event) => setInsuranceForm((prev) => ({ ...prev, coverage_notes: event.target.value }))}
+                onChange={(event) =>
+                  setInsuranceForm((prev) => ({
+                    ...prev,
+                    coverage_notes: event.target.value,
+                  }))
+                }
                 rows={2}
               />
             </Label>
           </div>
           <div className="form-actions">
-            <Button variant="secondary" type="button" onClick={() => void handleSaveInsuranceVerification()} disabled={savingInsurance}>
-              {savingInsurance ? "Saving Verification..." : editingInsuranceId != null ? "Update Verification" : "Save Verification"}
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => void handleSaveInsuranceVerification()}
+              disabled={savingInsurance}
+            >
+              {savingInsurance
+                ? "Saving Verification..."
+                : editingInsuranceId != null
+                  ? "Update Verification"
+                  : "Save Verification"}
             </Button>
             {editingInsuranceId != null ? (
-              <Button variant="ghost" type="button" onClick={handleCancelInsuranceEdit} disabled={savingInsurance}>
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={handleCancelInsuranceEdit}
+                disabled={savingInsurance}
+              >
                 Cancel Edit
               </Button>
             ) : null}
           </div>
           {insuranceChecks.slice(0, 10).map((check) => (
-            <div key={check.id} className="module-inline-actions" style={{ justifyContent: "space-between" }}>
+            <div
+              key={check.id}
+              className="module-inline-actions"
+              style={{ justifyContent: "space-between" }}
+            >
               <p className="muted">
-                {check.patient_name} · {check.insurer_name} · {check.verification_status}
+                {check.patient_name} · {check.insurer_name} ·{" "}
+                {check.verification_status}
               </p>
-              <Button variant="ghost" size="sm" type="button" onClick={() => handleEditInsurance(check)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                onClick={() => handleEditInsurance(check)}
+              >
                 Edit
               </Button>
             </div>
@@ -814,18 +1138,19 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
     );
   }
 
-  const queue = mode === "appointment-in" ? appointmentInQueue : appointmentOutActiveQueue;
+  const queue =
+    mode === "appointment-in" ? appointmentInQueue : appointmentOutActiveQueue;
 
   return (
     <section className="module-page">
-      
-
       {mode === "appointment-out" && (
         <div style={{ marginBottom: "1.5rem" }}>
-          <StatCard label="Completed Consultations Today" value={appointmentOutCompletedQueue.length} />
+          <StatCard
+            label="Completed Consultations Today"
+            value={appointmentOutCompletedQueue.length}
+          />
         </div>
       )}
-
 
       {mode === "appointment-in" ? (
         <div className="panel registration-desk-panel">
@@ -835,8 +1160,16 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               Patient ID
               <PatientAutocomplete
                 value={appointmentForm.patient_id}
-                onChange={(val) => setAppointmentForm((prev) => ({ ...prev, patient_id: val }))}
-                onSelect={(patient) => setAppointmentForm((prev) => ({ ...prev, patient_id: patient.patient_id, patient_name: patientFullName(patient) }))}
+                onChange={(val) =>
+                  setAppointmentForm((prev) => ({ ...prev, patient_id: val }))
+                }
+                onSelect={(patient) =>
+                  setAppointmentForm((prev) => ({
+                    ...prev,
+                    patient_id: patient.patient_id,
+                    patient_name: patientFullName(patient),
+                  }))
+                }
                 placeholder="Search by ID (last 4 digits)"
               />
             </Label>
@@ -844,8 +1177,16 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               Patient Name
               <PatientAutocomplete
                 value={appointmentForm.patient_name}
-                onChange={(val) => setAppointmentForm((prev) => ({ ...prev, patient_name: val }))}
-                onSelect={(patient) => setAppointmentForm((prev) => ({ ...prev, patient_id: patient.patient_id, patient_name: patientFullName(patient) }))}
+                onChange={(val) =>
+                  setAppointmentForm((prev) => ({ ...prev, patient_name: val }))
+                }
+                onSelect={(patient) =>
+                  setAppointmentForm((prev) => ({
+                    ...prev,
+                    patient_id: patient.patient_id,
+                    patient_name: patientFullName(patient),
+                  }))
+                }
                 placeholder="Walk-in or existing patient"
               />
             </Label>
@@ -853,7 +1194,12 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               Visit Type
               <Select
                 value={appointmentForm.visit_type}
-                onChange={(event) => setAppointmentForm((prev) => ({ ...prev, visit_type: event.target.value }))}
+                onChange={(event) =>
+                  setAppointmentForm((prev) => ({
+                    ...prev,
+                    visit_type: event.target.value,
+                  }))
+                }
               >
                 <option value="OP">OP</option>
                 <option value="IP">IP</option>
@@ -861,19 +1207,27 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
             </Label>
             <Label className="span-2">
               Patient Symptoms (AI Triage)
-              <div style={{ display: "flex", gap: "8px", flexDirection: "column" }}>
+              <div
+                style={{ display: "flex", gap: "8px", flexDirection: "column" }}
+              >
                 <Textarea
                   value={symptomsText}
                   onChange={(e) => setSymptomsText(e.target.value)}
                   placeholder="Describe patient symptoms here to auto-assign department..."
                   rows={2}
                 />
-                <Button variant="secondary" type="button" onClick={() => void handleAITriage()} disabled={triageLoading}>
+                <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={() => void handleAITriage()}
+                  disabled={triageLoading}
+                >
                   {triageLoading ? "Analyzing..." : "🪄 AI Triage"}
                 </Button>
                 {triageResult && (
                   <div className="notice success">
-                    <strong>Urgency:</strong> {triageResult.urgency}<br />
+                    <strong>Urgency:</strong> {triageResult.urgency}
+                    <br />
                     <strong>Reasoning:</strong> {triageResult.reasoning}
                   </div>
                 )}
@@ -912,7 +1266,12 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               <Input
                 type="datetime-local"
                 value={appointmentForm.appointment_date}
-                onChange={(event) => setAppointmentForm((prev) => ({ ...prev, appointment_date: event.target.value }))}
+                onChange={(event) =>
+                  setAppointmentForm((prev) => ({
+                    ...prev,
+                    appointment_date: event.target.value,
+                  }))
+                }
               />
             </Label>
             <Label>
@@ -921,7 +1280,12 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
                 type="number"
                 min={0}
                 value={appointmentForm.consultation_fee}
-                onChange={(event) => setAppointmentForm((prev) => ({ ...prev, consultation_fee: event.target.value }))}
+                onChange={(event) =>
+                  setAppointmentForm((prev) => ({
+                    ...prev,
+                    consultation_fee: event.target.value,
+                  }))
+                }
                 placeholder="Consultation amount"
               />
             </Label>
@@ -929,7 +1293,12 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               Payment Mode
               <Select
                 value={appointmentForm.payment_mode}
-                onChange={(event) => setAppointmentForm((prev) => ({ ...prev, payment_mode: event.target.value }))}
+                onChange={(event) =>
+                  setAppointmentForm((prev) => ({
+                    ...prev,
+                    payment_mode: event.target.value,
+                  }))
+                }
               >
                 <option value="upi">UPI</option>
                 <option value="card">Card</option>
@@ -941,75 +1310,149 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               Notes
               <Textarea
                 value={appointmentForm.notes}
-                onChange={(event) => setAppointmentForm((prev) => ({ ...prev, notes: event.target.value }))}
+                onChange={(event) =>
+                  setAppointmentForm((prev) => ({
+                    ...prev,
+                    notes: event.target.value,
+                  }))
+                }
                 rows={2}
               />
             </Label>
           </div>
           <div className="form-actions">
-            <Button variant="secondary" type="button" onClick={() => void handleCreateAppointment()} disabled={savingAppointment}>
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => void handleCreateAppointment()}
+              disabled={savingAppointment}
+            >
               {savingAppointment ? "Scheduling..." : "Schedule & Assign Token"}
             </Button>
-            <Button variant="primary" type="button" onClick={() => void handleCreateAppointmentWithRazorpay()} disabled={savingAppointment || !isRazorpayReady}>
-              {savingAppointment ? "Processing..." : "Pay via Razorpay & Schedule"}
+            <Button
+              variant="primary"
+              type="button"
+              onClick={() => void handleCreateAppointmentWithRazorpay()}
+              disabled={savingAppointment || !isRazorpayReady}
+            >
+              {savingAppointment
+                ? "Processing..."
+                : "Pay via Razorpay & Schedule"}
             </Button>
           </div>
-          {!isRazorpayReady ? <p className="muted">Razorpay payments are disabled until backend keys are configured.</p> : null}
+          {!isRazorpayReady ? (
+            <p className="muted">
+              Razorpay payments are disabled until backend keys are configured.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
-      {(mode === "appointment-in" || mode === "appointment-out") ? (
-      <div className="panel registration-desk-panel">
-        <h4>{mode === "appointment-in" ? "Appointment Queue (In)" : "Active Consultations"}</h4>
-        {appointmentsLoading ? <p className="muted">Loading queue...</p> : null}
-        {!appointmentsLoading && queue.length === 0 ? (
-          <div className="module-empty-state">
-            <span className="module-empty-state-icon">
-              <FiCalendar aria-hidden />
-            </span>
-            <p className="module-empty-state-title">No appointments found for today</p>
-            <p className="module-empty-state-hint">
-              {mode === "appointment-in"
-                ? "Schedule an appointment above to assign a token and send the patient to the queue."
-                : "Checked-in patients will appear here once they're ready to be marked out."}
-            </p>
-          </div>
-        ) : null}
-        {!appointmentsLoading && queue.length > 0 ? (
-          <div className="queue-card-list">
-            {queue.map((appointment) => (
-              <AppointmentQueueCard
-                key={appointment.id}
-                appointment={appointment}
-                actions={
-                  <>
-                    {mode === "appointment-in" && appointment.status === "scheduled" ? (
-                      <Button type="button" size="sm" onClick={() => void updateAppointmentStatus(appointment.id, "checked_in")}>
-                        Check In
-                      </Button>
-                    ) : null}
-                    {mode === "appointment-in" && appointment.status === "checked_in" ? (
-                      <Button type="button" size="sm" onClick={() => void updateAppointmentStatus(appointment.id, "in_consultation")}>
-                        Start Visit
-                      </Button>
-                    ) : null}
-                    {mode === "appointment-out" && (appointment.status === "checked_in" || appointment.status === "in_consultation") ? (
-                      <Button type="button" size="sm" variant="secondary" onClick={() => void updateAppointmentStatus(appointment.id, "completed")}>
-                        Complete
-                      </Button>
-                    ) : null}
-                    {(mode === "appointment-in" || mode === "appointment-out") && appointment.status !== "completed" && appointment.status !== "cancelled" ? (
-                      <Button type="button" size="sm" variant="ghost" onClick={() => void updateAppointmentStatus(appointment.id, "cancelled")}>
-                        Cancel
-                      </Button>
-                    ) : null}
-                  </>
-                }
-              />
-            ))}
-          </div>
-        ) : null}
-      </div>
+      {mode === "appointment-in" || mode === "appointment-out" ? (
+        <div className="panel registration-desk-panel">
+          <h4>
+            {mode === "appointment-in"
+              ? "Appointment Queue (In)"
+              : "Active Consultations"}
+          </h4>
+          {appointmentsLoading ? (
+            <p className="muted">Loading queue...</p>
+          ) : null}
+          {!appointmentsLoading && queue.length === 0 ? (
+            <div className="module-empty-state">
+              <span className="module-empty-state-icon">
+                <FiCalendar aria-hidden />
+              </span>
+              <p className="module-empty-state-title">
+                No appointments found for today
+              </p>
+              <p className="module-empty-state-hint">
+                {mode === "appointment-in"
+                  ? "Schedule an appointment above to assign a token and send the patient to the queue."
+                  : "Checked-in patients will appear here once they're ready to be marked out."}
+              </p>
+            </div>
+          ) : null}
+          {!appointmentsLoading && queue.length > 0 ? (
+            <div className="queue-card-list">
+              {queue.map((appointment) => (
+                <AppointmentQueueCard
+                  key={appointment.id}
+                  appointment={appointment}
+                  actions={
+                    <>
+                      {mode === "appointment-in" &&
+                      appointment.status === "scheduled" ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() =>
+                            void updateAppointmentStatus(
+                              appointment.id,
+                              "checked_in",
+                            )
+                          }
+                        >
+                          Check In
+                        </Button>
+                      ) : null}
+                      {mode === "appointment-in" &&
+                      appointment.status === "checked_in" ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() =>
+                            void updateAppointmentStatus(
+                              appointment.id,
+                              "in_consultation",
+                            )
+                          }
+                        >
+                          Start Visit
+                        </Button>
+                      ) : null}
+                      {mode === "appointment-out" &&
+                      (appointment.status === "checked_in" ||
+                        appointment.status === "in_consultation") ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() =>
+                            void updateAppointmentStatus(
+                              appointment.id,
+                              "completed",
+                            )
+                          }
+                        >
+                          Complete
+                        </Button>
+                      ) : null}
+                      {(mode === "appointment-in" ||
+                        mode === "appointment-out") &&
+                      appointment.status !== "completed" &&
+                      appointment.status !== "cancelled" ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            void updateAppointmentStatus(
+                              appointment.id,
+                              "cancelled",
+                            )
+                          }
+                        >
+                          Cancel
+                        </Button>
+                      ) : null}
+                    </>
+                  }
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {mode === "appointment-out" && (
@@ -1020,7 +1463,9 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
               <span className="module-empty-state-icon">
                 <FiCalendar aria-hidden />
               </span>
-              <p className="module-empty-state-title">No completed consultations today</p>
+              <p className="module-empty-state-title">
+                No completed consultations today
+              </p>
             </div>
           ) : (
             <div className="queue-card-list">

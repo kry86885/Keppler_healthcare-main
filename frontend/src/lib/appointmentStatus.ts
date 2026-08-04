@@ -1,4 +1,5 @@
-export type AppointmentStatusTone = "scheduled" | "checked-in" | "in-consultation" | "completed" | "cancelled";
+export type AppointmentStatusTone =
+  "scheduled" | "checked-in" | "in-consultation" | "completed" | "cancelled";
 
 type StatusMeta = {
   label: string;
@@ -14,7 +15,18 @@ const STATUS_META: Record<string, StatusMeta> = {
 };
 
 export function getAppointmentStatusMeta(status: string): StatusMeta {
-  return STATUS_META[status] || { label: status.replace(/_/g, " "), tone: "scheduled" };
+  return (
+    STATUS_META[status] || {
+      label: status.replace(/_/g, " "),
+      tone: "scheduled",
+    }
+  );
 }
 
-export const APPOINTMENT_STATUS_ORDER = ["scheduled", "checked_in", "in_consultation", "completed", "cancelled"];
+export const APPOINTMENT_STATUS_ORDER = [
+  "scheduled",
+  "checked_in",
+  "in_consultation",
+  "completed",
+  "cancelled",
+];

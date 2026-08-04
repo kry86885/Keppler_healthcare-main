@@ -1,36 +1,36 @@
-import React from 'react';
-import './Skeleton.css';
+import React from "react";
+import "./Skeleton.css";
 
 interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: 'text' | 'circular' | 'rectangular' | 'rounded';
+  variant?: "text" | "circular" | "rectangular" | "rounded";
   width?: string | number;
   height?: string | number;
-  animation?: 'pulse' | 'wave' | false;
+  animation?: "pulse" | "wave" | false;
 }
 
 export const Skeleton: React.FC<SkeletonProps> = ({
-  variant = 'text',
+  variant = "text",
   width,
   height,
-  animation = 'pulse',
-  className = '',
+  animation = "pulse",
+  className = "",
   style,
   ...props
 }) => {
   const classes = [
-    'skeleton',
+    "skeleton",
     `skeleton--${variant}`,
-    animation ? `skeleton--${animation}` : '',
-    className
-  ].filter(Boolean).join(' ');
+    animation ? `skeleton--${animation}` : "",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const inlineStyle = {
     width: width,
     height: height,
-    ...style
+    ...style,
   };
 
-  return (
-    <div className={classes} style={inlineStyle} {...props} />
-  );
+  return <div className={classes} style={inlineStyle} {...props} />;
 };

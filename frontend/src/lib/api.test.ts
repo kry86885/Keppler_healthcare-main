@@ -66,13 +66,24 @@ describe("apiFetch", () => {
 describe("reportError", () => {
   test("sets fallback notice for non-401 errors", () => {
     const setNotice = vi.fn();
-    reportError(setNotice, { status: 500, message: "Internal error" }, "Fallback");
-    expect(setNotice).toHaveBeenCalledWith({ type: "error", message: "Internal error" });
+    reportError(
+      setNotice,
+      { status: 500, message: "Internal error" },
+      "Fallback",
+    );
+    expect(setNotice).toHaveBeenCalledWith({
+      type: "error",
+      message: "Internal error",
+    });
   });
 
   test("does nothing for 401 errors", () => {
     const setNotice = vi.fn();
-    reportError(setNotice, { status: 401, message: "Unauthorized" }, "Fallback");
+    reportError(
+      setNotice,
+      { status: 401, message: "Unauthorized" },
+      "Fallback",
+    );
     expect(setNotice).not.toHaveBeenCalled();
   });
 });

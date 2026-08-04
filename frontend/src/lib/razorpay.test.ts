@@ -52,7 +52,7 @@ describe("razorpay helper", () => {
         name: "HospAI",
         description: "Dismiss",
         order_id: "order_dismiss",
-      })
+      }),
     ).rejects.toThrow("Razorpay checkout was closed.");
   });
 
@@ -62,13 +62,15 @@ describe("razorpay helper", () => {
     const originalCreateElement = document.createElement.bind(document);
     const scriptNodes: HTMLScriptElement[] = [];
 
-    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation(((tagName: string) => {
-      const node = originalCreateElement(tagName);
-      if (tagName.toLowerCase() === "script") {
-        scriptNodes.push(node as HTMLScriptElement);
-      }
-      return node;
-    }) as any);
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockImplementation(((tagName: string) => {
+        const node = originalCreateElement(tagName);
+        if (tagName.toLowerCase() === "script") {
+          scriptNodes.push(node as HTMLScriptElement);
+        }
+        return node;
+      }) as any);
 
     const loading = ensureRazorpayLoaded();
     expect(appendSpy).toHaveBeenCalled();

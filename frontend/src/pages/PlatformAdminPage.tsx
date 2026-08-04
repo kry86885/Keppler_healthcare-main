@@ -10,7 +10,8 @@ type Props = {
   onToggleHospitalAccess: (event: FormEvent<HTMLFormElement>) => void;
 };
 
-type AdminAction = "create-hospital" | "onboard-admin" | "reset-password" | "toggle-access";
+type AdminAction =
+  "create-hospital" | "onboard-admin" | "reset-password" | "toggle-access";
 
 const ACTIONS: { id: AdminAction; label: string }[] = [
   { id: "create-hospital", label: "Add Hospital" },
@@ -26,17 +27,23 @@ export default function PlatformAdminPage({
   onResetHospitalAdminPassword,
   onToggleHospitalAccess,
 }: Props) {
-  const [activeAction, setActiveAction] = useState<AdminAction>("create-hospital");
+  const [activeAction, setActiveAction] =
+    useState<AdminAction>("create-hospital");
 
   return (
     <div className="auth-page">
       <div className="auth-card platform-admin-card">
         <div className="brand brand-logo-full">
-          <img src="/logo.png" alt="HospAI - AI Driven Healthcare Optimization" />
+          <img
+            src="/logo.png"
+            alt="HospAI - AI Driven Healthcare Optimization"
+          />
         </div>
         <div className="auth-heading">
           <h1>Platform Admin Console</h1>
-          <p className="muted">Use platform onboarding credentials from backend `.env`.</p>
+          <p className="muted">
+            Use platform onboarding credentials from backend `.env`.
+          </p>
         </div>
 
         <Tabs role="tablist" aria-label="Platform admin actions">
@@ -56,15 +63,28 @@ export default function PlatformAdminPage({
           <form className="auth-form" onSubmit={onCreateHospital}>
             <Label>
               Platform Admin Username
-              <Input name="platform_admin_username" placeholder="platform-admin" required />
+              <Input
+                name="platform_admin_username"
+                placeholder="platform-admin"
+                required
+              />
             </Label>
             <Label>
               Platform Admin Password
-              <Input name="platform_admin_password" type="password" placeholder="••••••••" required />
+              <Input
+                name="platform_admin_password"
+                type="password"
+                placeholder="••••••••"
+                required
+              />
             </Label>
             <Label>
               Hospital Code
-              <Input name="hospital_code" defaultValue={initialHospitalCode} required />
+              <Input
+                name="hospital_code"
+                defaultValue={initialHospitalCode}
+                required
+              />
             </Label>
             <Label>
               Hospital Name
@@ -80,11 +100,20 @@ export default function PlatformAdminPage({
           <form className="auth-form" onSubmit={onSetupHospitalAdmin}>
             <Label>
               Platform Admin Username
-              <Input name="platform_admin_username" placeholder="platform-admin" required />
+              <Input
+                name="platform_admin_username"
+                placeholder="platform-admin"
+                required
+              />
             </Label>
             <Label>
               Platform Admin Password
-              <Input name="platform_admin_password" type="password" placeholder="••••••••" required />
+              <Input
+                name="platform_admin_password"
+                type="password"
+                placeholder="••••••••"
+                required
+              />
             </Label>
             <Label>
               Hospital Code
@@ -120,11 +149,20 @@ export default function PlatformAdminPage({
           <form className="auth-form" onSubmit={onResetHospitalAdminPassword}>
             <Label>
               Platform Admin Username
-              <Input name="platform_admin_username" placeholder="platform-admin" required />
+              <Input
+                name="platform_admin_username"
+                placeholder="platform-admin"
+                required
+              />
             </Label>
             <Label>
               Platform Admin Password
-              <Input name="platform_admin_password" type="password" placeholder="••••••••" required />
+              <Input
+                name="platform_admin_password"
+                type="password"
+                placeholder="••••••••"
+                required
+              />
             </Label>
             <Label>
               Hospital Code
@@ -148,11 +186,20 @@ export default function PlatformAdminPage({
           <form className="auth-form" onSubmit={onToggleHospitalAccess}>
             <Label>
               Platform Admin Username
-              <Input name="platform_admin_username" placeholder="platform-admin" required />
+              <Input
+                name="platform_admin_username"
+                placeholder="platform-admin"
+                required
+              />
             </Label>
             <Label>
               Platform Admin Password
-              <Input name="platform_admin_password" type="password" placeholder="••••••••" required />
+              <Input
+                name="platform_admin_password"
+                type="password"
+                placeholder="••••••••"
+                required
+              />
             </Label>
             <Label>
               Hospital Code

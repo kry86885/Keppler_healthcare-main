@@ -4,7 +4,13 @@ import uuid as uuid_lib
 from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 
-from .embeddings import generate_embedding, cosine_similarity, encode_vector, decode_vector, VLLM_EMBEDDING_MODEL
+from .embeddings import (
+    generate_embedding,
+    cosine_similarity,
+    encode_vector,
+    decode_vector,
+    VLLM_EMBEDDING_MODEL,
+)
 
 from dotenv import load_dotenv
 
@@ -26,32 +32,41 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"), override=False)
 DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip()
 IST_TIMEZONE = timezone(timedelta(hours=5, minutes=30))
-DEFAULT_HOSPITAL_CODE = (os.getenv("DEFAULT_HOSPITAL_CODE") or "hosp-default").strip().lower()
+DEFAULT_HOSPITAL_CODE = (
+    (os.getenv("DEFAULT_HOSPITAL_CODE") or "hosp-default").strip().lower()
+)
+
 
 def current_ist_datetime():
     return datetime.now(IST_TIMEZONE)
 
+
 def current_ist_timestamp():
     return current_ist_datetime().isoformat(timespec="seconds")
+
 
 def normalize_hospital_code(code):
     value = (code or DEFAULT_HOSPITAL_CODE).strip().lower()
     return value or DEFAULT_HOSPITAL_CODE
 
+
 def _normalize_database_url(url: str) -> str:
     if url.startswith("postgres://"):
-        url = "postgresql://" + url[len("postgres://"):]
+        url = "postgresql://" + url[len("postgres://") :]
     if "connect_timeout" not in url:
         sep = "&" if "?" in url else "?"
         url += f"{sep}connect_timeout=5"
     return url
 
+
 def _to_sql_params(sql: str):
     return sql.replace("?", "%s")
+
 
 _PG_POOL = None
 _PG_POOL_MINCONN = int(os.getenv("PG_POOL_MIN", "1"))
 _PG_POOL_MAXCONN = int(os.getenv("PG_POOL_MAX", "20"))
+
 
 def _get_pg_pool():
     global _PG_POOL
@@ -67,6 +82,7 @@ def _get_pg_pool():
             _PG_POOL = None
             raise
     return _PG_POOL
+
 
 @contextmanager
 def get_connection(autocommit: bool = False):
@@ -86,7 +102,7 @@ def get_connection(autocommit: bool = False):
                     conn = None
                 if attempt == 2:
                     raise
-        
+
         if not conn:
             raise RuntimeError("Failed to get a working connection from pool")
 
@@ -117,6 +133,7 @@ def get_connection(autocommit: bool = False):
             "PostgreSQL driver missing for DATABASE_URL. "
             "Install dependencies with `pip install -r backend/requirements.txt`"
         )
+
 
 class _CompatConnection:
     def __init__(self, conn):
@@ -235,7 +252,9 @@ def get_hospital_by_code(hospital_code):
 
 def create_hospital(hospital_code, name=None):
     code = normalize_hospital_code(hospital_code)
-    hospital_name = (name or code.replace("-", " ").title()).strip() or "Default Hospital"
+    hospital_name = (
+        name or code.replace("-", " ").title()
+    ).strip() or "Default Hospital"
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM hospitals WHERE code = ?", (code,))
@@ -258,13 +277,11 @@ def create_hospital(hospital_code, name=None):
 def list_hospitals():
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT id, code, name, status, disabled_at, disabled_reason, created_at
             FROM hospitals
             ORDER BY created_at DESC, id DESC
-            """
-        )
+            """)
         return cursor.fetchall()
 
 
@@ -316,8 +333,7 @@ def init_database():
     with get_connection(autocommit=True) as conn:
         cursor = conn.cursor()
 
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS hospitals (
                 id SERIAL PRIMARY KEY,
                 code TEXT UNIQUE NOT NULL,
@@ -327,10 +343,8 @@ def init_database():
                 disabled_reason TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
-        )
-        cursor.execute(
-            """
+            """)
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS patient_feedback (
                 id SERIAL PRIMARY KEY,
                 patient_id INTEGER,
@@ -342,20 +356,16 @@ def init_database():
                 whatsapp_message_id TEXT,
                 phone_number TEXT
             )
-            """
-        )
-        cursor.execute(
-            """
+            """)
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS whatsapp_templates (
                 id SERIAL PRIMARY KEY,
                 template_key TEXT UNIQUE NOT NULL,
                 content TEXT NOT NULL,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
-        )
-        cursor.execute(
-            """
+            """)
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username TEXT UNIQUE NOT NULL,
@@ -376,10 +386,8 @@ def init_database():
                 emergency_contact TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
-        )
-        cursor.execute(
-            """
+            """)
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
@@ -391,10 +399,8 @@ def init_database():
                 user_agent TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
-            """
-        )
-        cursor.execute(
-            """
+            """)
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS patients (
                 id SERIAL PRIMARY KEY,
                 patient_id TEXT UNIQUE NOT NULL,
@@ -413,10 +419,8 @@ def init_database():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
-        )
-        cursor.execute(
-            """
+            """)
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS admissions (
                 id SERIAL PRIMARY KEY,
                 patient_id TEXT NOT NULL,
@@ -425,10 +429,8 @@ def init_database():
                 notes TEXT,
                 FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
             )
-            """
-        )
-        cursor.execute(
-            """
+            """)
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS documents (
                 id SERIAL PRIMARY KEY,
                 patient_id TEXT NOT NULL,
@@ -444,18 +446,15 @@ def init_database():
                 FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
                 FOREIGN KEY (admission_id) REFERENCES admissions(id)
             )
-            """
-        )
-        cursor.execute(
-            """
+            """)
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS whatsapp_media (
                 token TEXT PRIMARY KEY,
                 content BYTEA NOT NULL,
                 mime_type TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
-        )
+            """)
         ensure_hospital_columns(conn)
         ensure_patient_columns(conn)
         ensure_user_columns(conn)
@@ -471,110 +470,36 @@ def init_database():
         ensure_patient_bulk_columns(conn)
         ensure_bulk_import_jobs_table(conn)
 
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_hospitals_code ON hospitals(code)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_patient_id ON patients(patient_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_patient_phone ON patients(phone)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_patient_name ON patients(name, last_name)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_hospitals_code ON hospitals(code)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_patient_id ON patients(patient_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_patient_phone ON patients(phone)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_patient_name ON patients(name, last_name)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)"
+        )
 
         conn.commit()
-
-
-def migrate_users_table_if_needed(conn):
-    """Migrate legacy users table role constraint (doctor/staff) to employee/staff."""
-    return
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'"
-    )
-    row = cursor.fetchone()
-    if not row or not row[0]:
-        return
-    table_sql = row[0]
-    if "role IN ('doctor', 'staff')" not in table_sql:
-        return
-
-    cursor.execute("PRAGMA table_info(users)")
-    existing_cols = [r[1] for r in cursor.fetchall()]
-    expected_cols = [
-        "username",
-        "password_hash",
-        "role",
-        "access_role",
-        "user_type",
-        "module_access",
-        "job_role",
-        "full_name",
-        "email",
-        "phone",
-        "department",
-        "employee_id",
-        "date_joined",
-        "status",
-        "address",
-        "emergency_contact",
-        "created_at",
-    ]
-
-    def select_expr(col):
-        if col == "role":
-            return "CASE role WHEN 'doctor' THEN 'employee' ELSE role END AS role"
-        if col == "access_role":
-            return "CASE role WHEN 'doctor' THEN 'clinician' WHEN 'staff' THEN 'receptionist' ELSE 'owner' END AS access_role"
-        if col == "user_type":
-            return "CASE role WHEN 'staff' THEN 'normal' ELSE 'admin' END AS user_type"
-        if col == "module_access":
-            return "'[]' AS module_access"
-        if col == "job_role":
-            return "NULL AS job_role"
-        if col == "status":
-            return "COALESCE(status, 'active') AS status" if col in existing_cols else "'active' AS status"
-        if col in ("date_joined", "created_at") and col not in existing_cols:
-            return f"CURRENT_TIMESTAMP AS {col}"
-        return col if col in existing_cols else "NULL AS " + col
-
-    select_list = ", ".join(select_expr(c) for c in expected_cols)
-    insert_cols = ", ".join(expected_cols)
-
-    cursor.execute("ALTER TABLE users RENAME TO users_old")
-    cursor.execute(
-        """
-        CREATE TABLE users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            role TEXT NOT NULL CHECK(role IN ('employee', 'staff')),
-            access_role TEXT DEFAULT 'receptionist' CHECK(access_role IN ('receptionist', 'clinician', 'hr_manager', 'owner')),
-            user_type TEXT DEFAULT 'normal' CHECK(user_type IN ('admin', 'normal')),
-            module_access TEXT DEFAULT '[]',
-            job_role TEXT,
-            full_name TEXT,
-            email TEXT,
-            phone TEXT,
-            department TEXT,
-            employee_id TEXT UNIQUE,
-            date_joined TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            status TEXT DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
-            address TEXT,
-            emergency_contact TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    cursor.execute(
-        f"INSERT INTO users ({insert_cols}) SELECT {select_list} FROM users_old"
-    )
-    cursor.execute("DROP TABLE users_old")
 
 
 def ensure_hospital_columns(conn):
     cursor = conn.cursor()
 
     id_type = "SERIAL PRIMARY KEY"
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS hospitals (
             id {id_type},
             code TEXT UNIQUE NOT NULL,
@@ -584,8 +509,7 @@ def ensure_hospital_columns(conn):
             disabled_reason TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
     cursor.execute(
         """
         INSERT INTO hospitals (code, name, status)
@@ -625,7 +549,13 @@ def ensure_hospital_columns(conn):
 # "PAT-YYYYMMDD-NNNN" on the same day. Without their own hospital_id, every
 # aggregate/list query on these tables risks silently merging two different
 # patients' billing/lab/pharmacy records if their hospitals collide on an id.
-_FINANCIAL_TABLES_WITH_PATIENT_ID = ("appointments", "invoices", "diagnostics", "pharmacy_sales", "encounters")
+_FINANCIAL_TABLES_WITH_PATIENT_ID = (
+    "appointments",
+    "invoices",
+    "diagnostics",
+    "pharmacy_sales",
+    "encounters",
+)
 
 
 def ensure_financial_hospital_columns(conn):
@@ -652,40 +582,34 @@ def ensure_financial_hospital_columns(conn):
         # Backfill from the owning patient's hospital where possible -- a blind
         # default would silently mix data if this table already holds rows
         # from more than one hospital.
-        cursor.execute(
-            f"""
+        cursor.execute(f"""
             UPDATE {table_name}
             SET hospital_id = (
                 SELECT p.hospital_id FROM patients p WHERE p.patient_id = {table_name}.patient_id
             )
             WHERE hospital_id IS NULL
-            """
-        )
+            """)
         cursor.execute(
             f"UPDATE {table_name} SET hospital_id = ? WHERE hospital_id IS NULL",
             (default_hospital_id,),
         )
 
     # invoice_payments has no patient_id of its own -- backfill through the invoice it belongs to.
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT column_name FROM information_schema.columns
         WHERE table_name = 'invoice_payments' AND column_name = 'hospital_id'
-        """
-    )
+        """)
     payments_has_hospital_col = cursor.fetchone() is not None
     if not payments_has_hospital_col:
         cursor.execute("ALTER TABLE invoice_payments ADD COLUMN hospital_id INTEGER")
 
-    cursor.execute(
-        """
+    cursor.execute("""
         UPDATE invoice_payments
         SET hospital_id = (
             SELECT i.hospital_id FROM invoices i WHERE i.id = invoice_payments.invoice_id
         )
         WHERE hospital_id IS NULL
-        """
-    )
+        """)
     cursor.execute(
         "UPDATE invoice_payments SET hospital_id = ? WHERE hospital_id IS NULL",
         (default_hospital_id,),
@@ -702,13 +626,11 @@ def ensure_department_master_scope(conn):
         return
     default_hospital_id = default_row[0]
 
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT column_name
         FROM information_schema.columns
         WHERE table_name = 'department_master'
-        """
-    )
+        """)
     columns = {row[0] for row in cursor.fetchall()}
     if "hospital_id" not in columns:
         cursor.execute("ALTER TABLE department_master ADD COLUMN hospital_id INTEGER")
@@ -716,12 +638,10 @@ def ensure_department_master_scope(conn):
         "UPDATE department_master SET hospital_id = ? WHERE hospital_id IS NULL",
         (default_hospital_id,),
     )
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_department_master_hospital_name
         ON department_master(hospital_id, department_name)
-        """
-    )
+        """)
 
     # No longer seed default departments here as per user request.
     # Departments should only be created explicitly by admin or inferred from employee directory.
@@ -740,12 +660,17 @@ def ensure_department_master_scope(conn):
     needs_rebuild = "hospital_id" not in columns or has_legacy_global_unique
     if needs_rebuild:
         old_hospital_expr = "hospital_id" if "hospital_id" in columns else "NULL"
-        old_head_expr = "mapped_head_employee_id" if "mapped_head_employee_id" in columns else "NULL"
-        old_created_expr = "created_at" if "created_at" in columns else "CURRENT_TIMESTAMP"
+        old_head_expr = (
+            "mapped_head_employee_id"
+            if "mapped_head_employee_id" in columns
+            else "NULL"
+        )
+        old_created_expr = (
+            "created_at" if "created_at" in columns else "CURRENT_TIMESTAMP"
+        )
         id_type = "SERIAL PRIMARY KEY"
         cursor.execute("ALTER TABLE department_master RENAME TO department_master_old")
-        cursor.execute(
-            f"""
+        cursor.execute(f"""
             CREATE TABLE department_master (
                 id {id_type},
                 hospital_id INTEGER NOT NULL,
@@ -754,8 +679,7 @@ def ensure_department_master_scope(conn):
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(hospital_id, department_name)
             )
-            """
-        )
+            """)
         insert_conflict = "ON CONFLICT DO NOTHING"
         insert_prefix = "INSERT INTO"
         cursor.execute(
@@ -790,43 +714,55 @@ def ensure_department_master_scope(conn):
 
     # Seed standard multi-specialty hospital departments
     standard_departments = [
-        "Cardiology", "Neurology", "Orthopedics", "General Medicine", 
-        "Pediatrics", "Gynecology", "Dermatology", "Oncology", 
-        "ENT", "Ophthalmology", "Psychiatry", "Urology", 
-        "Gastroenterology", "Pulmonology", "Endocrinology", 
-        "Nephrology", "Rheumatology", "General Surgery"
+        "Cardiology",
+        "Neurology",
+        "Orthopedics",
+        "General Medicine",
+        "Pediatrics",
+        "Gynecology",
+        "Dermatology",
+        "Oncology",
+        "ENT",
+        "Ophthalmology",
+        "Psychiatry",
+        "Urology",
+        "Gastroenterology",
+        "Pulmonology",
+        "Endocrinology",
+        "Nephrology",
+        "Rheumatology",
+        "General Surgery",
     ]
-    
+
     insert_conflict = "ON CONFLICT DO NOTHING"
     insert_prefix = "INSERT INTO"
-    
+
     for dept in standard_departments:
         cursor.execute(
             f"""
             {insert_prefix} department_master (hospital_id, department_name)
             VALUES (?, ?) {insert_conflict}
             """,
-            (default_hospital_id, dept)
+            (default_hospital_id, dept),
         )
 
 
 def ensure_patient_columns(conn):
     cursor = conn.cursor()
-    _ensure_column(cursor, "patients", "address", "TEXT", "TEXT")
-    _ensure_column(cursor, "patients", "blood_group", "TEXT", "TEXT")
-    _ensure_column(cursor, "patients", "emergency_contact", "TEXT", "TEXT")
-    _ensure_column(cursor, "patients", "aadhar_number", "TEXT", "TEXT")
+    _ensure_column(cursor, "patients", "address", "TEXT")
+    _ensure_column(cursor, "patients", "blood_group", "TEXT")
+    _ensure_column(cursor, "patients", "emergency_contact", "TEXT")
+    _ensure_column(cursor, "patients", "aadhar_number", "TEXT")
+
 
 def ensure_user_columns(conn):
     """Add any missing columns to users table for older databases."""
     cursor = conn.cursor()
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT column_name
         FROM information_schema.columns
         WHERE table_name = 'users'
-        """
-    )
+        """)
     existing = {row[0] for row in cursor.fetchall()}
     expected = {
         "hospital_id": "INTEGER",
@@ -853,8 +789,7 @@ def ensure_user_columns(conn):
         if column not in existing:
             cursor.execute(f"ALTER TABLE users ADD COLUMN {column} {col_type}")
     cursor.execute("UPDATE users SET status='active' WHERE status IS NULL")
-    cursor.execute(
-        """
+    cursor.execute("""
         UPDATE users
         SET access_role = CASE
             WHEN role = 'employee' THEN 'owner'
@@ -862,10 +797,8 @@ def ensure_user_columns(conn):
             ELSE 'receptionist'
         END
         WHERE access_role IS NULL OR TRIM(access_role) = ''
-    """
-    )
-    cursor.execute(
-        """
+    """)
+    cursor.execute("""
         UPDATE users
         SET user_type = CASE
             WHEN access_role IN ('owner', 'hr_manager') THEN 'admin'
@@ -873,11 +806,23 @@ def ensure_user_columns(conn):
             ELSE 'normal'
         END
         WHERE user_type IS NULL OR TRIM(user_type) = ''
-    """
+    """)
+    default_modules_normal = json.dumps(
+        ["dashboard", "patients", "symptom_ai"], separators=(",", ":")
     )
-    default_modules_normal = json.dumps(["dashboard", "patients", "symptom_ai"], separators=(",", ":"))
     default_modules_admin = json.dumps(
-        ["dashboard", "patients", "billing", "pharmacy", "lab", "hrms", "ot", "accounts", "reports", "symptom_ai"],
+        [
+            "dashboard",
+            "patients",
+            "billing",
+            "pharmacy",
+            "lab",
+            "hrms",
+            "ot",
+            "accounts",
+            "reports",
+            "symptom_ai",
+        ],
         separators=(",", ":"),
     )
     cursor.execute(
@@ -896,13 +841,11 @@ def ensure_user_columns(conn):
 def ensure_document_columns(conn):
     """Add any missing document storage columns for older databases."""
     cursor = conn.cursor()
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT column_name
         FROM information_schema.columns
         WHERE table_name = 'documents'
-        """
-    )
+        """)
     existing = {row[0] for row in cursor.fetchall()}
     if "file_name" not in existing:
         cursor.execute("ALTER TABLE documents ADD COLUMN file_name TEXT")
@@ -918,8 +861,7 @@ def ensure_hospai_module_tables(conn):
     cursor = conn.cursor()
     id_column = "SERIAL PRIMARY KEY"
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS encounters (
             id {id_column},
             patient_id TEXT NOT NULL,
@@ -933,11 +875,9 @@ def ensure_hospai_module_tables(conn):
             status TEXT DEFAULT 'active',
             created_by TEXT
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS bed_allocations (
             id {id_column},
             admission_id INTEGER NOT NULL,
@@ -949,11 +889,9 @@ def ensure_hospai_module_tables(conn):
             released_at TIMESTAMP,
             status TEXT DEFAULT 'active'
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS medication_schedules (
             id {id_column},
             patient_id TEXT NOT NULL,
@@ -965,11 +903,9 @@ def ensure_hospai_module_tables(conn):
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS observation_notes (
             id {id_column},
             patient_id TEXT NOT NULL,
@@ -979,11 +915,9 @@ def ensure_hospai_module_tables(conn):
             treatment_plan TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS patient_movements (
             id {id_column},
             patient_id TEXT NOT NULL,
@@ -993,11 +927,9 @@ def ensure_hospai_module_tables(conn):
             moved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             moved_by TEXT
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS invoices (
             id {id_column},
             invoice_no TEXT UNIQUE NOT NULL,
@@ -1016,24 +948,20 @@ def ensure_hospai_module_tables(conn):
             created_by TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT column_name
         FROM information_schema.columns
         WHERE table_name = 'invoices'
-        """
-    )
+        """)
     invoice_columns = {row[0] for row in cursor.fetchall()}
     if "advance_amount" not in invoice_columns:
         cursor.execute("ALTER TABLE invoices ADD COLUMN advance_amount REAL DEFAULT 0")
     if "refunded_amount" not in invoice_columns:
         cursor.execute("ALTER TABLE invoices ADD COLUMN refunded_amount REAL DEFAULT 0")
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS invoice_payments (
             id {id_column},
             invoice_id INTEGER NOT NULL,
@@ -1044,11 +972,9 @@ def ensure_hospai_module_tables(conn):
             converted_to_mode TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS insurance_claims (
             id {id_column},
             invoice_id INTEGER NOT NULL,
@@ -1061,11 +987,9 @@ def ensure_hospai_module_tables(conn):
             submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             notes TEXT
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS pharmacy_inventory (
             id {id_column},
             medicine_name TEXT NOT NULL,
@@ -1077,11 +1001,9 @@ def ensure_hospai_module_tables(conn):
             stock_condition TEXT DEFAULT 'proper' CHECK(stock_condition IN ('proper', 'damaged')),
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS pharmacy_sales (
             id {id_column},
             invoice_id INTEGER,
@@ -1094,16 +1016,13 @@ def ensure_hospai_module_tables(conn):
             hospital_id TEXT,
             sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT column_name
         FROM information_schema.columns
         WHERE table_name = 'pharmacy_sales'
-        """
-    )
+        """)
     pharmacy_sales_columns = {row[0] for row in cursor.fetchall()}
     if "patient_id" not in pharmacy_sales_columns:
         cursor.execute("ALTER TABLE pharmacy_sales ADD COLUMN patient_id TEXT")
@@ -1112,8 +1031,7 @@ def ensure_hospai_module_tables(conn):
     if "hospital_id" not in pharmacy_sales_columns:
         cursor.execute("ALTER TABLE pharmacy_sales ADD COLUMN hospital_id TEXT")
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS pharmacy_suppliers (
             id {id_column},
             supplier_name TEXT NOT NULL,
@@ -1122,11 +1040,9 @@ def ensure_hospai_module_tables(conn):
             status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS pharmacy_purchases (
             id {id_column},
             supplier_id INTEGER,
@@ -1140,11 +1056,9 @@ def ensure_hospai_module_tables(conn):
             stock_applied INTEGER NOT NULL DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS lab_vendors (
             id {id_column},
             vendor_name TEXT NOT NULL,
@@ -1152,11 +1066,9 @@ def ensure_hospai_module_tables(conn):
             phone TEXT,
             status TEXT DEFAULT 'active'
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS diagnostics (
             id {id_column},
             invoice_no TEXT,
@@ -1170,28 +1082,26 @@ def ensure_hospai_module_tables(conn):
             status TEXT DEFAULT 'due' CHECK(status IN ('paid', 'partial', 'due')),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT column_name
         FROM information_schema.columns
         WHERE table_name = 'diagnostics'
-        """
-    )
+        """)
     diagnostic_columns = {row[0] for row in cursor.fetchall()}
     if "sample_barcode" not in diagnostic_columns:
         cursor.execute("ALTER TABLE diagnostics ADD COLUMN sample_barcode TEXT")
     if "order_status" not in diagnostic_columns:
-        cursor.execute("ALTER TABLE diagnostics ADD COLUMN order_status TEXT DEFAULT 'ordered'")
+        cursor.execute(
+            "ALTER TABLE diagnostics ADD COLUMN order_status TEXT DEFAULT 'ordered'"
+        )
     if "collected_at" not in diagnostic_columns:
         cursor.execute("ALTER TABLE diagnostics ADD COLUMN collected_at TIMESTAMP")
     if "reported_at" not in diagnostic_columns:
         cursor.execute("ALTER TABLE diagnostics ADD COLUMN reported_at TIMESTAMP")
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS department_master (
             id {id_column},
             hospital_id INTEGER,
@@ -1200,12 +1110,10 @@ def ensure_hospai_module_tables(conn):
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(hospital_id, department_name)
         )
-        """
-    )
+        """)
     ensure_department_master_scope(conn)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS attendance (
             id {id_column},
             employee_id TEXT NOT NULL,
@@ -1215,11 +1123,9 @@ def ensure_hospai_module_tables(conn):
             out_time TEXT,
             notes TEXT
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS payroll (
             id {id_column},
             employee_id TEXT NOT NULL,
@@ -1231,11 +1137,9 @@ def ensure_hospai_module_tables(conn):
             paid_status TEXT DEFAULT 'pending' CHECK(paid_status IN ('pending', 'paid')),
             paid_date DATE
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS leave_requests (
             id {id_column},
             employee_id TEXT NOT NULL,
@@ -1247,11 +1151,9 @@ def ensure_hospai_module_tables(conn):
             decided_by TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS audit_logs (
             id {id_column},
             actor_username TEXT,
@@ -1262,11 +1164,9 @@ def ensure_hospai_module_tables(conn):
             ip_address TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS appointments (
             id {id_column},
             patient_id TEXT,
@@ -1280,28 +1180,28 @@ def ensure_hospai_module_tables(conn):
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT column_name
         FROM information_schema.columns
         WHERE table_name = 'appointments'
-        """
-    )
+        """)
     appointment_columns = {row[0] for row in cursor.fetchall()}
     if "appointment_kind" not in appointment_columns:
-        cursor.execute("ALTER TABLE appointments ADD COLUMN appointment_kind TEXT DEFAULT 'new'")
+        cursor.execute(
+            "ALTER TABLE appointments ADD COLUMN appointment_kind TEXT DEFAULT 'new'"
+        )
     if "follow_up_for" not in appointment_columns:
         cursor.execute("ALTER TABLE appointments ADD COLUMN follow_up_for INTEGER")
     if "reminder_sent_at" not in appointment_columns:
         cursor.execute("ALTER TABLE appointments ADD COLUMN reminder_sent_at TIMESTAMP")
     if "no_show_marked" not in appointment_columns:
-        cursor.execute("ALTER TABLE appointments ADD COLUMN no_show_marked INTEGER DEFAULT 0")
+        cursor.execute(
+            "ALTER TABLE appointments ADD COLUMN no_show_marked INTEGER DEFAULT 0"
+        )
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS doctor_schedules (
             id {id_column},
             doctor_name TEXT NOT NULL,
@@ -1314,11 +1214,9 @@ def ensure_hospai_module_tables(conn):
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS doctors (
             id {id_column},
             doctor_name TEXT NOT NULL,
@@ -1328,11 +1226,9 @@ def ensure_hospai_module_tables(conn):
             status TEXT NOT NULL DEFAULT 'available' CHECK(status IN ('available', 'leave')),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS patient_consents (
             id {id_column},
             patient_id TEXT,
@@ -1344,11 +1240,9 @@ def ensure_hospai_module_tables(conn):
             notes TEXT,
             signed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS insurance_verifications (
             id {id_column},
             patient_id TEXT,
@@ -1360,11 +1254,9 @@ def ensure_hospai_module_tables(conn):
             coverage_notes TEXT,
             checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS certificates (
             id {id_column},
             patient_id TEXT NOT NULL,
@@ -1375,11 +1267,9 @@ def ensure_hospai_module_tables(conn):
             issued_by TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS ot_theatres (
             id {id_column},
             theatre_code TEXT NOT NULL UNIQUE,
@@ -1388,11 +1278,9 @@ def ensure_hospai_module_tables(conn):
             status TEXT NOT NULL DEFAULT 'available' CHECK(status IN ('available', 'maintenance', 'occupied')),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS ot_surgeries (
             id {id_column},
             theatre_id INTEGER NOT NULL,
@@ -1406,11 +1294,9 @@ def ensure_hospai_module_tables(conn):
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS accounts_ledger (
             id {id_column},
             entry_date DATE NOT NULL,
@@ -1422,11 +1308,9 @@ def ensure_hospai_module_tables(conn):
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS vendor_payments (
             id {id_column},
             vendor_name TEXT NOT NULL,
@@ -1438,11 +1322,9 @@ def ensure_hospai_module_tables(conn):
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS doctor_payouts (
             id {id_column},
             doctor_name TEXT NOT NULL,
@@ -1455,38 +1337,89 @@ def ensure_hospai_module_tables(conn):
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
 
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_encounters_patient ON encounters(patient_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_invoice_patient ON invoices(patient_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_invoice_status ON invoices(payment_status)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_payments_invoice ON invoice_payments(invoice_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_claims_invoice ON insurance_claims(invoice_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_claims_status ON insurance_claims(claim_status)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_sales_patient ON pharmacy_sales(patient_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_pharmacy_purchases_supplier ON pharmacy_purchases(supplier_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_diagnostics_patient ON diagnostics(patient_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_attendance_employee ON attendance(employee_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_payroll_employee ON payroll(employee_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaves_employee ON leave_requests(employee_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_module ON audit_logs(module_name)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(appointment_date)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_encounters_patient ON encounters(patient_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_invoice_patient ON invoices(patient_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_invoice_status ON invoices(payment_status)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_payments_invoice ON invoice_payments(invoice_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_claims_invoice ON insurance_claims(invoice_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_claims_status ON insurance_claims(claim_status)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pharmacy_sales_patient ON pharmacy_sales(patient_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pharmacy_purchases_supplier ON pharmacy_purchases(supplier_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_diagnostics_patient ON diagnostics(patient_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_attendance_employee ON attendance(employee_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_payroll_employee ON payroll(employee_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_leaves_employee ON leave_requests(employee_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_audit_module ON audit_logs(module_name)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(appointment_date)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status)"
+    )
     # get_all_patients/search_patients run a correlated subquery against this
     # table (latest appointment status) for every patient row -- without this
     # index each patients-list request was a full appointments scan per row.
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_appointments_patient_created ON appointments(patient_id, created_at DESC)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_doctor_schedules_date ON doctor_schedules(schedule_date)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_doctor_schedules_doctor ON doctor_schedules(doctor_name)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_patient_consents_patient ON patient_consents(patient_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_insurance_verifications_patient ON insurance_verifications(patient_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_certificates_patient ON certificates(patient_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ot_surgeries_theatre ON ot_surgeries(theatre_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ot_surgeries_status ON ot_surgeries(status)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_accounts_ledger_type ON accounts_ledger(entry_type)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_vendor_payments_vendor ON vendor_payments(vendor_name)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_doctor_payouts_doctor ON doctor_payouts(doctor_name)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_appointments_patient_created ON appointments(patient_id, created_at DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_doctor_schedules_date ON doctor_schedules(schedule_date)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_doctor_schedules_doctor ON doctor_schedules(doctor_name)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_patient_consents_patient ON patient_consents(patient_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_insurance_verifications_patient ON insurance_verifications(patient_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_certificates_patient ON certificates(patient_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ot_surgeries_theatre ON ot_surgeries(theatre_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ot_surgeries_status ON ot_surgeries(status)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_accounts_ledger_type ON accounts_ledger(entry_type)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_vendor_payments_vendor ON vendor_payments(vendor_name)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_doctor_payouts_doctor ON doctor_payouts(doctor_name)"
+    )
 
     cursor.execute("SELECT COUNT(*) FROM doctors")
     doc_count = cursor.fetchone()[0]
@@ -1498,13 +1431,37 @@ def ensure_hospai_module_tables(conn):
 # Every operational/domain table (system tables -- hospitals, users, sessions, audit_logs --
 # are intentionally excluded; they have their own identity/audit semantics already).
 OPERATIONAL_TABLES = (
-    "patients", "admissions", "documents", "encounters", "bed_allocations",
-    "medication_schedules", "observation_notes", "patient_movements",
-    "invoices", "invoice_payments", "insurance_claims",
-    "pharmacy_inventory", "pharmacy_sales", "pharmacy_suppliers", "pharmacy_purchases",
-    "lab_vendors", "diagnostics", "department_master", "attendance", "payroll", "leave_requests",
-    "appointments", "doctor_schedules", "patient_consents", "insurance_verifications", "certificates",
-    "ot_theatres", "ot_surgeries", "accounts_ledger", "vendor_payments", "doctor_payouts",
+    "patients",
+    "admissions",
+    "documents",
+    "encounters",
+    "bed_allocations",
+    "medication_schedules",
+    "observation_notes",
+    "patient_movements",
+    "invoices",
+    "invoice_payments",
+    "insurance_claims",
+    "pharmacy_inventory",
+    "pharmacy_sales",
+    "pharmacy_suppliers",
+    "pharmacy_purchases",
+    "lab_vendors",
+    "diagnostics",
+    "department_master",
+    "attendance",
+    "payroll",
+    "leave_requests",
+    "appointments",
+    "doctor_schedules",
+    "patient_consents",
+    "insurance_verifications",
+    "certificates",
+    "ot_theatres",
+    "ot_surgeries",
+    "accounts_ledger",
+    "vendor_payments",
+    "doctor_payouts",
 )
 
 
@@ -1516,15 +1473,16 @@ def _table_columns(cursor, table_name: str) -> set:
     return {row[0] for row in cursor.fetchall()}
 
 
-def _ensure_column(cursor, table_name: str, column_name: str, sqlite_type: str, postgres_type: str):
+def _ensure_column(cursor, table_name: str, column_name: str, postgres_type: str):
     existing = _table_columns(cursor, table_name)
     if column_name in existing:
         return
-    column_type = postgres_type
-    cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+    cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {postgres_type}")
 
 
-def soft_delete_row(cursor, table_name, id_column, id_value, hospital_id=None, actor=None):
+def soft_delete_row(
+    cursor, table_name, id_column, id_value, hospital_id=None, actor=None
+):
     """Mark a row deleted_at/deleted_by instead of physically removing it.
 
     Returns True if a row was updated (i.e. existed and wasn't already deleted).
@@ -1551,11 +1509,11 @@ def ensure_operational_audit_columns(conn):
     cursor = conn.cursor()
 
     for table_name in OPERATIONAL_TABLES:
-        _ensure_column(cursor, table_name, "uuid", "TEXT", "TEXT")
-        _ensure_column(cursor, table_name, "created_by", "TEXT", "TEXT")
-        _ensure_column(cursor, table_name, "updated_by", "TEXT", "TEXT")
-        _ensure_column(cursor, table_name, "deleted_by", "TEXT", "TEXT")
-        _ensure_column(cursor, table_name, "deleted_at", "TIMESTAMP", "TIMESTAMP")
+        _ensure_column(cursor, table_name, "uuid", "TEXT")
+        _ensure_column(cursor, table_name, "created_by", "TEXT")
+        _ensure_column(cursor, table_name, "updated_by", "TEXT")
+        _ensure_column(cursor, table_name, "deleted_by", "TEXT")
+        _ensure_column(cursor, table_name, "deleted_at", "TIMESTAMP")
 
         # Backfill uuid for any existing rows (idempotent: only touches NULLs).
         cursor.execute(f"SELECT id FROM {table_name} WHERE uuid IS NULL")
@@ -1584,7 +1542,11 @@ def ensure_operational_audit_columns(conn):
         ("idx_invoices_hospital_created", "invoices", "hospital_id, created_at"),
         ("idx_diagnostics_hospital_created", "diagnostics", "hospital_id, created_at"),
         ("idx_pharmacy_sales_hospital_sold", "pharmacy_sales", "hospital_id, sold_at"),
-        ("idx_appointments_hospital_date", "appointments", "hospital_id, appointment_date"),
+        (
+            "idx_appointments_hospital_date",
+            "appointments",
+            "hospital_id, appointment_date",
+        ),
         ("idx_attendance_hospital_date", "attendance", "hospital_id, attendance_date"),
         ("idx_admissions_hospital_date", "admissions", "hospital_id, admission_date"),
     ]
@@ -1593,7 +1555,9 @@ def ensure_operational_audit_columns(conn):
         required_columns = {c.strip() for c in columns.split(",")}
         if not required_columns.issubset(table_columns):
             continue
-        cursor.execute(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({columns})")
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({columns})"
+        )
 
     conn.commit()
 
@@ -1607,8 +1571,7 @@ def ensure_vector_store_tables(conn):
     """
     cursor = conn.cursor()
     id_column = "SERIAL PRIMARY KEY"
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS clinical_document_embeddings (
             id {id_column},
             hospital_id INTEGER NOT NULL,
@@ -1620,8 +1583,7 @@ def ensure_vector_store_tables(conn):
             embedding_model TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_clinical_embeddings_hospital "
         "ON clinical_document_embeddings(hospital_id)"
@@ -1632,8 +1594,7 @@ def ensure_vector_store_tables(conn):
     )
 
     # Phase H Tables
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS bed_master (
             id {id_column},
             hospital_id INTEGER NOT NULL,
@@ -1644,10 +1605,8 @@ def ensure_vector_store_tables(conn):
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
-    cursor.execute(
-        f"""
+        """)
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS icu_monitoring (
             id {id_column},
             hospital_id INTEGER NOT NULL,
@@ -1660,10 +1619,8 @@ def ensure_vector_store_tables(conn):
             critical_alerts TEXT,
             recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
-    cursor.execute(
-        f"""
+        """)
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS opd_queue (
             id {id_column},
             hospital_id INTEGER NOT NULL,
@@ -1674,10 +1631,8 @@ def ensure_vector_store_tables(conn):
             status TEXT DEFAULT 'Waiting',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
-    cursor.execute(
-        f"""
+        """)
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS emergency_triage (
             id {id_column},
             hospital_id INTEGER NOT NULL,
@@ -1689,10 +1644,8 @@ def ensure_vector_store_tables(conn):
             arrival_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             status TEXT DEFAULT 'Pending'
         )
-        """
-    )
-    cursor.execute(
-        f"""
+        """)
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS ambulances (
             id {id_column},
             hospital_id INTEGER NOT NULL,
@@ -1702,10 +1655,8 @@ def ensure_vector_store_tables(conn):
             status TEXT DEFAULT 'Available',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
-    cursor.execute(
-        f"""
+        """)
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS ambulance_dispatch (
             id {id_column},
             hospital_id INTEGER NOT NULL,
@@ -1717,10 +1668,8 @@ def ensure_vector_store_tables(conn):
             completion_time TIMESTAMP,
             status TEXT DEFAULT 'En Route'
         )
-        """
-    )
-    cursor.execute(
-        f"""
+        """)
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS nurse_shifts (
             id {id_column},
             hospital_id INTEGER NOT NULL,
@@ -1730,10 +1679,8 @@ def ensure_vector_store_tables(conn):
             shift_end TIMESTAMP,
             handover_notes TEXT
         )
-        """
-    )
-    cursor.execute(
-        f"""
+        """)
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS nursing_notes (
             id {id_column},
             hospital_id INTEGER NOT NULL,
@@ -1743,8 +1690,7 @@ def ensure_vector_store_tables(conn):
             vitals TEXT,
             recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_clinical_embeddings_patient "
         "ON clinical_document_embeddings(patient_id)"
@@ -1759,8 +1705,7 @@ def ensure_symptom_ai_tables(conn):
     """
     cursor = conn.cursor()
     id_column = "SERIAL PRIMARY KEY"
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS symptom_ai_documents (
             id {id_column},
             hospital_id INTEGER NOT NULL,
@@ -1773,14 +1718,12 @@ def ensure_symptom_ai_tables(conn):
             deleted_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_symptom_ai_documents_owner "
         "ON symptom_ai_documents(hospital_id, username)"
     )
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS symptom_ai_chat_messages (
             id {id_column},
             hospital_id INTEGER NOT NULL,
@@ -1790,8 +1733,7 @@ def ensure_symptom_ai_tables(conn):
             content TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_symptom_ai_chat_owner "
         "ON symptom_ai_chat_messages(hospital_id, username, session_id)"
@@ -1853,7 +1795,14 @@ def delete_symptom_ai_document(document_id, hospital_id, username, actor=None):
         )
         if not cursor.fetchone():
             return False
-        deleted = soft_delete_row(cursor, "symptom_ai_documents", "id", document_id, hospital_id=hospital_id, actor=actor)
+        deleted = soft_delete_row(
+            cursor,
+            "symptom_ai_documents",
+            "id",
+            document_id,
+            hospital_id=hospital_id,
+            actor=actor,
+        )
         conn.commit()
         return deleted
 
@@ -1917,8 +1866,7 @@ def ensure_ocr_portal_tables(conn):
     """
     cursor = conn.cursor()
     id_column = "SERIAL PRIMARY KEY"
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS ocr_service_accounts (
             id {id_column},
             hospital_id INTEGER NOT NULL,
@@ -1930,8 +1878,7 @@ def ensure_ocr_portal_tables(conn):
             token_expires_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
     cursor.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_ocr_service_accounts_owner "
         "ON ocr_service_accounts(hospital_id, username)"
@@ -1941,8 +1888,7 @@ def ensure_ocr_portal_tables(conn):
     # module used to proxy to (Docker + Postgres + Qdrant + a GPU vLLM model) isn't
     # available in this deployment, so upload/vault/knowledge-base/chat are all
     # served locally instead (EasyOCR + Ollama, see ai/local_ocr_portal.py).
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS ocr_portal_documents (
             id {id_column},
             hospital_id INTEGER NOT NULL,
@@ -1957,14 +1903,12 @@ def ensure_ocr_portal_tables(conn):
             in_kb INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_ocr_portal_documents_owner "
         "ON ocr_portal_documents(hospital_id, username)"
     )
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS ocr_portal_chat_messages (
             id {id_column},
             hospital_id INTEGER NOT NULL,
@@ -1975,8 +1919,7 @@ def ensure_ocr_portal_tables(conn):
             citations TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_ocr_portal_chat_owner "
         "ON ocr_portal_chat_messages(hospital_id, username, session_id)"
@@ -1985,8 +1928,15 @@ def ensure_ocr_portal_tables(conn):
 
 
 def create_ocr_portal_document(
-    hospital_id, username, filename, doc_category, mime_type, ocr_text,
-    confidence_score=None, status="COMPLETED", error_message=None,
+    hospital_id,
+    username,
+    filename,
+    doc_category,
+    mime_type,
+    ocr_text,
+    confidence_score=None,
+    status="COMPLETED",
+    error_message=None,
 ):
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -1997,8 +1947,17 @@ def create_ocr_portal_document(
                  confidence_score, status, error_message)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
             """,
-            (hospital_id, username, filename, doc_category, mime_type, ocr_text,
-             confidence_score, status, error_message),
+            (
+                hospital_id,
+                username,
+                filename,
+                doc_category,
+                mime_type,
+                ocr_text,
+                confidence_score,
+                status,
+                error_message,
+            ),
         )
         document_id = cursor.fetchone()[0]
         conn.commit()
@@ -2068,7 +2027,9 @@ def list_ocr_portal_kb_documents(hospital_id, username):
         return cursor.fetchall()
 
 
-def save_ocr_portal_chat_message(hospital_id, username, session_id, role, content, citations=None):
+def save_ocr_portal_chat_message(
+    hospital_id, username, session_id, role, content, citations=None
+):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -2138,7 +2099,13 @@ def search_ocr_portal_chunks(hospital_id, doc_ids, query_text, k=5):
         if not candidate_vector:
             continue
         similarity = cosine_similarity(query_vector, candidate_vector)
-        scored.append({"source_id": row["source_id"], "content_text": row["content_text"], "similarity": similarity})
+        scored.append(
+            {
+                "source_id": row["source_id"],
+                "content_text": row["content_text"],
+                "similarity": similarity,
+            }
+        )
     scored.sort(key=lambda item: item["similarity"], reverse=True)
     return scored[:k]
 
@@ -2167,7 +2134,9 @@ def get_ocr_service_account(hospital_id, username):
         return dict(row) if row else None
 
 
-def create_ocr_service_account(hospital_id, username, ocr_username, encrypted_password, ocr_user_id):
+def create_ocr_service_account(
+    hospital_id, username, ocr_username, encrypted_password, ocr_user_id
+):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -2179,7 +2148,9 @@ def create_ocr_service_account(hospital_id, username, ocr_username, encrypted_pa
         conn.commit()
 
 
-def update_ocr_service_account_token(hospital_id, username, access_token, token_expires_at):
+def update_ocr_service_account_token(
+    hospital_id, username, access_token, token_expires_at
+):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -2190,7 +2161,9 @@ def update_ocr_service_account_token(hospital_id, username, access_token, token_
         conn.commit()
 
 
-def store_document_embedding(source_table, source_id, content_text, hospital_id=None, patient_id=None):
+def store_document_embedding(
+    source_table, source_id, content_text, hospital_id=None, patient_id=None
+):
     """Embed and store a clinical document/certificate chunk for later semantic search.
 
     Returns the new row id, or None if embeddings are unavailable (no GEMINI_API_KEY
@@ -2278,6 +2251,7 @@ def search_similar_documents(query_text, hospital_id=None, patient_id=None, k=5)
 
 # ==================== Bulk AI patient import ====================
 
+
 def ensure_patient_bulk_columns(conn):
     """Adds the columns a bulk Excel/CSV import needs on top of the core patients
     schema (area/medical_condition aren't collected by the normal registration
@@ -2288,9 +2262,9 @@ def ensure_patient_bulk_columns(conn):
     share one phone number (e.g. a family registered under one guardian's
     number), exactly as it does today."""
     cursor = conn.cursor()
-    _ensure_column(cursor, "patients", "area", "TEXT", "TEXT")
-    _ensure_column(cursor, "patients", "medical_condition", "TEXT", "TEXT")
-    _ensure_column(cursor, "patients", "source", "TEXT DEFAULT 'registration'", "TEXT DEFAULT 'registration'")
+    _ensure_column(cursor, "patients", "area", "TEXT")
+    _ensure_column(cursor, "patients", "medical_condition", "TEXT")
+    _ensure_column(cursor, "patients", "source", "TEXT DEFAULT 'registration'")
     cursor.execute("UPDATE patients SET source = 'registration' WHERE source IS NULL")
     cursor.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_patients_bulk_import_phone "
@@ -2302,8 +2276,7 @@ def ensure_patient_bulk_columns(conn):
 def ensure_bulk_import_jobs_table(conn):
     cursor = conn.cursor()
     id_column = "SERIAL PRIMARY KEY"
-    cursor.execute(
-        f"""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS bulk_import_jobs (
             id {id_column},
             hospital_id INTEGER NOT NULL,
@@ -2323,14 +2296,13 @@ def ensure_bulk_import_jobs_table(conn):
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-        """
-    )
+        """)
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_bulk_import_jobs_hospital ON bulk_import_jobs(hospital_id)"
     )
     # PDF/DOCX uploads skip column mapping entirely -- their extracted text is stored
     # here and answered against directly via /ask, never turned into patient rows.
-    _ensure_column(cursor, "bulk_import_jobs", "extracted_text", "TEXT", "TEXT")
+    _ensure_column(cursor, "bulk_import_jobs", "extracted_text", "TEXT")
     conn.commit()
 
 
@@ -2384,7 +2356,14 @@ def get_bulk_import_job_internal(job_id):
         return dict(row) if row else None
 
 
-BULK_IMPORT_PATIENT_FIELDS = ["name", "last_name", "age", "gender", "area", "medical_condition"]
+BULK_IMPORT_PATIENT_FIELDS = [
+    "name",
+    "last_name",
+    "age",
+    "gender",
+    "area",
+    "medical_condition",
+]
 
 
 def upsert_bulk_import_patients_batch(hospital_id, rows):
@@ -2399,11 +2378,24 @@ def upsert_bulk_import_patients_batch(hospital_id, rows):
     registration data that may legitimately share a phone number."""
     if not rows:
         return
-    columns = ["hospital_id", "patient_id", "phone", "source"] + BULK_IMPORT_PATIENT_FIELDS
+    columns = [
+        "hospital_id",
+        "patient_id",
+        "phone",
+        "source",
+    ] + BULK_IMPORT_PATIENT_FIELDS
     placeholders = ", ".join(["?"] * len(columns))
-    update_assignments = ", ".join(f"{col} = EXCLUDED.{col}" for col in BULK_IMPORT_PATIENT_FIELDS)
+    update_assignments = ", ".join(
+        f"{col} = EXCLUDED.{col}" for col in BULK_IMPORT_PATIENT_FIELDS
+    )
     param_rows = [
-        (hospital_id, patient_id, phone, "bulk_import", *(fields.get(f) for f in BULK_IMPORT_PATIENT_FIELDS))
+        (
+            hospital_id,
+            patient_id,
+            phone,
+            "bulk_import",
+            *(fields.get(f) for f in BULK_IMPORT_PATIENT_FIELDS),
+        )
         for patient_id, phone, fields in rows
     ]
     with get_connection() as conn:
@@ -2448,6 +2440,7 @@ def query_bulk_patients(hospital_id, where_clause, params, page=1, page_size=150
 
 # ==================== Patient operations ====================
 
+
 def generate_patient_id(hospital_id=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
@@ -2456,22 +2449,21 @@ def generate_patient_id(hospital_id=None):
         cursor.execute(
             "SELECT patient_id FROM patients WHERE hospital_id = ? AND patient_id LIKE ? "
             "ORDER BY CAST(SUBSTR(patient_id, 5) AS INTEGER) DESC LIMIT 1",
-            (scoped_hospital_id, 'PAT-1%')
+            (scoped_hospital_id, "PAT-1%"),
         )
         row = cursor.fetchone()
-        
+
         max_num = 100000
         if row:
             try:
                 # Expecting format PAT-100001
-                num = int(row[0].split('-')[1])
+                num = int(row[0].split("-")[1])
                 if num > max_num:
                     max_num = num
             except (IndexError, ValueError):
                 pass
-                
-    return f"PAT-{max_num + 1}"
 
+    return f"PAT-{max_num + 1}"
 
 
 def check_duplicate_patient(name, last_name, dob, phone, hospital_id=None):
@@ -2541,11 +2533,11 @@ def get_all_patients(hospital_id=None, doctor_name=None):
         query = """SELECT p.*, (SELECT status FROM appointments a WHERE a.patient_id = p.patient_id ORDER BY a.created_at DESC LIMIT 1) as status 
             FROM patients p WHERE p.hospital_id = ? AND p.deleted_at IS NULL"""
         params = [scoped_hospital_id]
-        
+
         if doctor_name:
             query += " AND p.patient_id IN (SELECT patient_id FROM appointments WHERE doctor_name = ?)"
             params.append(doctor_name)
-            
+
         query += " ORDER BY p.created_at DESC"
         cursor.execute(query, tuple(params))
         return cursor.fetchall()
@@ -2558,7 +2550,7 @@ def search_patients(query, hospital_id=None, doctor_name=None):
         if not query:
             return []
         search = f"%{query.strip().lower()}%"
-        
+
         sql = """
             SELECT p.*, (SELECT status FROM appointments a WHERE a.patient_id = p.patient_id ORDER BY a.created_at DESC LIMIT 1) as status
             FROM patients p WHERE
@@ -2568,12 +2560,22 @@ def search_patients(query, hospital_id=None, doctor_name=None):
             OR LOWER(TRIM(p.name || ' ' || COALESCE(p.middle_name, '') || ' ' || p.last_name)) LIKE ?
             OR LOWER(TRIM(p.last_name || ' ' || p.name)) LIKE ?)
         """
-        params = [scoped_hospital_id, search, search, search, search, search, search, search, search]
-        
+        params = [
+            scoped_hospital_id,
+            search,
+            search,
+            search,
+            search,
+            search,
+            search,
+            search,
+            search,
+        ]
+
         if doctor_name:
             sql += " AND p.patient_id IN (SELECT patient_id FROM appointments WHERE doctor_name = ?)"
             params.append(doctor_name)
-            
+
         sql += " ORDER BY p.created_at DESC"
         cursor.execute(sql, tuple(params))
         return cursor.fetchall()
@@ -2739,7 +2741,9 @@ def store_whatsapp_media(content: bytes, mime_type: str = "application/pdf") -> 
 def get_whatsapp_media(token: str):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT content, mime_type FROM whatsapp_media WHERE token = ?", (token,))
+        cursor.execute(
+            "SELECT content, mime_type FROM whatsapp_media WHERE token = ?", (token,)
+        )
         row = cursor.fetchone()
         return (row["content"], row["mime_type"]) if row else (None, None)
 
@@ -2749,13 +2753,20 @@ def delete_document(document_id, hospital_id=None, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         deleted = soft_delete_row(
-            cursor, "documents", "id", document_id, hospital_id=scoped_hospital_id, actor=actor
+            cursor,
+            "documents",
+            "id",
+            document_id,
+            hospital_id=scoped_hospital_id,
+            actor=actor,
         )
         conn.commit()
         return deleted
 
 
-def update_document_ocr(document_id, ocr_text, ocr_language="en", hospital_id=None, structured_data=None):
+def update_document_ocr(
+    document_id, ocr_text, ocr_language="en", hospital_id=None, structured_data=None
+):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -2764,7 +2775,11 @@ def update_document_ocr(document_id, ocr_text, ocr_language="en", hospital_id=No
             (document_id, scoped_hospital_id),
         )
         existing = cursor.fetchone()
-        structured_json = json.dumps(structured_data, separators=(",", ":")) if structured_data else None
+        structured_json = (
+            json.dumps(structured_data, separators=(",", ":"))
+            if structured_data
+            else None
+        )
         cursor.execute(
             "UPDATE documents SET ocr_text = ?, ocr_language = ?, structured_data = ? WHERE id = ? AND hospital_id = ?",
             (ocr_text, ocr_language, structured_json, document_id, scoped_hospital_id),
@@ -2775,8 +2790,13 @@ def update_document_ocr(document_id, ocr_text, ocr_language="en", hospital_id=No
     if updated and existing:
         try:
             from core.tasks import process_document_embedding_task
+
             process_document_embedding_task.delay(
-                "documents", document_id, ocr_text, hospital_id=scoped_hospital_id, patient_id=existing["patient_id"]
+                "documents",
+                document_id,
+                ocr_text,
+                hospital_id=scoped_hospital_id,
+                patient_id=existing["patient_id"],
             )
         except Exception:
             # Embedding is a best-effort enrichment; OCR persistence must not fail if it errors.
@@ -2789,7 +2809,9 @@ def get_patient_stats(hospital_id=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM patients WHERE hospital_id = ?", (scoped_hospital_id,))
+        cursor.execute(
+            "SELECT COUNT(*) FROM patients WHERE hospital_id = ?", (scoped_hospital_id,)
+        )
         total = cursor.fetchone()[0]
         cursor.execute(
             "SELECT COUNT(*) FROM patients WHERE hospital_id = ? AND DATE(created_at) = CURRENT_DATE",
@@ -2801,7 +2823,10 @@ def get_patient_stats(hospital_id=None):
             (scoped_hospital_id,),
         )
         active = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM documents WHERE hospital_id = ?", (scoped_hospital_id,))
+        cursor.execute(
+            "SELECT COUNT(*) FROM documents WHERE hospital_id = ?",
+            (scoped_hospital_id,),
+        )
         docs = cursor.fetchone()[0]
         cursor.execute(
             """
@@ -2812,8 +2837,7 @@ def get_patient_stats(hospital_id=None):
                 GROUP BY patient_id
                 HAVING COUNT(*) > 1
             ) AS readmitted_subquery
-            """
-            ,
+            """,
             (scoped_hospital_id,),
         )
         readmitted_patients = cursor.fetchone()[0]
@@ -2836,7 +2860,9 @@ def get_dashboard_analytics(days=14, include_employee=False, hospital_id=None):
     # Keep the window bounded so the dashboard stays fast and readable.
     window_days = max(7, min(requested_days, 60))
     start_date = current_ist_datetime().date() - timedelta(days=window_days - 1)
-    day_range = [(start_date + timedelta(days=index)).isoformat() for index in range(window_days)]
+    day_range = [
+        (start_date + timedelta(days=index)).isoformat() for index in range(window_days)
+    ]
 
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -2872,8 +2898,7 @@ def get_dashboard_analytics(days=14, include_employee=False, hospital_id=None):
             WHERE hospital_id = ?
             GROUP BY label
             ORDER BY count DESC, label ASC
-            """
-            ,
+            """,
             (scoped_hospital_id,),
         )
         gender_distribution = [dict(row) for row in cursor.fetchall()]
@@ -2885,8 +2910,7 @@ def get_dashboard_analytics(days=14, include_employee=False, hospital_id=None):
             WHERE hospital_id = ?
             GROUP BY label
             ORDER BY count DESC, label ASC
-            """
-            ,
+            """,
             (scoped_hospital_id,),
         )
         doc_type_distribution = [dict(row) for row in cursor.fetchall()]
@@ -2898,16 +2922,21 @@ def get_dashboard_analytics(days=14, include_employee=False, hospital_id=None):
             WHERE hospital_id = ?
             GROUP BY label
             ORDER BY count DESC, label ASC
-            """
-            ,
+            """,
             (scoped_hospital_id,),
         )
         admission_status_distribution = [dict(row) for row in cursor.fetchall()]
 
         analytics = {
             "window_days": window_days,
-            "patients_trend": [{"date": day, "count": patient_trend_map.get(day, 0)} for day in day_range],
-            "documents_trend": [{"date": day, "count": document_trend_map.get(day, 0)} for day in day_range],
+            "patients_trend": [
+                {"date": day, "count": patient_trend_map.get(day, 0)}
+                for day in day_range
+            ],
+            "documents_trend": [
+                {"date": day, "count": document_trend_map.get(day, 0)}
+                for day in day_range
+            ],
             "gender_distribution": gender_distribution,
             "doc_type_distribution": doc_type_distribution,
             "admission_status_distribution": admission_status_distribution,
@@ -2921,8 +2950,7 @@ def get_dashboard_analytics(days=14, include_employee=False, hospital_id=None):
                 WHERE hospital_id = ?
                 GROUP BY label
                 ORDER BY count DESC, label ASC
-                """
-                ,
+                """,
                 (scoped_hospital_id,),
             )
             employee_status_distribution = [dict(row) for row in cursor.fetchall()]
@@ -2934,8 +2962,7 @@ def get_dashboard_analytics(days=14, include_employee=False, hospital_id=None):
                 WHERE hospital_id = ?
                 GROUP BY label
                 ORDER BY count DESC, label ASC
-                """
-                ,
+                """,
                 (scoped_hospital_id,),
             )
             department_distribution = [dict(row) for row in cursor.fetchall()]
@@ -2947,8 +2974,7 @@ def get_dashboard_analytics(days=14, include_employee=False, hospital_id=None):
                 WHERE hospital_id = ?
                 GROUP BY label
                 ORDER BY count DESC, label ASC
-                """
-                ,
+                """,
                 (scoped_hospital_id,),
             )
             access_role_distribution = [dict(row) for row in cursor.fetchall()]
@@ -2985,7 +3011,12 @@ def delete_patient(patient_id, hospital_id=None, actor=None):
             (actor, patient_id, scoped_hospital_id),
         )
         deleted = soft_delete_row(
-            cursor, "patients", "patient_id", patient_id, hospital_id=scoped_hospital_id, actor=actor
+            cursor,
+            "patients",
+            "patient_id",
+            patient_id,
+            hospital_id=scoped_hospital_id,
+            actor=actor,
         )
         conn.commit()
         return deleted
@@ -2993,26 +3024,26 @@ def delete_patient(patient_id, hospital_id=None, actor=None):
 
 # ==================== Employee management ====================
 
+
 def generate_employee_id(hospital_id=None):
     # employee_id has a global UNIQUE constraint (not scoped per hospital), so the
     # next-id counter must scan across all hospitals, not just the current one.
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT employee_id FROM users WHERE employee_id LIKE ?",
-            ('EMP-%',)
+            "SELECT employee_id FROM users WHERE employee_id LIKE ?", ("EMP-%",)
         )
         ids = [row[0] for row in cursor.fetchall()]
-        
+
         max_num = 0
         for emp_id in ids:
             try:
-                num = int(emp_id.split('-')[1])
+                num = int(emp_id.split("-")[1])
                 if num > max_num:
                     max_num = num
             except (IndexError, ValueError):
                 continue
-                
+
     return f"EMP-{max_num + 1:05d}"
 
 
@@ -3041,7 +3072,12 @@ def add_employee(data, hospital_id=None):
                 data.get("status", "active"),
                 data.get("address"),
                 data.get("emergency_contact"),
-                data.get("access_role") or ("clinician" if str(data.get("job_role", "")).lower() == "doctor" else "receptionist"),
+                data.get("access_role")
+                or (
+                    "clinician"
+                    if str(data.get("job_role", "")).lower() == "doctor"
+                    else "receptionist"
+                ),
                 data.get("user_type", "normal"),
                 json.dumps(data.get("module_access", []), separators=(",", ":")),
             ),
@@ -3062,8 +3098,7 @@ def get_all_employees(hospital_id=None):
             FROM users
             WHERE hospital_id = ?
             ORDER BY date_joined DESC
-        """
-            ,
+        """,
             (scoped_hospital_id,),
         )
         return cursor.fetchall()
@@ -3118,7 +3153,11 @@ def update_employee(employee_id, data, hospital_id=None):
                 data.get("job_role"),
                 data.get("access_role"),
                 data.get("user_type"),
-                json.dumps(data["module_access"], separators=(",", ":")) if "module_access" in data else None,
+                (
+                    json.dumps(data["module_access"], separators=(",", ":"))
+                    if "module_access" in data
+                    else None
+                ),
                 employee_id,
                 scoped_hospital_id,
             ),
@@ -3177,7 +3216,9 @@ def get_employee_stats(hospital_id=None):
             (scoped_hospital_id,),
         )
         inactive = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM users WHERE hospital_id = ?", (scoped_hospital_id,))
+        cursor.execute(
+            "SELECT COUNT(*) FROM users WHERE hospital_id = ?", (scoped_hospital_id,)
+        )
         total = cursor.fetchone()[0]
     return {"total": total, "active": active, "inactive": inactive}
 
@@ -3186,7 +3227,9 @@ def check_if_first_user(hospital_id=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM users WHERE hospital_id = ?", (scoped_hospital_id,))
+        cursor.execute(
+            "SELECT COUNT(*) FROM users WHERE hospital_id = ?", (scoped_hospital_id,)
+        )
         count = cursor.fetchone()[0]
     return count == 0
 
@@ -3216,12 +3259,14 @@ def create_appointment(data, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            _to_sql_params("SELECT COALESCE(MAX(token_no), 0) AS value FROM appointments "
-            "WHERE DATE(appointment_date) = DATE(?) AND hospital_id = ?"),
+            _to_sql_params(
+                "SELECT COALESCE(MAX(token_no), 0) AS value FROM appointments "
+                "WHERE DATE(appointment_date) = DATE(?) AND hospital_id = ?"
+            ),
             (appointment_day, scoped_hospital_id),
         )
         token_no = int((cursor.fetchone() or {"value": 0})["value"] or 0) + 1
-        
+
         insert_sql = """
             INSERT INTO appointments (
                 patient_id, patient_name, visit_type, department, doctor_name,
@@ -3230,7 +3275,7 @@ def create_appointment(data, hospital_id=None):
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         insert_sql += " RETURNING id"
-        
+
         cursor.execute(
             _to_sql_params(insert_sql),
             (
@@ -3250,13 +3295,20 @@ def create_appointment(data, hospital_id=None):
                 scoped_hospital_id,
             ),
         )
-        
+
         appointment_id = cursor.fetchone()[0]
         conn.commit()
         return appointment_id, token_no
 
 
-def list_appointments(appointment_date=None, status=None, visit_type=None, doctor_name=None, patient_id=None, hospital_id=None):
+def list_appointments(
+    appointment_date=None,
+    status=None,
+    visit_type=None,
+    doctor_name=None,
+    patient_id=None,
+    hospital_id=None,
+):
     with get_connection() as conn:
         cursor = conn.cursor()
         clauses = []
@@ -3346,6 +3398,7 @@ def update_appointment(appointment_id, data):
 
 # --- Doctors (Static) ---
 
+
 def create_doctor(data):
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -3367,6 +3420,7 @@ def create_doctor(data):
         conn.commit()
         return doctor_id
 
+
 def list_doctors(department=None, hospital_id=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
@@ -3386,22 +3440,33 @@ def list_doctors(department=None, hospital_id=None):
         """
         if department:
             cursor.execute(
-                _to_sql_params(f"SELECT * FROM ({query}) AS combined WHERE department = ? ORDER BY doctor_name"),
-                (scoped_hospital_id, department)
+                _to_sql_params(
+                    f"SELECT * FROM ({query}) AS combined WHERE department = ? ORDER BY doctor_name"
+                ),
+                (scoped_hospital_id, department),
             )
         else:
             cursor.execute(
-                _to_sql_params(f"SELECT * FROM ({query}) AS combined ORDER BY doctor_name"),
-                (scoped_hospital_id,)
+                _to_sql_params(
+                    f"SELECT * FROM ({query}) AS combined ORDER BY doctor_name"
+                ),
+                (scoped_hospital_id,),
             )
         return [dict(row) for row in cursor.fetchall()]
+
 
 def update_doctor(doctor_id, data):
     with get_connection() as conn:
         cursor = conn.cursor()
         updates = []
         params = []
-        for key in ["doctor_name", "department", "consultation_fee", "review_fee", "status"]:
+        for key in [
+            "doctor_name",
+            "department",
+            "consultation_fee",
+            "review_fee",
+            "status",
+        ]:
             if key in data:
                 updates.append(f"{key} = ?")
                 val = data[key]
@@ -3416,12 +3481,14 @@ def update_doctor(doctor_id, data):
         conn.commit()
         return cursor.rowcount > 0
 
+
 def delete_doctor(doctor_id):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(_to_sql_params("DELETE FROM doctors WHERE id = ?"), (doctor_id,))
         conn.commit()
         return cursor.rowcount > 0
+
 
 def get_suggested_doctors(department=None, region=None):
     scoped_hospital_id = resolve_hospital_id()
@@ -3441,7 +3508,7 @@ def get_suggested_doctors(department=None, region=None):
     target_dept = department
     if not target_dept and region:
         target_dept = region_dept_map.get(region.lower(), "General Medicine")
-    
+
     with get_connection() as conn:
         cursor = conn.cursor()
         query = """
@@ -3457,15 +3524,20 @@ def get_suggested_doctors(department=None, region=None):
         """
         if target_dept:
             cursor.execute(
-                _to_sql_params(f"SELECT * FROM ({query}) AS combined WHERE LOWER(department) LIKE LOWER(?) ORDER BY doctor_name"),
-                (scoped_hospital_id, f"%{target_dept}%",)
+                _to_sql_params(
+                    f"SELECT * FROM ({query}) AS combined WHERE LOWER(department) LIKE LOWER(?) ORDER BY doctor_name"
+                ),
+                (
+                    scoped_hospital_id,
+                    f"%{target_dept}%",
+                ),
             )
             matched = [dict(row) for row in cursor.fetchall()]
             if matched:
                 return matched
         cursor.execute(
             _to_sql_params(f"SELECT * FROM ({query}) AS combined ORDER BY doctor_name"),
-            (scoped_hospital_id,)
+            (scoped_hospital_id,),
         )
         return [dict(row) for row in cursor.fetchall()]
 
@@ -3548,7 +3620,9 @@ def update_doctor_schedule(schedule_id, data):
 def delete_doctor_schedule(schedule_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        deleted = soft_delete_row(cursor, "doctor_schedules", "id", schedule_id, actor=actor)
+        deleted = soft_delete_row(
+            cursor, "doctor_schedules", "id", schedule_id, actor=actor
+        )
         conn.commit()
         return deleted
 
@@ -3632,7 +3706,9 @@ def list_patient_consents(patient_id=None):
                 (patient_id,),
             )
         else:
-            cursor.execute("SELECT * FROM patient_consents ORDER BY signed_at DESC, id DESC")
+            cursor.execute(
+                "SELECT * FROM patient_consents ORDER BY signed_at DESC, id DESC"
+            )
         return cursor.fetchall()
 
 
@@ -3760,8 +3836,13 @@ def create_certificate(data):
 
     try:
         from core.tasks import process_document_embedding_task
+
         process_document_embedding_task.delay(
-            "certificates", certificate_id, data["body"], hospital_id=None, patient_id=data["patient_id"]
+            "certificates",
+            certificate_id,
+            data["body"],
+            hospital_id=None,
+            patient_id=data["patient_id"],
         )
     except Exception:
         pass
@@ -3782,7 +3863,9 @@ def list_certificates(patient_id):
 def delete_certificate(certificate_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        deleted = soft_delete_row(cursor, "certificates", "id", certificate_id, actor=actor)
+        deleted = soft_delete_row(
+            cursor, "certificates", "id", certificate_id, actor=actor
+        )
         conn.commit()
         return deleted
 
@@ -3811,7 +3894,9 @@ def create_ot_theatre(data):
 def list_ot_theatres():
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM ot_theatres WHERE deleted_at IS NULL ORDER BY theatre_code ASC")
+        cursor.execute(
+            "SELECT * FROM ot_theatres WHERE deleted_at IS NULL ORDER BY theatre_code ASC"
+        )
         return cursor.fetchall()
 
 
@@ -3926,7 +4011,9 @@ def update_ot_surgery(surgery_id, data):
                 data.get("procedure_name", existing["procedure_name"]),
                 data.get("surgeon_name", existing["surgeon_name"]),
                 data.get("scheduled_start", existing["scheduled_start"]),
-                data.get("estimated_duration_hours", existing["estimated_duration_hours"]),
+                data.get(
+                    "estimated_duration_hours", existing["estimated_duration_hours"]
+                ),
                 status,
                 data.get("equipment_required", existing["equipment_required"]),
                 data.get("notes", existing["notes"]),
@@ -3944,7 +4031,10 @@ def update_ot_surgery(surgery_id, data):
 def delete_ot_surgery(surgery_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT theatre_id FROM ot_surgeries WHERE id = ? AND deleted_at IS NULL", (surgery_id,))
+        cursor.execute(
+            "SELECT theatre_id FROM ot_surgeries WHERE id = ? AND deleted_at IS NULL",
+            (surgery_id,),
+        )
         existing = cursor.fetchone()
         if not existing:
             return False
@@ -3973,11 +4063,17 @@ def get_ot_summary():
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) AS value FROM ot_theatres")
         theatre_count = cursor.fetchone()["value"]
-        cursor.execute("SELECT COUNT(*) AS value FROM ot_theatres WHERE status = 'available'")
+        cursor.execute(
+            "SELECT COUNT(*) AS value FROM ot_theatres WHERE status = 'available'"
+        )
         available_count = cursor.fetchone()["value"]
-        cursor.execute("SELECT COUNT(*) AS value FROM ot_surgeries WHERE status = 'scheduled'")
+        cursor.execute(
+            "SELECT COUNT(*) AS value FROM ot_surgeries WHERE status = 'scheduled'"
+        )
         scheduled_count = cursor.fetchone()["value"]
-        cursor.execute("SELECT COUNT(*) AS value FROM ot_surgeries WHERE status = 'completed'")
+        cursor.execute(
+            "SELECT COUNT(*) AS value FROM ot_surgeries WHERE status = 'completed'"
+        )
         completed_count = cursor.fetchone()["value"]
         cursor.execute(
             "SELECT COALESCE(SUM(estimated_duration_hours), 0) AS value FROM ot_surgeries WHERE status IN ('scheduled', 'in_progress')"
@@ -3987,8 +4083,7 @@ def get_ot_summary():
             "SELECT COALESCE(SUM(estimated_duration_hours), 0) AS value FROM ot_surgeries WHERE status = 'completed'"
         )
         completed_hours = cursor.fetchone()["value"]
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT
                 ot_theatres.theatre_code AS label,
                 COALESCE(SUM(
@@ -4002,8 +4097,7 @@ def get_ot_summary():
             LEFT JOIN ot_surgeries ON ot_surgeries.theatre_id = ot_theatres.id
             GROUP BY ot_theatres.id, ot_theatres.theatre_code
             ORDER BY count DESC, ot_theatres.theatre_code ASC
-            """
-        )
+            """)
         utilization = [dict(row) for row in cursor.fetchall()]
     return {
         "theatre_count": theatre_count,
@@ -4017,6 +4111,7 @@ def get_ot_summary():
 
 
 # ==================== Accounts operations ====================
+
 
 def create_account_ledger_entry(data):
     with get_connection() as conn:
@@ -4089,7 +4184,9 @@ def update_account_ledger_entry(entry_id, data):
 def delete_account_ledger_entry(entry_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        deleted = soft_delete_row(cursor, "accounts_ledger", "id", entry_id, actor=actor)
+        deleted = soft_delete_row(
+            cursor, "accounts_ledger", "id", entry_id, actor=actor
+        )
         conn.commit()
         return deleted
 
@@ -4165,7 +4262,9 @@ def update_vendor_payment(payment_id, data):
 def delete_vendor_payment(payment_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        deleted = soft_delete_row(cursor, "vendor_payments", "id", payment_id, actor=actor)
+        deleted = soft_delete_row(
+            cursor, "vendor_payments", "id", payment_id, actor=actor
+        )
         conn.commit()
         return deleted
 
@@ -4178,7 +4277,11 @@ def create_doctor_payout(data):
         due_amount = max(total_amount - paid_amount, 0.0)
         status = data.get("status")
         if not status:
-            status = "paid" if due_amount == 0 else ("partial" if paid_amount > 0 else "pending")
+            status = (
+                "paid"
+                if due_amount == 0
+                else ("partial" if paid_amount > 0 else "pending")
+            )
         cursor.execute(
             """
             INSERT INTO doctor_payouts (
@@ -4228,7 +4331,11 @@ def update_doctor_payout(payout_id, data):
         due_amount = max(total_amount - paid_amount, 0.0)
         status = data.get("status")
         if not status:
-            status = "paid" if due_amount == 0 else ("partial" if paid_amount > 0 else "pending")
+            status = (
+                "paid"
+                if due_amount == 0
+                else ("partial" if paid_amount > 0 else "pending")
+            )
         cursor.execute(
             """
             UPDATE doctor_payouts
@@ -4255,7 +4362,9 @@ def update_doctor_payout(payout_id, data):
 def delete_doctor_payout(payout_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        deleted = soft_delete_row(cursor, "doctor_payouts", "id", payout_id, actor=actor)
+        deleted = soft_delete_row(
+            cursor, "doctor_payouts", "id", payout_id, actor=actor
+        )
         conn.commit()
         return deleted
 
@@ -4294,6 +4403,7 @@ def get_accounts_summary():
 
 
 # ==================== HospAI module operations ====================
+
 
 def create_encounter(data, hospital_id=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
@@ -4336,7 +4446,10 @@ def list_encounters(patient_id=None, hospital_id=None):
             clauses.append("patient_id = ?")
             params.append(patient_id)
         where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-        cursor.execute(f"SELECT * FROM encounters{where_clause} ORDER BY arrival_at DESC", tuple(params))
+        cursor.execute(
+            f"SELECT * FROM encounters{where_clause} ORDER BY arrival_at DESC",
+            tuple(params),
+        )
         return cursor.fetchall()
 
 
@@ -4374,7 +4487,10 @@ def list_bed_allocations(patient_id=None, active_only=False):
         if active_only:
             clauses.append("status = 'active'")
         where_clause = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-        cursor.execute(f"SELECT * FROM bed_allocations{where_clause} ORDER BY allocated_at DESC", tuple(params))
+        cursor.execute(
+            f"SELECT * FROM bed_allocations{where_clause} ORDER BY allocated_at DESC",
+            tuple(params),
+        )
         return cursor.fetchall()
 
 
@@ -4498,7 +4614,13 @@ def get_patient_journey(patient_id, hospital_id=None):
 
     events = []
     if patient.get("created_at"):
-        events.append({"stage": "registration", "label": "Patient Registered", "timestamp": patient["created_at"]})
+        events.append(
+            {
+                "stage": "registration",
+                "label": "Patient Registered",
+                "timestamp": patient["created_at"],
+            }
+        )
 
     for row in list_appointments(patient_id=patient_id, hospital_id=hospital_id):
         appt = dict(row)
@@ -4507,10 +4629,18 @@ def get_patient_journey(patient_id, hospital_id=None):
                 "stage": "queue",
                 "label": f"Appointment scheduled ({appt.get('visit_type')}, token #{appt.get('token_no')})",
                 "timestamp": appt.get("created_at") or appt.get("appointment_date"),
-                "detail": {"doctor_name": appt.get("doctor_name"), "department": appt.get("department")},
+                "detail": {
+                    "doctor_name": appt.get("doctor_name"),
+                    "department": appt.get("department"),
+                },
             }
         )
-        if appt.get("status") in ("checked_in", "in_consultation", "completed", "cancelled"):
+        if appt.get("status") in (
+            "checked_in",
+            "in_consultation",
+            "completed",
+            "cancelled",
+        ):
             events.append(
                 {
                     "stage": "consultation",
@@ -4669,14 +4799,19 @@ def list_invoices(patient_id=None, module=None, hospital_id=None):
             clauses.append("module = ?")
             params.append(module)
         where_clause = f" WHERE {' AND '.join(clauses)}"
-        cursor.execute(f"SELECT * FROM invoices{where_clause} ORDER BY created_at DESC", tuple(params))
+        cursor.execute(
+            f"SELECT * FROM invoices{where_clause} ORDER BY created_at DESC",
+            tuple(params),
+        )
         return cursor.fetchall()
 
 
 def get_invoice_by_id(invoice_id):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM invoices WHERE id = ? AND deleted_at IS NULL", (invoice_id,))
+        cursor.execute(
+            "SELECT * FROM invoices WHERE id = ? AND deleted_at IS NULL", (invoice_id,)
+        )
         return cursor.fetchone()
 
 
@@ -4690,8 +4825,12 @@ def update_invoice(invoice_id, data):
 
         total_amount = float(data.get("total_amount", existing["total_amount"] or 0))
         paid_amount = float(data.get("paid_amount", existing["paid_amount"] or 0))
-        advance_amount = float(data.get("advance_amount", existing["advance_amount"] or 0))
-        refunded_amount = float(data.get("refunded_amount", existing["refunded_amount"] or 0))
+        advance_amount = float(
+            data.get("advance_amount", existing["advance_amount"] or 0)
+        )
+        refunded_amount = float(
+            data.get("refunded_amount", existing["refunded_amount"] or 0)
+        )
         collected_amount = max(paid_amount + advance_amount - refunded_amount, 0.0)
         due_amount = max(total_amount - collected_amount, 0.0)
         payment_status = data.get("payment_status")
@@ -4818,7 +4957,9 @@ def record_invoice_payment(invoice_id, data):
         total_amount = float(invoice["total_amount"] or 0)
         advance_amount = float(invoice["advance_amount"] or 0)
         refunded_amount = float(invoice["refunded_amount"] or 0)
-        due_total = max(total_amount - max(paid_total + advance_amount - refunded_amount, 0.0), 0.0)
+        due_total = max(
+            total_amount - max(paid_total + advance_amount - refunded_amount, 0.0), 0.0
+        )
         if due_total == 0:
             status = "paid"
         elif paid_total > 0:
@@ -4935,7 +5076,9 @@ def update_insurance_claim(claim_id, data):
 def delete_insurance_claim(claim_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        deleted = soft_delete_row(cursor, "insurance_claims", "id", claim_id, actor=actor)
+        deleted = soft_delete_row(
+            cursor, "insurance_claims", "id", claim_id, actor=actor
+        )
         conn.commit()
         return deleted
 
@@ -4944,18 +5087,30 @@ def get_revenue_summary(hospital_id=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COALESCE(SUM(total_amount), 0) AS value FROM invoices WHERE hospital_id = ?", (scoped_hospital_id,))
+        cursor.execute(
+            "SELECT COALESCE(SUM(total_amount), 0) AS value FROM invoices WHERE hospital_id = ?",
+            (scoped_hospital_id,),
+        )
         total_billed = cursor.fetchone()["value"]
         cursor.execute(
             "SELECT COALESCE(SUM(paid_amount + advance_amount - refunded_amount), 0) AS value FROM invoices WHERE hospital_id = ?",
             (scoped_hospital_id,),
         )
         total_collected = cursor.fetchone()["value"]
-        cursor.execute("SELECT COALESCE(SUM(due_amount), 0) AS value FROM invoices WHERE hospital_id = ?", (scoped_hospital_id,))
+        cursor.execute(
+            "SELECT COALESCE(SUM(due_amount), 0) AS value FROM invoices WHERE hospital_id = ?",
+            (scoped_hospital_id,),
+        )
         total_due = cursor.fetchone()["value"]
-        cursor.execute("SELECT COALESCE(SUM(advance_amount), 0) AS value FROM invoices WHERE hospital_id = ?", (scoped_hospital_id,))
+        cursor.execute(
+            "SELECT COALESCE(SUM(advance_amount), 0) AS value FROM invoices WHERE hospital_id = ?",
+            (scoped_hospital_id,),
+        )
         total_advance = cursor.fetchone()["value"]
-        cursor.execute("SELECT COALESCE(SUM(refunded_amount), 0) AS value FROM invoices WHERE hospital_id = ?", (scoped_hospital_id,))
+        cursor.execute(
+            "SELECT COALESCE(SUM(refunded_amount), 0) AS value FROM invoices WHERE hospital_id = ?",
+            (scoped_hospital_id,),
+        )
         total_refunded = cursor.fetchone()["value"]
         cursor.execute(
             """
@@ -5148,23 +5303,43 @@ def get_reports_overview(hospital_id=None):
         )
         alos_row = cursor.fetchone()
         average_los_days = round(float((alos_row or {"avg_los": 0})["avg_los"] or 0), 2)
-        admission_count = int((alos_row or {"admission_count": 0})["admission_count"] or 0)
-        
+        admission_count = int(
+            (alos_row or {"admission_count": 0})["admission_count"] or 0
+        )
+
         # Phase H Metrics
         cursor.execute("SELECT COUNT(*) AS total_beds FROM bed_master")
         total_beds = int((cursor.fetchone() or {"total_beds": 0})["total_beds"] or 0)
-        cursor.execute("SELECT COUNT(*) AS occupied_beds FROM bed_master WHERE status = 'Occupied'")
-        occupied_beds = int((cursor.fetchone() or {"occupied_beds": 0})["occupied_beds"] or 0)
-        bed_occupancy_rate = round((occupied_beds / total_beds * 100) if total_beds > 0 else 0, 1)
+        cursor.execute(
+            "SELECT COUNT(*) AS occupied_beds FROM bed_master WHERE status = 'Occupied'"
+        )
+        occupied_beds = int(
+            (cursor.fetchone() or {"occupied_beds": 0})["occupied_beds"] or 0
+        )
+        bed_occupancy_rate = round(
+            (occupied_beds / total_beds * 100) if total_beds > 0 else 0, 1
+        )
 
-        cursor.execute("SELECT COUNT(*) AS icu_patients FROM icu_monitoring WHERE ventilator_active = 1")
-        icu_critical = int((cursor.fetchone() or {"icu_patients": 0})["icu_patients"] or 0)
+        cursor.execute(
+            "SELECT COUNT(*) AS icu_patients FROM icu_monitoring WHERE ventilator_active = 1"
+        )
+        icu_critical = int(
+            (cursor.fetchone() or {"icu_patients": 0})["icu_patients"] or 0
+        )
 
-        cursor.execute("SELECT COUNT(*) AS active_emergencies FROM emergency_triage WHERE status = 'Pending'")
-        active_emergencies = int((cursor.fetchone() or {"active_emergencies": 0})["active_emergencies"] or 0)
+        cursor.execute(
+            "SELECT COUNT(*) AS active_emergencies FROM emergency_triage WHERE status = 'Pending'"
+        )
+        active_emergencies = int(
+            (cursor.fetchone() or {"active_emergencies": 0})["active_emergencies"] or 0
+        )
 
-        cursor.execute("SELECT COUNT(*) AS active_ambulances FROM ambulance_dispatch WHERE status = 'En Route'")
-        active_ambulances = int((cursor.fetchone() or {"active_ambulances": 0})["active_ambulances"] or 0)
+        cursor.execute(
+            "SELECT COUNT(*) AS active_ambulances FROM ambulance_dispatch WHERE status = 'En Route'"
+        )
+        active_ambulances = int(
+            (cursor.fetchone() or {"active_ambulances": 0})["active_ambulances"] or 0
+        )
 
     return {
         "hospital_summary": hospital_summary,
@@ -5189,8 +5364,8 @@ def get_reports_overview(hospital_id=None):
             "bed_occupancy_rate": bed_occupancy_rate,
             "icu_critical_patients": icu_critical,
             "active_emergencies": active_emergencies,
-            "active_ambulances": active_ambulances
-        }
+            "active_ambulances": active_ambulances,
+        },
     }
 
 
@@ -5242,14 +5417,18 @@ def upsert_inventory_item(data):
 def list_inventory_items():
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM pharmacy_inventory WHERE deleted_at IS NULL ORDER BY medicine_name ASC")
+        cursor.execute(
+            "SELECT * FROM pharmacy_inventory WHERE deleted_at IS NULL ORDER BY medicine_name ASC"
+        )
         return cursor.fetchall()
 
 
 def delete_inventory_item(item_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        deleted = soft_delete_row(cursor, "pharmacy_inventory", "id", item_id, actor=actor)
+        deleted = soft_delete_row(
+            cursor, "pharmacy_inventory", "id", item_id, actor=actor
+        )
         conn.commit()
         return deleted
 
@@ -5277,7 +5456,9 @@ def create_pharmacy_supplier(data):
 def list_pharmacy_suppliers():
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM pharmacy_suppliers WHERE deleted_at IS NULL ORDER BY supplier_name ASC")
+        cursor.execute(
+            "SELECT * FROM pharmacy_suppliers WHERE deleted_at IS NULL ORDER BY supplier_name ASC"
+        )
         return cursor.fetchall()
 
 
@@ -5309,8 +5490,13 @@ def update_pharmacy_supplier(supplier_id, data):
 def delete_pharmacy_supplier(supplier_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("UPDATE pharmacy_purchases SET supplier_id = NULL WHERE supplier_id = ?", (supplier_id,))
-        deleted = soft_delete_row(cursor, "pharmacy_suppliers", "id", supplier_id, actor=actor)
+        cursor.execute(
+            "UPDATE pharmacy_purchases SET supplier_id = NULL WHERE supplier_id = ?",
+            (supplier_id,),
+        )
+        deleted = soft_delete_row(
+            cursor, "pharmacy_suppliers", "id", supplier_id, actor=actor
+        )
         conn.commit()
         return deleted
 
@@ -5383,7 +5569,9 @@ def list_pharmacy_purchases(status=None):
                 (status,),
             )
         else:
-            cursor.execute("SELECT * FROM pharmacy_purchases WHERE deleted_at IS NULL ORDER BY created_at DESC, id DESC")
+            cursor.execute(
+                "SELECT * FROM pharmacy_purchases WHERE deleted_at IS NULL ORDER BY created_at DESC, id DESC"
+            )
         return cursor.fetchall()
 
 
@@ -5419,7 +5607,9 @@ def update_pharmacy_purchase(purchase_id, data):
             ),
         )
         if status == "received" and not stock_applied:
-            _apply_purchase_inventory(cursor, data.get("medicine_name", existing["medicine_name"]), quantity)
+            _apply_purchase_inventory(
+                cursor, data.get("medicine_name", existing["medicine_name"]), quantity
+            )
             cursor.execute(
                 "UPDATE pharmacy_purchases SET stock_applied = 1 WHERE id = ?",
                 (purchase_id,),
@@ -5431,7 +5621,9 @@ def update_pharmacy_purchase(purchase_id, data):
 def delete_pharmacy_purchase(purchase_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        deleted = soft_delete_row(cursor, "pharmacy_purchases", "id", purchase_id, actor=actor)
+        deleted = soft_delete_row(
+            cursor, "pharmacy_purchases", "id", purchase_id, actor=actor
+        )
         conn.commit()
         return deleted
 
@@ -5472,7 +5664,9 @@ def create_pharmacy_sale(data, hospital_id=None):
         return sale_id
 
 
-def list_pharmacy_sales(medicine_name=None, invoice_id=None, patient_id=None, hospital_id=None):
+def list_pharmacy_sales(
+    medicine_name=None, invoice_id=None, patient_id=None, hospital_id=None
+):
     with get_connection() as conn:
         cursor = conn.cursor()
         clauses = []
@@ -5507,29 +5701,23 @@ def get_pharmacy_summary(hospital_id=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT COUNT(*) AS value
             FROM pharmacy_inventory
             WHERE quantity <= reorder_level
-            """
-        )
+            """)
         low_stock = cursor.fetchone()["value"]
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT COUNT(*) AS value
             FROM pharmacy_inventory
             WHERE quantity = 0
-            """
-        )
+            """)
         out_of_stock = cursor.fetchone()["value"]
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT COUNT(*) AS value
             FROM pharmacy_inventory
             WHERE stock_condition = 'damaged'
-            """
-        )
+            """)
         damaged = cursor.fetchone()["value"]
         cursor.execute(
             "SELECT COALESCE(SUM(amount), 0) AS value FROM pharmacy_sales WHERE hospital_id = ?",
@@ -5567,7 +5755,9 @@ def create_lab_vendor(data):
 def list_lab_vendors():
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM lab_vendors WHERE deleted_at IS NULL ORDER BY vendor_name ASC")
+        cursor.execute(
+            "SELECT * FROM lab_vendors WHERE deleted_at IS NULL ORDER BY vendor_name ASC"
+        )
         return cursor.fetchall()
 
 
@@ -5599,7 +5789,9 @@ def update_lab_vendor(vendor_id, data):
 def delete_lab_vendor(vendor_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("UPDATE diagnostics SET vendor_id = NULL WHERE vendor_id = ?", (vendor_id,))
+        cursor.execute(
+            "UPDATE diagnostics SET vendor_id = NULL WHERE vendor_id = ?", (vendor_id,)
+        )
         deleted = soft_delete_row(cursor, "lab_vendors", "id", vendor_id, actor=actor)
         conn.commit()
         return deleted
@@ -5612,7 +5804,9 @@ def create_diagnostic_record(data, hospital_id=None):
         paid_amount = float(data.get("paid_amount", 0))
         total_amount = float(data["amount"])
         due_amount = max(total_amount - paid_amount, 0.0)
-        status = "paid" if due_amount == 0 else ("partial" if paid_amount > 0 else "due")
+        status = (
+            "paid" if due_amount == 0 else ("partial" if paid_amount > 0 else "due")
+        )
         cursor.execute(
             """
             INSERT INTO diagnostics (
@@ -5657,7 +5851,10 @@ def list_diagnostics(patient_id=None, doctor_name=None, hospital_id=None):
             clauses.append("doctor_name = ?")
             params.append(doctor_name)
         where_clause = f" WHERE {' AND '.join(clauses)}"
-        cursor.execute(f"SELECT * FROM diagnostics{where_clause} ORDER BY created_at DESC", tuple(params))
+        cursor.execute(
+            f"SELECT * FROM diagnostics{where_clause} ORDER BY created_at DESC",
+            tuple(params),
+        )
         return cursor.fetchall()
 
 
@@ -5674,7 +5871,9 @@ def update_diagnostic_record(diagnostic_id, data):
         due_amount = max(total_amount - paid_amount, 0.0)
         status = data.get("status")
         if not status:
-            status = "paid" if due_amount == 0 else ("partial" if paid_amount > 0 else "due")
+            status = (
+                "paid" if due_amount == 0 else ("partial" if paid_amount > 0 else "due")
+            )
 
         cursor.execute(
             """
@@ -5718,7 +5917,9 @@ def update_diagnostic_record(diagnostic_id, data):
 def delete_diagnostic_record(diagnostic_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        deleted = soft_delete_row(cursor, "diagnostics", "id", diagnostic_id, actor=actor)
+        deleted = soft_delete_row(
+            cursor, "diagnostics", "id", diagnostic_id, actor=actor
+        )
         conn.commit()
         return deleted
 
@@ -5727,13 +5928,26 @@ def get_diagnostic_summary(hospital_id=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COALESCE(SUM(amount), 0) AS value FROM diagnostics WHERE hospital_id = ?", (scoped_hospital_id,))
+        cursor.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS value FROM diagnostics WHERE hospital_id = ?",
+            (scoped_hospital_id,),
+        )
         total_amount = cursor.fetchone()["value"]
-        cursor.execute("SELECT COALESCE(SUM(paid_amount), 0) AS value FROM diagnostics WHERE hospital_id = ?", (scoped_hospital_id,))
+        cursor.execute(
+            "SELECT COALESCE(SUM(paid_amount), 0) AS value FROM diagnostics WHERE hospital_id = ?",
+            (scoped_hospital_id,),
+        )
         total_paid = cursor.fetchone()["value"]
-        cursor.execute("SELECT COALESCE(SUM(due_amount), 0) AS value FROM diagnostics WHERE hospital_id = ?", (scoped_hospital_id,))
+        cursor.execute(
+            "SELECT COALESCE(SUM(due_amount), 0) AS value FROM diagnostics WHERE hospital_id = ?",
+            (scoped_hospital_id,),
+        )
         total_due = cursor.fetchone()["value"]
-    return {"total_amount": total_amount, "total_paid": total_paid, "total_due": total_due}
+    return {
+        "total_amount": total_amount,
+        "total_paid": total_paid,
+        "total_due": total_due,
+    }
 
 
 def create_department(data, hospital_id=None):
@@ -5745,7 +5959,11 @@ def create_department(data, hospital_id=None):
             INSERT INTO department_master (hospital_id, department_name, mapped_head_employee_id)
             VALUES (?, ?, ?)
             """,
-            (scoped_hospital_id, data["department_name"], data.get("mapped_head_employee_id")),
+            (
+                scoped_hospital_id,
+                data["department_name"],
+                data.get("mapped_head_employee_id"),
+            ),
         )
         department_id = cursor.lastrowid
         conn.commit()
@@ -5791,7 +6009,9 @@ def update_department(department_id, data, hospital_id=None):
             """,
             (
                 data.get("department_name", existing["department_name"]),
-                data.get("mapped_head_employee_id", existing["mapped_head_employee_id"]),
+                data.get(
+                    "mapped_head_employee_id", existing["mapped_head_employee_id"]
+                ),
                 department_id,
                 scoped_hospital_id,
             ),
@@ -5805,7 +6025,12 @@ def delete_department(department_id, hospital_id=None, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         deleted = soft_delete_row(
-            cursor, "department_master", "id", department_id, hospital_id=scoped_hospital_id, actor=actor
+            cursor,
+            "department_master",
+            "id",
+            department_id,
+            hospital_id=scoped_hospital_id,
+            actor=actor,
         )
         conn.commit()
         return deleted
@@ -5842,7 +6067,9 @@ def list_attendance(employee_id=None):
                 (employee_id,),
             )
         else:
-            cursor.execute("SELECT * FROM attendance WHERE deleted_at IS NULL ORDER BY attendance_date DESC")
+            cursor.execute(
+                "SELECT * FROM attendance WHERE deleted_at IS NULL ORDER BY attendance_date DESC"
+            )
         return cursor.fetchall()
 
 
@@ -5876,7 +6103,9 @@ def update_attendance_record(attendance_id, data):
 def delete_attendance_record(attendance_id, actor=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        deleted = soft_delete_row(cursor, "attendance", "id", attendance_id, actor=actor)
+        deleted = soft_delete_row(
+            cursor, "attendance", "id", attendance_id, actor=actor
+        )
         conn.commit()
         return deleted
 
@@ -5884,7 +6113,11 @@ def delete_attendance_record(attendance_id, actor=None):
 def create_payroll_record(data):
     with get_connection() as conn:
         cursor = conn.cursor()
-        net_salary = float(data["basic_salary"]) + float(data.get("allowances", 0)) - float(data.get("deductions", 0))
+        net_salary = (
+            float(data["basic_salary"])
+            + float(data.get("allowances", 0))
+            - float(data.get("deductions", 0))
+        )
         cursor.execute(
             """
             INSERT INTO payroll (
@@ -5916,7 +6149,9 @@ def list_payroll(employee_id=None):
                 (employee_id,),
             )
         else:
-            cursor.execute("SELECT * FROM payroll WHERE deleted_at IS NULL ORDER BY payroll_month DESC")
+            cursor.execute(
+                "SELECT * FROM payroll WHERE deleted_at IS NULL ORDER BY payroll_month DESC"
+            )
         return cursor.fetchall()
 
 
@@ -6007,7 +6242,9 @@ def list_leave_requests(employee_id=None):
                 (employee_id,),
             )
         else:
-            cursor.execute("SELECT * FROM leave_requests WHERE deleted_at IS NULL ORDER BY created_at DESC")
+            cursor.execute(
+                "SELECT * FROM leave_requests WHERE deleted_at IS NULL ORDER BY created_at DESC"
+            )
         return cursor.fetchall()
 
 
@@ -6057,13 +6294,11 @@ def get_audit_logs(module_name=None, limit=100):
                 (module_name,),
             )
         else:
-            cursor.execute(
-                f"""
+            cursor.execute(f"""
                 SELECT * FROM audit_logs
                 ORDER BY created_at DESC
                 LIMIT {safe_limit}
-                """
-            )
+                """)
         return cursor.fetchall()
 
 
@@ -6097,7 +6332,14 @@ def get_hospital_dashboard_summary(hospital_id=None):
             FROM encounters
             WHERE hospital_id = ? AND arrival_at >= ? AND arrival_at < ?
             """,
-            (today_str, today_str, today_str, scoped_hospital_id, month_start_str, next_month_start_str),
+            (
+                today_str,
+                today_str,
+                today_str,
+                scoped_hospital_id,
+                month_start_str,
+                next_month_start_str,
+            ),
         )
         encounter_summary = dict(cursor.fetchone() or {})
 
@@ -6134,7 +6376,11 @@ def get_hospital_dashboard_summary(hospital_id=None):
             (scoped_hospital_id, month_start_str, next_month_start_str),
         )
         diagnostics_income_row = cursor.fetchone()
-        diagnostics_income = diagnostics_income_row["diagnostics_income"] if diagnostics_income_row else 0
+        diagnostics_income = (
+            diagnostics_income_row["diagnostics_income"]
+            if diagnostics_income_row
+            else 0
+        )
 
         cursor.execute(
             """
@@ -6145,7 +6391,9 @@ def get_hospital_dashboard_summary(hospital_id=None):
             (scoped_hospital_id, month_start_str, next_month_start_str),
         )
         pharmacy_sales_row = cursor.fetchone()
-        pharmacy_sales = pharmacy_sales_row["pharmacy_sales"] if pharmacy_sales_row else 0
+        pharmacy_sales = (
+            pharmacy_sales_row["pharmacy_sales"] if pharmacy_sales_row else 0
+        )
 
         cursor.execute(
             """
@@ -6183,11 +6431,11 @@ def get_hospital_dashboard_summary(hospital_id=None):
 
 # ---- Pharmacy Prescriptions (OCR Integration) ----
 
+
 def ensure_pharmacy_prescriptions_tables(conn):
     cursor = conn.cursor()
-    
-    cursor.execute(
-        """
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS pharmacy_prescriptions (
             id SERIAL PRIMARY KEY,
             hospital_id INTEGER NOT NULL,
@@ -6200,13 +6448,15 @@ def ensure_pharmacy_prescriptions_tables(conn):
             fulfilled_at TIMESTAMP,
             FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
         )
-        """
-    )
+        """)
     conn.commit()
 
 
-def create_pharmacy_prescription(hospital_id, patient_id, doctor_username, medicines_json, doc_id=None):
+def create_pharmacy_prescription(
+    hospital_id, patient_id, doctor_username, medicines_json, doc_id=None
+):
     from utils.database import get_connection
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -6215,7 +6465,7 @@ def create_pharmacy_prescription(hospital_id, patient_id, doctor_username, medic
             VALUES (?, ?, ?, ?, ?)
             RETURNING id
             """,
-            (hospital_id, patient_id, doctor_username, doc_id, medicines_json)
+            (hospital_id, patient_id, doctor_username, doc_id, medicines_json),
         )
         pid = cursor.fetchone()[0]
         conn.commit()
@@ -6224,6 +6474,7 @@ def create_pharmacy_prescription(hospital_id, patient_id, doctor_username, medic
 
 def list_pending_pharmacy_prescriptions(hospital_id):
     from utils.database import get_connection
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -6234,13 +6485,14 @@ def list_pending_pharmacy_prescriptions(hospital_id):
             WHERE p.hospital_id = ? AND p.status = 'pending'
             ORDER BY p.created_at DESC
             """,
-            (hospital_id,)
+            (hospital_id,),
         )
         return cursor.fetchall()
 
 
 def get_pharmacy_prescription(hospital_id, prescription_id):
     from utils.database import get_connection
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -6248,13 +6500,14 @@ def get_pharmacy_prescription(hospital_id, prescription_id):
             SELECT * FROM pharmacy_prescriptions
             WHERE id = ? AND hospital_id = ?
             """,
-            (prescription_id, hospital_id)
+            (prescription_id, hospital_id),
         )
         return cursor.fetchone()
 
 
 def fulfill_pharmacy_prescription(hospital_id, prescription_id):
     from utils.database import get_connection
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -6263,16 +6516,15 @@ def fulfill_pharmacy_prescription(hospital_id, prescription_id):
             SET status = 'fulfilled', fulfilled_at = CURRENT_TIMESTAMP
             WHERE id = ? AND hospital_id = ?
             """,
-            (prescription_id, hospital_id)
+            (prescription_id, hospital_id),
         )
         conn.commit()
 
 
 def ensure_emr_tables(conn):
     cursor = conn.cursor()
-    
-    cursor.execute(
-        """
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS medical_history (
             id SERIAL PRIMARY KEY,
             patient_id TEXT NOT NULL,
@@ -6285,10 +6537,8 @@ def ensure_emr_tables(conn):
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
         )
-        """
-    )
-    cursor.execute(
-        """
+        """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS clinical_notes (
             id SERIAL PRIMARY KEY,
             encounter_id INTEGER,
@@ -6300,10 +6550,8 @@ def ensure_emr_tables(conn):
             FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
             FOREIGN KEY (encounter_id) REFERENCES encounters(id)
         )
-        """
-    )
-    cursor.execute(
-        """
+        """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS patient_vitals (
             id SERIAL PRIMARY KEY,
             encounter_id INTEGER,
@@ -6315,10 +6563,8 @@ def ensure_emr_tables(conn):
             FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
             FOREIGN KEY (encounter_id) REFERENCES encounters(id)
         )
-        """
-    )
-    cursor.execute(
-        """
+        """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS diagnosis_records (
             id SERIAL PRIMARY KEY,
             encounter_id INTEGER,
@@ -6328,10 +6574,8 @@ def ensure_emr_tables(conn):
             FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
             FOREIGN KEY (encounter_id) REFERENCES encounters(id)
         )
-        """
-    )
-    cursor.execute(
-        """
+        """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS emr_access_logs (
             id SERIAL PRIMARY KEY,
             patient_id TEXT NOT NULL,
@@ -6341,5 +6585,4 @@ def ensure_emr_tables(conn):
             FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
             FOREIGN KEY (doctor_id) REFERENCES users(id)
         )
-        """
-    )
+        """)

@@ -80,8 +80,12 @@ describe("OpPage", () => {
     expect(container.textContent).toContain("Doctor Schedule");
     expect(container.textContent).toContain("Schedule OP Visit");
     expect(container.textContent).toContain("Reminders Sent");
-    expect(container.querySelector('input[aria-label="Doctor name"]')).toBeTruthy();
-    expect(container.querySelector('input[aria-label="OP patient name"]')).toBeTruthy();
+    expect(
+      container.querySelector('input[aria-label="Doctor name"]'),
+    ).toBeTruthy();
+    expect(
+      container.querySelector('input[aria-label="OP patient name"]'),
+    ).toBeTruthy();
 
     act(() => {
       root.unmount();

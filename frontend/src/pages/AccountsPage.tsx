@@ -1,12 +1,22 @@
 import { useEffect, useState } from "react";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
 import StatCard from "../components/StatCard";
-import { Button, Input, Label, Select, Table, TableCell, TableHead, TableRow } from "../components/ui";
+import {
+  Button,
+  Input,
+  Label,
+  Select,
+  Table,
+  TableCell,
+  TableHead,
+  TableRow,
+} from "../components/ui";
 import { apiFetch, reportError } from "../lib/api";
 import { formatDate } from "../lib/format";
 import type { Notice } from "../types";
 
-export type AccountsView = "overview" | "ledger" | "vendor-payments" | "doctor-payouts";
+export type AccountsView =
+  "overview" | "ledger" | "vendor-payments" | "doctor-payouts";
 
 type Props = {
   setNotice: Dispatch<SetStateAction<Notice | null>>;
@@ -131,7 +141,10 @@ const DEFAULT_DOCTOR_FORM: DoctorForm = {
   notes: "",
 };
 
-const ACCOUNTS_VIEW_CONFIG: Record<AccountsView, { title: string; subtitle: string }> = {
+const ACCOUNTS_VIEW_CONFIG: Record<
+  AccountsView,
+  { title: string; subtitle: string }
+> = {
   overview: {
     title: "Accounts Overview",
     subtitle: "Track core account balances and latest financial records.",
@@ -151,7 +164,11 @@ const ACCOUNTS_VIEW_CONFIG: Record<AccountsView, { title: string; subtitle: stri
 };
 
 function formatCurrency(amount?: number) {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount || 0);
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount || 0);
 }
 
 export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
@@ -185,18 +202,23 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
         ? apiFetch<{ payouts?: DoctorPayout[] }>("/api/accounts/doctors")
         : Promise.resolve({ payouts: [] as DoctorPayout[] });
 
-      const [summaryData, ledgerData, vendorData, doctorData] = await Promise.all([
-        summaryRequest,
-        ledgerRequest,
-        vendorRequest,
-        doctorRequest,
-      ]);
+      const [summaryData, ledgerData, vendorData, doctorData] =
+        await Promise.all([
+          summaryRequest,
+          ledgerRequest,
+          vendorRequest,
+          doctorRequest,
+        ]);
       setSummary({ ...EMPTY_SUMMARY, ...summaryData });
       setLedgerEntries(ledgerData.entries || []);
       setVendorPayments(vendorData.payments || []);
       setDoctorPayouts(doctorData.payouts || []);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load accounts data.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to load accounts data.",
+      );
     } finally {
       setLoading(false);
     }
@@ -208,14 +230,23 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
 
   const handleLedgerSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!ledgerForm.entry_date || !ledgerForm.category.trim() || (Number(ledgerForm.amount) || 0) <= 0) {
-      setNotice({ type: "error", message: "Entry date, category, and amount are required." });
+    if (
+      !ledgerForm.entry_date ||
+      !ledgerForm.category.trim() ||
+      (Number(ledgerForm.amount) || 0) <= 0
+    ) {
+      setNotice({
+        type: "error",
+        message: "Entry date, category, and amount are required.",
+      });
       return;
     }
     setSavingLedger(true);
     try {
       const entryId = Number(ledgerForm.id);
-      const path = entryId ? `/api/accounts/ledger/${entryId}` : "/api/accounts/ledger";
+      const path = entryId
+        ? `/api/accounts/ledger/${entryId}`
+        : "/api/accounts/ledger";
       await apiFetch(path, {
         method: entryId ? "PUT" : "POST",
         body: JSON.stringify({
@@ -229,10 +260,17 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
         }),
       });
       setLedgerForm({ ...DEFAULT_LEDGER_FORM });
-      setNotice({ type: "success", message: entryId ? "Ledger entry updated." : "Ledger entry recorded." });
+      setNotice({
+        type: "success",
+        message: entryId ? "Ledger entry updated." : "Ledger entry recorded.",
+      });
       await loadAccounts();
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to save ledger entry.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to save ledger entry.",
+      );
     } finally {
       setSavingLedger(false);
     }
@@ -240,14 +278,23 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
 
   const handleVendorSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!vendorForm.vendor_name.trim() || !vendorForm.payment_date || (Number(vendorForm.amount) || 0) <= 0) {
-      setNotice({ type: "error", message: "Vendor, payment date, and amount are required." });
+    if (
+      !vendorForm.vendor_name.trim() ||
+      !vendorForm.payment_date ||
+      (Number(vendorForm.amount) || 0) <= 0
+    ) {
+      setNotice({
+        type: "error",
+        message: "Vendor, payment date, and amount are required.",
+      });
       return;
     }
     setSavingVendor(true);
     try {
       const paymentId = Number(vendorForm.id);
-      const path = paymentId ? `/api/accounts/vendors/${paymentId}` : "/api/accounts/vendors";
+      const path = paymentId
+        ? `/api/accounts/vendors/${paymentId}`
+        : "/api/accounts/vendors";
       await apiFetch(path, {
         method: paymentId ? "PUT" : "POST",
         body: JSON.stringify({
@@ -261,10 +308,19 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
         }),
       });
       setVendorForm({ ...DEFAULT_VENDOR_FORM });
-      setNotice({ type: "success", message: paymentId ? "Vendor payment updated." : "Vendor payment recorded." });
+      setNotice({
+        type: "success",
+        message: paymentId
+          ? "Vendor payment updated."
+          : "Vendor payment recorded.",
+      });
       await loadAccounts();
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to save vendor payment.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to save vendor payment.",
+      );
     } finally {
       setSavingVendor(false);
     }
@@ -272,14 +328,23 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
 
   const handleDoctorSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!doctorForm.doctor_name.trim() || !doctorForm.payout_month || (Number(doctorForm.amount) || 0) <= 0) {
-      setNotice({ type: "error", message: "Doctor, payout month, and amount are required." });
+    if (
+      !doctorForm.doctor_name.trim() ||
+      !doctorForm.payout_month ||
+      (Number(doctorForm.amount) || 0) <= 0
+    ) {
+      setNotice({
+        type: "error",
+        message: "Doctor, payout month, and amount are required.",
+      });
       return;
     }
     setSavingDoctor(true);
     try {
       const payoutId = Number(doctorForm.id);
-      const path = payoutId ? `/api/accounts/doctors/${payoutId}` : "/api/accounts/doctors";
+      const path = payoutId
+        ? `/api/accounts/doctors/${payoutId}`
+        : "/api/accounts/doctors";
       await apiFetch(path, {
         method: payoutId ? "PUT" : "POST",
         body: JSON.stringify({
@@ -293,10 +358,19 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
         }),
       });
       setDoctorForm({ ...DEFAULT_DOCTOR_FORM });
-      setNotice({ type: "success", message: payoutId ? "Doctor payout updated." : "Doctor payout recorded." });
+      setNotice({
+        type: "success",
+        message: payoutId
+          ? "Doctor payout updated."
+          : "Doctor payout recorded.",
+      });
       await loadAccounts();
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to save doctor payout.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to save doctor payout.",
+      );
     } finally {
       setSavingDoctor(false);
     }
@@ -309,7 +383,11 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
       setNotice({ type: "success", message: `${label} deleted.` });
       await loadAccounts();
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, `Unable to delete ${label.toLowerCase()}.`);
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        `Unable to delete ${label.toLowerCase()}.`,
+      );
     }
   };
 
@@ -322,7 +400,10 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
         {ledgerEntries.length === 0 ? (
           <p className="muted">No ledger entries yet.</p>
         ) : (
-          <Table className="module-table module-table-accounts-ledger" aria-label="Accounts ledger table">
+          <Table
+            className="module-table module-table-accounts-ledger"
+            aria-label="Accounts ledger table"
+          >
             <TableHead>
               <TableCell>Date</TableCell>
               <TableCell>Type</TableCell>
@@ -350,7 +431,10 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
         {vendorPayments.length === 0 ? (
           <p className="muted">No vendor payments yet.</p>
         ) : (
-          <Table className="module-table module-table-accounts-vendors" aria-label="Vendor payments table">
+          <Table
+            className="module-table module-table-accounts-vendors"
+            aria-label="Vendor payments table"
+          >
             <TableHead>
               <TableCell>Vendor</TableCell>
               <TableCell>Date</TableCell>
@@ -378,14 +462,36 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
       <div className="module-panel-head">
         <h3>General Ledger</h3>
       </div>
-      <form className="module-form-grid module-sales-grid" onSubmit={handleLedgerSubmit}>
+      <form
+        className="module-form-grid module-sales-grid"
+        onSubmit={handleLedgerSubmit}
+      >
         <Label>
           Entry Date
-          <Input type="date" value={ledgerForm.entry_date} onChange={(event) => setLedgerForm((current) => ({ ...current, entry_date: event.target.value }))} aria-label="Ledger date" />
+          <Input
+            type="date"
+            value={ledgerForm.entry_date}
+            onChange={(event) =>
+              setLedgerForm((current) => ({
+                ...current,
+                entry_date: event.target.value,
+              }))
+            }
+            aria-label="Ledger date"
+          />
         </Label>
         <Label>
           Entry Type
-          <Select value={ledgerForm.entry_type} onChange={(event) => setLedgerForm((current) => ({ ...current, entry_type: event.target.value }))} aria-label="Ledger type">
+          <Select
+            value={ledgerForm.entry_type}
+            onChange={(event) =>
+              setLedgerForm((current) => ({
+                ...current,
+                entry_type: event.target.value,
+              }))
+            }
+            aria-label="Ledger type"
+          >
             <option value="income">Income</option>
             <option value="expense">Expense</option>
             <option value="adjustment">Adjustment</option>
@@ -393,33 +499,92 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
         </Label>
         <Label>
           Category
-          <Input value={ledgerForm.category} onChange={(event) => setLedgerForm((current) => ({ ...current, category: event.target.value }))} placeholder="Category" aria-label="Ledger category" />
+          <Input
+            value={ledgerForm.category}
+            onChange={(event) =>
+              setLedgerForm((current) => ({
+                ...current,
+                category: event.target.value,
+              }))
+            }
+            placeholder="Category"
+            aria-label="Ledger category"
+          />
         </Label>
         <Label>
           Reference
-          <Input value={ledgerForm.reference_no} onChange={(event) => setLedgerForm((current) => ({ ...current, reference_no: event.target.value }))} placeholder="Reference" aria-label="Ledger reference" />
+          <Input
+            value={ledgerForm.reference_no}
+            onChange={(event) =>
+              setLedgerForm((current) => ({
+                ...current,
+                reference_no: event.target.value,
+              }))
+            }
+            placeholder="Reference"
+            aria-label="Ledger reference"
+          />
         </Label>
         <Label>
           Amount
-          <Input type="number" min={0} value={ledgerForm.amount} onChange={(event) => setLedgerForm((current) => ({ ...current, amount: event.target.value }))} placeholder="Amount" aria-label="Ledger amount" />
+          <Input
+            type="number"
+            min={0}
+            value={ledgerForm.amount}
+            onChange={(event) =>
+              setLedgerForm((current) => ({
+                ...current,
+                amount: event.target.value,
+              }))
+            }
+            placeholder="Amount"
+            aria-label="Ledger amount"
+          />
         </Label>
         <Label>
           Counterparty
-          <Input value={ledgerForm.counterparty_name} onChange={(event) => setLedgerForm((current) => ({ ...current, counterparty_name: event.target.value }))} placeholder="Counterparty" aria-label="Ledger counterparty" />
+          <Input
+            value={ledgerForm.counterparty_name}
+            onChange={(event) =>
+              setLedgerForm((current) => ({
+                ...current,
+                counterparty_name: event.target.value,
+              }))
+            }
+            placeholder="Counterparty"
+            aria-label="Ledger counterparty"
+          />
         </Label>
         <Label>
           Notes
-          <Input value={ledgerForm.notes} onChange={(event) => setLedgerForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes" aria-label="Ledger notes" />
+          <Input
+            value={ledgerForm.notes}
+            onChange={(event) =>
+              setLedgerForm((current) => ({
+                ...current,
+                notes: event.target.value,
+              }))
+            }
+            placeholder="Notes"
+            aria-label="Ledger notes"
+          />
         </Label>
         <Button type="submit" variant="primary" disabled={savingLedger}>
-          {savingLedger ? "Saving..." : ledgerForm.id ? "Update Entry" : "Add Entry"}
+          {savingLedger
+            ? "Saving..."
+            : ledgerForm.id
+              ? "Update Entry"
+              : "Add Entry"}
         </Button>
       </form>
 
       {ledgerEntries.length === 0 ? (
         <p className="muted">No ledger entries yet.</p>
       ) : (
-        <Table className="module-table module-table-accounts-ledger" aria-label="Accounts ledger table">
+        <Table
+          className="module-table module-table-accounts-ledger"
+          aria-label="Accounts ledger table"
+        >
           <TableHead>
             <TableCell>Date</TableCell>
             <TableCell>Type</TableCell>
@@ -454,7 +619,16 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
                   >
                     Edit
                   </Button>
-                  <Button type="button" variant="destructive" onClick={() => void deleteRecord(`/api/accounts/ledger/${entry.id}`, "ledger entry")}>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() =>
+                      void deleteRecord(
+                        `/api/accounts/ledger/${entry.id}`,
+                        "ledger entry",
+                      )
+                    }
+                  >
                     Delete
                   </Button>
                 </div>
@@ -471,26 +645,80 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
       <div className="module-panel-head">
         <h3>Vendor Payments</h3>
       </div>
-      <form className="module-form-grid module-sales-grid" onSubmit={handleVendorSubmit}>
+      <form
+        className="module-form-grid module-sales-grid"
+        onSubmit={handleVendorSubmit}
+      >
         <Label>
           Vendor Name
-          <Input value={vendorForm.vendor_name} onChange={(event) => setVendorForm((current) => ({ ...current, vendor_name: event.target.value }))} placeholder="Vendor" aria-label="Vendor name" />
+          <Input
+            value={vendorForm.vendor_name}
+            onChange={(event) =>
+              setVendorForm((current) => ({
+                ...current,
+                vendor_name: event.target.value,
+              }))
+            }
+            placeholder="Vendor"
+            aria-label="Vendor name"
+          />
         </Label>
         <Label>
           Invoice Reference
-          <Input value={vendorForm.invoice_ref} onChange={(event) => setVendorForm((current) => ({ ...current, invoice_ref: event.target.value }))} placeholder="Invoice ref" aria-label="Vendor invoice reference" />
+          <Input
+            value={vendorForm.invoice_ref}
+            onChange={(event) =>
+              setVendorForm((current) => ({
+                ...current,
+                invoice_ref: event.target.value,
+              }))
+            }
+            placeholder="Invoice ref"
+            aria-label="Vendor invoice reference"
+          />
         </Label>
         <Label>
           Amount
-          <Input type="number" min={0} value={vendorForm.amount} onChange={(event) => setVendorForm((current) => ({ ...current, amount: event.target.value }))} placeholder="Amount" aria-label="Vendor payment amount" />
+          <Input
+            type="number"
+            min={0}
+            value={vendorForm.amount}
+            onChange={(event) =>
+              setVendorForm((current) => ({
+                ...current,
+                amount: event.target.value,
+              }))
+            }
+            placeholder="Amount"
+            aria-label="Vendor payment amount"
+          />
         </Label>
         <Label>
           Payment Date
-          <Input type="date" value={vendorForm.payment_date} onChange={(event) => setVendorForm((current) => ({ ...current, payment_date: event.target.value }))} aria-label="Vendor payment date" />
+          <Input
+            type="date"
+            value={vendorForm.payment_date}
+            onChange={(event) =>
+              setVendorForm((current) => ({
+                ...current,
+                payment_date: event.target.value,
+              }))
+            }
+            aria-label="Vendor payment date"
+          />
         </Label>
         <Label>
           Payment Mode
-          <Select value={vendorForm.payment_mode} onChange={(event) => setVendorForm((current) => ({ ...current, payment_mode: event.target.value }))} aria-label="Vendor payment mode">
+          <Select
+            value={vendorForm.payment_mode}
+            onChange={(event) =>
+              setVendorForm((current) => ({
+                ...current,
+                payment_mode: event.target.value,
+              }))
+            }
+            aria-label="Vendor payment mode"
+          >
             <option value="bank">Bank</option>
             <option value="cash">Cash</option>
             <option value="upi">UPI</option>
@@ -499,7 +727,16 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
         </Label>
         <Label>
           Status
-          <Select value={vendorForm.status} onChange={(event) => setVendorForm((current) => ({ ...current, status: event.target.value }))} aria-label="Vendor payment status">
+          <Select
+            value={vendorForm.status}
+            onChange={(event) =>
+              setVendorForm((current) => ({
+                ...current,
+                status: event.target.value,
+              }))
+            }
+            aria-label="Vendor payment status"
+          >
             <option value="paid">Paid</option>
             <option value="partial">Partial</option>
             <option value="pending">Pending</option>
@@ -507,17 +744,34 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
         </Label>
         <Label>
           Notes
-          <Input value={vendorForm.notes} onChange={(event) => setVendorForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes" aria-label="Vendor payment notes" />
+          <Input
+            value={vendorForm.notes}
+            onChange={(event) =>
+              setVendorForm((current) => ({
+                ...current,
+                notes: event.target.value,
+              }))
+            }
+            placeholder="Notes"
+            aria-label="Vendor payment notes"
+          />
         </Label>
         <Button type="submit" variant="primary" disabled={savingVendor}>
-          {savingVendor ? "Saving..." : vendorForm.id ? "Update Payment" : "Record Payment"}
+          {savingVendor
+            ? "Saving..."
+            : vendorForm.id
+              ? "Update Payment"
+              : "Record Payment"}
         </Button>
       </form>
 
       {vendorPayments.length === 0 ? (
         <p className="muted">No vendor payments yet.</p>
       ) : (
-        <Table className="module-table module-table-accounts-vendors" aria-label="Vendor payments table">
+        <Table
+          className="module-table module-table-accounts-vendors"
+          aria-label="Vendor payments table"
+        >
           <TableHead>
             <TableCell>Vendor</TableCell>
             <TableCell>Date</TableCell>
@@ -552,7 +806,16 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
                   >
                     Edit
                   </Button>
-                  <Button type="button" variant="destructive" onClick={() => void deleteRecord(`/api/accounts/vendors/${payment.id}`, "vendor payment")}>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() =>
+                      void deleteRecord(
+                        `/api/accounts/vendors/${payment.id}`,
+                        "vendor payment",
+                      )
+                    }
+                  >
                     Delete
                   </Button>
                 </div>
@@ -569,30 +832,96 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
       <div className="module-panel-head">
         <h3>Doctor Payouts</h3>
       </div>
-      <form className="module-form-grid module-sales-grid" onSubmit={handleDoctorSubmit}>
+      <form
+        className="module-form-grid module-sales-grid"
+        onSubmit={handleDoctorSubmit}
+      >
         <Label>
           Doctor Name
-          <Input value={doctorForm.doctor_name} onChange={(event) => setDoctorForm((current) => ({ ...current, doctor_name: event.target.value }))} placeholder="Doctor" aria-label="Doctor name" />
+          <Input
+            value={doctorForm.doctor_name}
+            onChange={(event) =>
+              setDoctorForm((current) => ({
+                ...current,
+                doctor_name: event.target.value,
+              }))
+            }
+            placeholder="Doctor"
+            aria-label="Doctor name"
+          />
         </Label>
         <Label>
           Payout Month
-          <Input type="month" value={doctorForm.payout_month} onChange={(event) => setDoctorForm((current) => ({ ...current, payout_month: event.target.value }))} aria-label="Doctor payout month" />
+          <Input
+            type="month"
+            value={doctorForm.payout_month}
+            onChange={(event) =>
+              setDoctorForm((current) => ({
+                ...current,
+                payout_month: event.target.value,
+              }))
+            }
+            aria-label="Doctor payout month"
+          />
         </Label>
         <Label>
           Total Amount
-          <Input type="number" min={0} value={doctorForm.amount} onChange={(event) => setDoctorForm((current) => ({ ...current, amount: event.target.value }))} placeholder="Total amount" aria-label="Doctor payout amount" />
+          <Input
+            type="number"
+            min={0}
+            value={doctorForm.amount}
+            onChange={(event) =>
+              setDoctorForm((current) => ({
+                ...current,
+                amount: event.target.value,
+              }))
+            }
+            placeholder="Total amount"
+            aria-label="Doctor payout amount"
+          />
         </Label>
         <Label>
           Paid Amount
-          <Input type="number" min={0} value={doctorForm.paid_amount} onChange={(event) => setDoctorForm((current) => ({ ...current, paid_amount: event.target.value }))} placeholder="Paid amount" aria-label="Doctor payout paid amount" />
+          <Input
+            type="number"
+            min={0}
+            value={doctorForm.paid_amount}
+            onChange={(event) =>
+              setDoctorForm((current) => ({
+                ...current,
+                paid_amount: event.target.value,
+              }))
+            }
+            placeholder="Paid amount"
+            aria-label="Doctor payout paid amount"
+          />
         </Label>
         <Label>
           Paid Date
-          <Input type="date" value={doctorForm.paid_date} onChange={(event) => setDoctorForm((current) => ({ ...current, paid_date: event.target.value }))} aria-label="Doctor paid date" />
+          <Input
+            type="date"
+            value={doctorForm.paid_date}
+            onChange={(event) =>
+              setDoctorForm((current) => ({
+                ...current,
+                paid_date: event.target.value,
+              }))
+            }
+            aria-label="Doctor paid date"
+          />
         </Label>
         <Label>
           Status
-          <Select value={doctorForm.status} onChange={(event) => setDoctorForm((current) => ({ ...current, status: event.target.value }))} aria-label="Doctor payout status">
+          <Select
+            value={doctorForm.status}
+            onChange={(event) =>
+              setDoctorForm((current) => ({
+                ...current,
+                status: event.target.value,
+              }))
+            }
+            aria-label="Doctor payout status"
+          >
             <option value="pending">Pending</option>
             <option value="partial">Partial</option>
             <option value="paid">Paid</option>
@@ -600,17 +929,34 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
         </Label>
         <Label>
           Notes
-          <Input value={doctorForm.notes} onChange={(event) => setDoctorForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes" aria-label="Doctor payout notes" />
+          <Input
+            value={doctorForm.notes}
+            onChange={(event) =>
+              setDoctorForm((current) => ({
+                ...current,
+                notes: event.target.value,
+              }))
+            }
+            placeholder="Notes"
+            aria-label="Doctor payout notes"
+          />
         </Label>
         <Button type="submit" variant="primary" disabled={savingDoctor}>
-          {savingDoctor ? "Saving..." : doctorForm.id ? "Update Payout" : "Record Payout"}
+          {savingDoctor
+            ? "Saving..."
+            : doctorForm.id
+              ? "Update Payout"
+              : "Record Payout"}
         </Button>
       </form>
 
       {doctorPayouts.length === 0 ? (
         <p className="muted">No doctor payouts yet.</p>
       ) : (
-        <Table className="module-table module-table-accounts-doctors" aria-label="Doctor payouts table">
+        <Table
+          className="module-table module-table-accounts-doctors"
+          aria-label="Doctor payouts table"
+        >
           <TableHead>
             <TableCell>Doctor</TableCell>
             <TableCell>Month</TableCell>
@@ -645,7 +991,16 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
                   >
                     Edit
                   </Button>
-                  <Button type="button" variant="destructive" onClick={() => void deleteRecord(`/api/accounts/doctors/${payout.id}`, "doctor payout")}>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() =>
+                      void deleteRecord(
+                        `/api/accounts/doctors/${payout.id}`,
+                        "doctor payout",
+                      )
+                    }
+                  >
                     Delete
                   </Button>
                 </div>
@@ -669,12 +1024,30 @@ export default function AccountsPage({ setNotice, view = "ledger" }: Props) {
       </div>
 
       <div className="stat-grid module-stat-grid">
-        <StatCard label="Ledger Income" value={formatCurrency(summary.ledger_income)} />
-        <StatCard label="Ledger Expense" value={formatCurrency(summary.ledger_expense)} />
-        <StatCard label="Net Position" value={formatCurrency(summary.net_position)} />
-        <StatCard label="Vendor Paid" value={formatCurrency(summary.vendor_paid_total)} />
-        <StatCard label="Doctor Paid" value={formatCurrency(summary.doctor_paid_total)} />
-        <StatCard label="Doctor Due" value={formatCurrency(summary.doctor_due_total)} />
+        <StatCard
+          label="Ledger Income"
+          value={formatCurrency(summary.ledger_income)}
+        />
+        <StatCard
+          label="Ledger Expense"
+          value={formatCurrency(summary.ledger_expense)}
+        />
+        <StatCard
+          label="Net Position"
+          value={formatCurrency(summary.net_position)}
+        />
+        <StatCard
+          label="Vendor Paid"
+          value={formatCurrency(summary.vendor_paid_total)}
+        />
+        <StatCard
+          label="Doctor Paid"
+          value={formatCurrency(summary.doctor_paid_total)}
+        />
+        <StatCard
+          label="Doctor Due"
+          value={formatCurrency(summary.doctor_due_total)}
+        />
       </div>
 
       {loading ? <p className="muted">Loading accounts...</p> : null}

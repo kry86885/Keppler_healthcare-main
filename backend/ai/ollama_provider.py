@@ -27,7 +27,9 @@ class OllamaLLMProvider:
         if json_mode:
             payload["format"] = "json"
         try:
-            resp = requests.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload, timeout=180)
+            resp = requests.post(
+                f"{OLLAMA_BASE_URL}/api/generate", json=payload, timeout=180
+            )
             resp.raise_for_status()
             return (resp.json().get("response") or "").strip()
         except Exception:

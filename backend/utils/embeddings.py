@@ -16,7 +16,9 @@ import os
 
 import requests
 
-VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://host.docker.internal:8700/v1").rstrip("/")
+VLLM_BASE_URL = os.getenv(
+    "VLLM_BASE_URL", "http://host.docker.internal:8700/v1"
+).rstrip("/")
 VLLM_EMBEDDING_MODEL = os.getenv("VLLM_EMBEDDING_MODEL", "nomic-embed-text")
 VLLM_API_KEY = os.getenv("VLLM_API_KEY", "local")
 
@@ -30,7 +32,7 @@ def generate_embedding(text: str):
         headers = {"Content-Type": "application/json"}
         if VLLM_API_KEY:
             headers["Authorization"] = f"Bearer {VLLM_API_KEY}"
-            
+
         resp = requests.post(
             f"{VLLM_BASE_URL}/embeddings",
             json={"model": VLLM_EMBEDDING_MODEL, "input": text},

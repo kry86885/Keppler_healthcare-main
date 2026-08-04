@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
 import StatCard from "../components/StatCard";
-import { Button, Input, Select, Table, TableCell, TableHead, TableRow } from "../components/ui";
+import {
+  Button,
+  Input,
+  Select,
+  Table,
+  TableCell,
+  TableHead,
+  TableRow,
+} from "../components/ui";
 import { apiFetch, reportError } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { openRazorpayCheckout } from "../lib/razorpay";
@@ -98,23 +106,41 @@ export default function OpPage({ setNotice, canEdit }: Props) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
-  const [scheduleForm, setScheduleForm] = useState<ScheduleForm>(DEFAULT_SCHEDULE_FORM);
-  const [appointmentForm, setAppointmentForm] = useState<AppointmentForm>(DEFAULT_APPOINTMENT_FORM);
+  const [scheduleForm, setScheduleForm] = useState<ScheduleForm>(
+    DEFAULT_SCHEDULE_FORM,
+  );
+  const [appointmentForm, setAppointmentForm] = useState<AppointmentForm>(
+    DEFAULT_APPOINTMENT_FORM,
+  );
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [savingAppointment, setSavingAppointment] = useState(false);
   const [isRazorpayReady, setIsRazorpayReady] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(new Date().toLocaleDateString('en-CA'));
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toLocaleDateString("en-CA"),
+  );
   const [selectedDoctor, setSelectedDoctor] = useState("");
-  const [uploadPrescriptionPatient, setUploadPrescriptionPatient] = useState<{ id: string; name: string } | null>(null);
+  const [uploadPrescriptionPatient, setUploadPrescriptionPatient] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
-  const loadOpDesk = async (date = selectedDate, doctorName = selectedDoctor) => {
+  const loadOpDesk = async (
+    date = selectedDate,
+    doctorName = selectedDoctor,
+  ) => {
     setLoading(true);
     try {
-      const doctorQuery = doctorName ? `&doctor_name=${encodeURIComponent(doctorName)}` : "";
+      const doctorQuery = doctorName
+        ? `&doctor_name=${encodeURIComponent(doctorName)}`
+        : "";
       const [summaryData, scheduleData, appointmentData] = await Promise.all([
         apiFetch<OpSummary>(`/api/op/summary?date=${date}`),
-        apiFetch<{ schedules?: DoctorSchedule[] }>(`/api/op/doctor-schedules?date=${date}${doctorQuery}`),
-        apiFetch<{ appointments?: Appointment[] }>(`/api/appointments?date=${date}&visit_type=OP${doctorQuery}`),
+        apiFetch<{ schedules?: DoctorSchedule[] }>(
+          `/api/op/doctor-schedules?date=${date}${doctorQuery}`,
+        ),
+        apiFetch<{ appointments?: Appointment[] }>(
+          `/api/appointments?date=${date}&visit_type=OP${doctorQuery}`,
+        ),
       ]);
       const nextSchedules = scheduleData.schedules || [];
       const nextAppointments = appointmentData.appointments || [];
@@ -130,7 +156,11 @@ export default function OpPage({ setNotice, canEdit }: Props) {
         };
       });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to load OP desk.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to load OP desk.",
+      );
     } finally {
       setLoading(false);
     }
@@ -154,11 +184,16 @@ export default function OpPage({ setNotice, canEdit }: Props) {
 
   const ensureRazorpayConfigured = async () => {
     try {
-      const config = await apiFetch<{ configured?: boolean }>("/api/payments/razorpay/config");
+      const config = await apiFetch<{ configured?: boolean }>(
+        "/api/payments/razorpay/config",
+      );
       const configured = config.configured !== false;
       setIsRazorpayReady(configured);
       if (!configured) {
-        setNotice({ type: "error", message: "Razorpay is not configured. Add keys in backend .env." });
+        setNotice({
+          type: "error",
+          message: "Razorpay is not configured. Add keys in backend .env.",
+        });
         return false;
       }
       return true;
@@ -178,14 +213,24 @@ export default function OpPage({ setNotice, canEdit }: Props) {
 
   const handleScheduleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!scheduleForm.doctor_name.trim() || !scheduleForm.schedule_date || !scheduleForm.start_time || !scheduleForm.end_time) {
-      setNotice({ type: "error", message: "Doctor, date, and time range are required." });
+    if (
+      !scheduleForm.doctor_name.trim() ||
+      !scheduleForm.schedule_date ||
+      !scheduleForm.start_time ||
+      !scheduleForm.end_time
+    ) {
+      setNotice({
+        type: "error",
+        message: "Doctor, date, and time range are required.",
+      });
       return;
     }
     setSavingSchedule(true);
     try {
       const scheduleId = Number(scheduleForm.id);
-      const path = scheduleId ? `/api/op/doctor-schedules/${scheduleId}` : "/api/op/doctor-schedules";
+      const path = scheduleId
+        ? `/api/op/doctor-schedules/${scheduleId}`
+        : "/api/op/doctor-schedules";
       await apiFetch(path, {
         method: scheduleId ? "PUT" : "POST",
         body: JSON.stringify({
@@ -199,11 +244,23 @@ export default function OpPage({ setNotice, canEdit }: Props) {
           notes: scheduleForm.notes.trim() || undefined,
         }),
       });
-      setScheduleForm({ ...DEFAULT_SCHEDULE_FORM, schedule_date: selectedDate });
-      setNotice({ type: "success", message: scheduleId ? "Doctor schedule updated." : "Doctor schedule added." });
+      setScheduleForm({
+        ...DEFAULT_SCHEDULE_FORM,
+        schedule_date: selectedDate,
+      });
+      setNotice({
+        type: "success",
+        message: scheduleId
+          ? "Doctor schedule updated."
+          : "Doctor schedule added.",
+      });
       await loadOpDesk(selectedDate, selectedDoctor);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to save doctor schedule.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to save doctor schedule.",
+      );
     } finally {
       setSavingSchedule(false);
     }
@@ -211,14 +268,22 @@ export default function OpPage({ setNotice, canEdit }: Props) {
 
   const handleAppointmentSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!appointmentForm.patient_name.trim() || !appointmentForm.appointment_date) {
-      setNotice({ type: "error", message: "Patient name and appointment date are required." });
+    if (
+      !appointmentForm.patient_name.trim() ||
+      !appointmentForm.appointment_date
+    ) {
+      setNotice({
+        type: "error",
+        message: "Patient name and appointment date are required.",
+      });
       return;
     }
     setSavingAppointment(true);
     try {
       const appointmentId = Number(appointmentForm.id);
-      const path = appointmentId ? `/api/appointments/${appointmentId}` : "/api/appointments";
+      const path = appointmentId
+        ? `/api/appointments/${appointmentId}`
+        : "/api/appointments";
       const appointmentPayload = {
         patient_id: appointmentForm.patient_id.trim() || undefined,
         patient_name: appointmentForm.patient_name.trim(),
@@ -228,7 +293,11 @@ export default function OpPage({ setNotice, canEdit }: Props) {
         appointment_date: appointmentForm.appointment_date,
         status: appointmentForm.status,
         appointment_kind: appointmentForm.appointment_kind,
-        follow_up_for: appointmentForm.appointment_kind === "follow_up" && appointmentForm.follow_up_for ? Number(appointmentForm.follow_up_for) : undefined,
+        follow_up_for:
+          appointmentForm.appointment_kind === "follow_up" &&
+          appointmentForm.follow_up_for
+            ? Number(appointmentForm.follow_up_for)
+            : undefined,
         notes: appointmentForm.notes.trim() || undefined,
         consultation_fee: Number(appointmentForm.consultation_fee) || 0,
         payment_mode: appointmentForm.payment_mode,
@@ -243,10 +312,19 @@ export default function OpPage({ setNotice, canEdit }: Props) {
         doctor_name: appointmentForm.doctor_name,
         department: appointmentForm.department,
       });
-      setNotice({ type: "success", message: appointmentId ? "Appointment updated." : "Appointment scheduled." });
+      setNotice({
+        type: "success",
+        message: appointmentId
+          ? "Appointment updated."
+          : "Appointment scheduled.",
+      });
       await loadOpDesk(selectedDate, selectedDoctor);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to save appointment.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to save appointment.",
+      );
     } finally {
       setSavingAppointment(false);
     }
@@ -256,13 +334,23 @@ export default function OpPage({ setNotice, canEdit }: Props) {
     if (!(await ensureRazorpayConfigured())) {
       return;
     }
-    if (!appointmentForm.patient_name.trim() || !appointmentForm.appointment_date) {
-      setNotice({ type: "error", message: "Patient name and appointment date are required." });
+    if (
+      !appointmentForm.patient_name.trim() ||
+      !appointmentForm.appointment_date
+    ) {
+      setNotice({
+        type: "error",
+        message: "Patient name and appointment date are required.",
+      });
       return;
     }
     const consultationFee = Number(appointmentForm.consultation_fee) || 0;
     if (consultationFee <= 0) {
-      setNotice({ type: "error", message: "Consultation fee must be greater than zero for Razorpay payment." });
+      setNotice({
+        type: "error",
+        message:
+          "Consultation fee must be greater than zero for Razorpay payment.",
+      });
       return;
     }
     setSavingAppointment(true);
@@ -276,7 +364,11 @@ export default function OpPage({ setNotice, canEdit }: Props) {
         appointment_date: appointmentForm.appointment_date,
         status: appointmentForm.status,
         appointment_kind: appointmentForm.appointment_kind,
-        follow_up_for: appointmentForm.appointment_kind === "follow_up" && appointmentForm.follow_up_for ? Number(appointmentForm.follow_up_for) : undefined,
+        follow_up_for:
+          appointmentForm.appointment_kind === "follow_up" &&
+          appointmentForm.follow_up_for
+            ? Number(appointmentForm.follow_up_for)
+            : undefined,
         notes: appointmentForm.notes.trim() || undefined,
       };
 
@@ -333,25 +425,42 @@ export default function OpPage({ setNotice, canEdit }: Props) {
         doctor_name: appointmentForm.doctor_name,
         department: appointmentForm.department,
       });
-      setNotice({ type: "success", message: "Appointment scheduled and paid via Razorpay." });
+      setNotice({
+        type: "success",
+        message: "Appointment scheduled and paid via Razorpay.",
+      });
       await loadOpDesk(selectedDate, selectedDoctor);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to complete Razorpay appointment payment.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to complete Razorpay appointment payment.",
+      );
     } finally {
       setSavingAppointment(false);
     }
   };
 
-  const quickUpdateAppointment = async (appointment: Appointment, status: string) => {
+  const quickUpdateAppointment = async (
+    appointment: Appointment,
+    status: string,
+  ) => {
     try {
       await apiFetch(`/api/appointments/${appointment.id}`, {
         method: "PUT",
         body: JSON.stringify({ status }),
       });
-      setNotice({ type: "success", message: `Appointment marked ${status.replace("_", " ")}.` });
+      setNotice({
+        type: "success",
+        message: `Appointment marked ${status.replace("_", " ")}.`,
+      });
       await loadOpDesk(selectedDate, selectedDoctor);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to update appointment status.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to update appointment status.",
+      );
     }
   };
 
@@ -364,7 +473,11 @@ export default function OpPage({ setNotice, canEdit }: Props) {
       setNotice({ type: "success", message: "Reminder marked as sent." });
       await loadOpDesk(selectedDate, selectedDoctor);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to update reminder status.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to update reminder status.",
+      );
     }
   };
 
@@ -377,18 +490,28 @@ export default function OpPage({ setNotice, canEdit }: Props) {
       setNotice({ type: "success", message: "Appointment marked as no-show." });
       await loadOpDesk(selectedDate, selectedDoctor);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to mark no-show.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to mark no-show.",
+      );
     }
   };
 
   const deleteSchedule = async (schedule: DoctorSchedule) => {
     if (!window.confirm(`Delete ${schedule.doctor_name} schedule?`)) return;
     try {
-      await apiFetch(`/api/op/doctor-schedules/${schedule.id}`, { method: "DELETE" });
+      await apiFetch(`/api/op/doctor-schedules/${schedule.id}`, {
+        method: "DELETE",
+      });
       setNotice({ type: "success", message: "Doctor schedule deleted." });
       await loadOpDesk(selectedDate, selectedDoctor);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to delete doctor schedule.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to delete doctor schedule.",
+      );
     }
   };
 
@@ -397,8 +520,17 @@ export default function OpPage({ setNotice, canEdit }: Props) {
       <div className="module-panel-head">
         <h3>OP Desk</h3>
         <div className="module-inline-actions">
-          <Input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} aria-label="OP date" />
-          <Select value={selectedDoctor} onChange={(event) => setSelectedDoctor(event.target.value)} aria-label="OP doctor filter">
+          <Input
+            type="date"
+            value={selectedDate}
+            onChange={(event) => setSelectedDate(event.target.value)}
+            aria-label="OP date"
+          />
+          <Select
+            value={selectedDoctor}
+            onChange={(event) => setSelectedDoctor(event.target.value)}
+            aria-label="OP doctor filter"
+          >
             <option value="">All doctors</option>
             {doctorNames.map((name) => (
               <option key={name} value={name}>
@@ -425,10 +557,18 @@ export default function OpPage({ setNotice, canEdit }: Props) {
           <div className="module-panel-head">
             <h3>Doctor Schedule</h3>
           </div>
-          <form className="module-form-grid module-sales-grid" onSubmit={handleScheduleSubmit}>
+          <form
+            className="module-form-grid module-sales-grid"
+            onSubmit={handleScheduleSubmit}
+          >
             <Input
               value={scheduleForm.doctor_name}
-              onChange={(event) => setScheduleForm((current) => ({ ...current, doctor_name: event.target.value }))}
+              onChange={(event) =>
+                setScheduleForm((current) => ({
+                  ...current,
+                  doctor_name: event.target.value,
+                }))
+              }
               placeholder="Doctor name"
               aria-label="Doctor name"
               disabled={!canEdit}
@@ -436,7 +576,12 @@ export default function OpPage({ setNotice, canEdit }: Props) {
             />
             <Select
               value={scheduleForm.department}
-              onChange={(event) => setScheduleForm((current) => ({ ...current, department: event.target.value }))}
+              onChange={(event) =>
+                setScheduleForm((current) => ({
+                  ...current,
+                  department: event.target.value,
+                }))
+              }
               aria-label="Doctor department"
               disabled={!canEdit}
             >
@@ -451,17 +596,81 @@ export default function OpPage({ setNotice, canEdit }: Props) {
                 );
               })}
             </Select>
-            <Input type="date" value={scheduleForm.schedule_date} onChange={(event) => setScheduleForm((current) => ({ ...current, schedule_date: event.target.value }))} aria-label="Schedule date" disabled={!canEdit} />
-            <Input type="time" value={scheduleForm.start_time} onChange={(event) => setScheduleForm((current) => ({ ...current, start_time: event.target.value }))} aria-label="Start time" disabled={!canEdit} />
-            <Input type="time" value={scheduleForm.end_time} onChange={(event) => setScheduleForm((current) => ({ ...current, end_time: event.target.value }))} aria-label="End time" disabled={!canEdit} />
-            <Input type="number" min={1} value={scheduleForm.slot_capacity} onChange={(event) => setScheduleForm((current) => ({ ...current, slot_capacity: event.target.value }))} placeholder="Slot capacity" aria-label="Slot capacity" disabled={!canEdit} />
-            <Select value={scheduleForm.status} onChange={(event) => setScheduleForm((current) => ({ ...current, status: event.target.value }))} aria-label="Schedule status" disabled={!canEdit}>
+            <Input
+              type="date"
+              value={scheduleForm.schedule_date}
+              onChange={(event) =>
+                setScheduleForm((current) => ({
+                  ...current,
+                  schedule_date: event.target.value,
+                }))
+              }
+              aria-label="Schedule date"
+              disabled={!canEdit}
+            />
+            <Input
+              type="time"
+              value={scheduleForm.start_time}
+              onChange={(event) =>
+                setScheduleForm((current) => ({
+                  ...current,
+                  start_time: event.target.value,
+                }))
+              }
+              aria-label="Start time"
+              disabled={!canEdit}
+            />
+            <Input
+              type="time"
+              value={scheduleForm.end_time}
+              onChange={(event) =>
+                setScheduleForm((current) => ({
+                  ...current,
+                  end_time: event.target.value,
+                }))
+              }
+              aria-label="End time"
+              disabled={!canEdit}
+            />
+            <Input
+              type="number"
+              min={1}
+              value={scheduleForm.slot_capacity}
+              onChange={(event) =>
+                setScheduleForm((current) => ({
+                  ...current,
+                  slot_capacity: event.target.value,
+                }))
+              }
+              placeholder="Slot capacity"
+              aria-label="Slot capacity"
+              disabled={!canEdit}
+            />
+            <Select
+              value={scheduleForm.status}
+              onChange={(event) =>
+                setScheduleForm((current) => ({
+                  ...current,
+                  status: event.target.value,
+                }))
+              }
+              aria-label="Schedule status"
+              disabled={!canEdit}
+            >
               <option value="available">Available</option>
               <option value="full">Full</option>
               <option value="leave">Leave</option>
             </Select>
-            <Button type="submit" variant="primary" disabled={!canEdit || savingSchedule}>
-              {savingSchedule ? "Saving..." : scheduleForm.id ? "Update" : "Add"}
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={!canEdit || savingSchedule}
+            >
+              {savingSchedule
+                ? "Saving..."
+                : scheduleForm.id
+                  ? "Update"
+                  : "Add"}
             </Button>
           </form>
 
@@ -498,7 +707,9 @@ export default function OpPage({ setNotice, canEdit }: Props) {
                                 schedule_date: schedule.schedule_date,
                                 start_time: schedule.start_time,
                                 end_time: schedule.end_time,
-                                slot_capacity: String(schedule.slot_capacity || 12),
+                                slot_capacity: String(
+                                  schedule.slot_capacity || 12,
+                                ),
                                 status: schedule.status || "available",
                                 notes: schedule.notes || "",
                               })
@@ -506,7 +717,11 @@ export default function OpPage({ setNotice, canEdit }: Props) {
                           >
                             Edit
                           </Button>
-                          <Button type="button" variant="destructive" onClick={() => void deleteSchedule(schedule)}>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={() => void deleteSchedule(schedule)}
+                          >
                             Delete
                           </Button>
                         </>
@@ -525,14 +740,41 @@ export default function OpPage({ setNotice, canEdit }: Props) {
           <div className="module-panel-head">
             <h3>Schedule OP Visit</h3>
           </div>
-          <form className="module-form-grid module-sales-grid" onSubmit={handleAppointmentSubmit}>
-            <Input value={appointmentForm.patient_id} onChange={(event) => setAppointmentForm((current) => ({ ...current, patient_id: event.target.value }))} placeholder="Patient ID" aria-label="OP patient id" disabled={!canEdit} />
-            <Input value={appointmentForm.patient_name} onChange={(event) => setAppointmentForm((current) => ({ ...current, patient_name: event.target.value }))} placeholder="Patient name" aria-label="OP patient name" disabled={!canEdit} />
+          <form
+            className="module-form-grid module-sales-grid"
+            onSubmit={handleAppointmentSubmit}
+          >
+            <Input
+              value={appointmentForm.patient_id}
+              onChange={(event) =>
+                setAppointmentForm((current) => ({
+                  ...current,
+                  patient_id: event.target.value,
+                }))
+              }
+              placeholder="Patient ID"
+              aria-label="OP patient id"
+              disabled={!canEdit}
+            />
+            <Input
+              value={appointmentForm.patient_name}
+              onChange={(event) =>
+                setAppointmentForm((current) => ({
+                  ...current,
+                  patient_name: event.target.value,
+                }))
+              }
+              placeholder="Patient name"
+              aria-label="OP patient name"
+              disabled={!canEdit}
+            />
             <Input
               value={appointmentForm.doctor_name}
               onChange={(event) => {
                 const nextDoctor = event.target.value;
-                const matched = schedules.find((item) => item.doctor_name === nextDoctor);
+                const matched = schedules.find(
+                  (item) => item.doctor_name === nextDoctor,
+                );
                 setAppointmentForm((current) => ({
                   ...current,
                   doctor_name: nextDoctor,
@@ -549,7 +791,17 @@ export default function OpPage({ setNotice, canEdit }: Props) {
                 <option key={name} value={name} />
               ))}
             </datalist>
-            <Select value={appointmentForm.department} onChange={(event) => setAppointmentForm((current) => ({ ...current, department: event.target.value }))} aria-label="OP department" disabled={!canEdit}>
+            <Select
+              value={appointmentForm.department}
+              onChange={(event) =>
+                setAppointmentForm((current) => ({
+                  ...current,
+                  department: event.target.value,
+                }))
+              }
+              aria-label="OP department"
+              disabled={!canEdit}
+            >
               <option value="">Select department</option>
               {departments.map((department) => {
                 const name = (department.department_name || "").trim();
@@ -561,19 +813,62 @@ export default function OpPage({ setNotice, canEdit }: Props) {
                 );
               })}
             </Select>
-            <Input type="datetime-local" value={appointmentForm.appointment_date} onChange={(event) => setAppointmentForm((current) => ({ ...current, appointment_date: event.target.value }))} aria-label="OP appointment date" disabled={!canEdit} />
-            <Select value={appointmentForm.appointment_kind} onChange={(event) => setAppointmentForm((current) => ({ ...current, appointment_kind: event.target.value }))} aria-label="Appointment kind" disabled={!canEdit}>
+            <Input
+              type="datetime-local"
+              value={appointmentForm.appointment_date}
+              onChange={(event) =>
+                setAppointmentForm((current) => ({
+                  ...current,
+                  appointment_date: event.target.value,
+                }))
+              }
+              aria-label="OP appointment date"
+              disabled={!canEdit}
+            />
+            <Select
+              value={appointmentForm.appointment_kind}
+              onChange={(event) =>
+                setAppointmentForm((current) => ({
+                  ...current,
+                  appointment_kind: event.target.value,
+                }))
+              }
+              aria-label="Appointment kind"
+              disabled={!canEdit}
+            >
               <option value="new">New Visit</option>
               <option value="follow_up">Follow-up</option>
             </Select>
-            <Select value={appointmentForm.status} onChange={(event) => setAppointmentForm((current) => ({ ...current, status: event.target.value }))} aria-label="Appointment status" disabled={!canEdit}>
+            <Select
+              value={appointmentForm.status}
+              onChange={(event) =>
+                setAppointmentForm((current) => ({
+                  ...current,
+                  status: event.target.value,
+                }))
+              }
+              aria-label="Appointment status"
+              disabled={!canEdit}
+            >
               <option value="scheduled">Scheduled</option>
               <option value="checked_in">Checked In</option>
               <option value="in_consultation">In Consultation</option>
               <option value="completed">Completed</option>
               <option value="cancelled">Cancelled</option>
             </Select>
-            <Select value={appointmentForm.follow_up_for} onChange={(event) => setAppointmentForm((current) => ({ ...current, follow_up_for: event.target.value }))} aria-label="Follow up for" disabled={!canEdit || appointmentForm.appointment_kind !== "follow_up"}>
+            <Select
+              value={appointmentForm.follow_up_for}
+              onChange={(event) =>
+                setAppointmentForm((current) => ({
+                  ...current,
+                  follow_up_for: event.target.value,
+                }))
+              }
+              aria-label="Follow up for"
+              disabled={
+                !canEdit || appointmentForm.appointment_kind !== "follow_up"
+              }
+            >
               <option value="">Follow-up of</option>
               {appointments.map((appointment) => (
                 <option key={appointment.id} value={appointment.id}>
@@ -585,14 +880,24 @@ export default function OpPage({ setNotice, canEdit }: Props) {
               type="number"
               min={0}
               value={appointmentForm.consultation_fee}
-              onChange={(event) => setAppointmentForm((current) => ({ ...current, consultation_fee: event.target.value }))}
+              onChange={(event) =>
+                setAppointmentForm((current) => ({
+                  ...current,
+                  consultation_fee: event.target.value,
+                }))
+              }
               placeholder="Consultation fee"
               aria-label="OP consultation fee"
               disabled={!canEdit}
             />
             <Select
               value={appointmentForm.payment_mode}
-              onChange={(event) => setAppointmentForm((current) => ({ ...current, payment_mode: event.target.value }))}
+              onChange={(event) =>
+                setAppointmentForm((current) => ({
+                  ...current,
+                  payment_mode: event.target.value,
+                }))
+              }
               aria-label="OP payment mode"
               disabled={!canEdit}
             >
@@ -601,25 +906,52 @@ export default function OpPage({ setNotice, canEdit }: Props) {
               <option value="bank">Bank Transfer</option>
               <option value="cash">Cash</option>
             </Select>
-            <Button type="submit" variant="primary" disabled={!canEdit || savingAppointment}>
-              {savingAppointment ? "Saving..." : appointmentForm.id ? "Update" : "Schedule"}
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={!canEdit || savingAppointment}
+            >
+              {savingAppointment
+                ? "Saving..."
+                : appointmentForm.id
+                  ? "Update"
+                  : "Schedule"}
             </Button>
-            <Button type="button" variant="secondary" disabled={!canEdit || savingAppointment || !!appointmentForm.id || !isRazorpayReady} onClick={() => void handleRazorpayAppointmentSubmit()}>
-              {savingAppointment ? "Processing..." : "Pay via Razorpay & Schedule"}
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={
+                !canEdit ||
+                savingAppointment ||
+                !!appointmentForm.id ||
+                !isRazorpayReady
+              }
+              onClick={() => void handleRazorpayAppointmentSubmit()}
+            >
+              {savingAppointment
+                ? "Processing..."
+                : "Pay via Razorpay & Schedule"}
             </Button>
           </form>
-          {!isRazorpayReady ? <p className="muted">Razorpay payments are disabled until backend keys are configured.</p> : null}
+          {!isRazorpayReady ? (
+            <p className="muted">
+              Razorpay payments are disabled until backend keys are configured.
+            </p>
+          ) : null}
 
-          <Table className="module-table module-table-op" aria-label="OP appointments table">
-              <TableHead>
-                <TableCell>Token</TableCell>
-                <TableCell>Patient</TableCell>
-                <TableCell>Doctor</TableCell>
-                <TableCell>Time</TableCell>
-                <TableCell>Visit</TableCell>
-                <TableCell>Reminder</TableCell>
-                <TableCell>Actions</TableCell>
-              </TableHead>
+          <Table
+            className="module-table module-table-op"
+            aria-label="OP appointments table"
+          >
+            <TableHead>
+              <TableCell>Token</TableCell>
+              <TableCell>Patient</TableCell>
+              <TableCell>Doctor</TableCell>
+              <TableCell>Time</TableCell>
+              <TableCell>Visit</TableCell>
+              <TableCell>Reminder</TableCell>
+              <TableCell>Actions</TableCell>
+            </TableHead>
             {appointments.length === 0 ? (
               <TableRow>
                 <TableCell>-</TableCell>
@@ -634,16 +966,27 @@ export default function OpPage({ setNotice, canEdit }: Props) {
                 <TableRow key={appointment.id}>
                   <TableCell>{appointment.token_no}</TableCell>
                   <TableCell>{appointment.patient_name}</TableCell>
-                <TableCell>{appointment.doctor_name || "-"}</TableCell>
-                <TableCell>{formatDateTime(appointment.appointment_date)}</TableCell>
-                <TableCell>{appointment.appointment_kind === "follow_up" ? "Follow-up" : "New"}</TableCell>
-                <TableCell>{appointment.reminder_sent_at ? "Sent" : "Pending"}</TableCell>
-                <TableCell>
-                  <div className="module-inline-actions">
+                  <TableCell>{appointment.doctor_name || "-"}</TableCell>
+                  <TableCell>
+                    {formatDateTime(appointment.appointment_date)}
+                  </TableCell>
+                  <TableCell>
+                    {appointment.appointment_kind === "follow_up"
+                      ? "Follow-up"
+                      : "New"}
+                  </TableCell>
+                  <TableCell>
+                    {appointment.reminder_sent_at ? "Sent" : "Pending"}
+                  </TableCell>
+                  <TableCell>
+                    <div className="module-inline-actions">
                       <Button
                         type="button"
                         onClick={() =>
-                          setUploadPrescriptionPatient({ id: String(appointment.patient_id), name: appointment.patient_name })
+                          setUploadPrescriptionPatient({
+                            id: String(appointment.patient_id),
+                            name: appointment.patient_name,
+                          })
                         }
                       >
                         Upload Rx
@@ -658,10 +1001,15 @@ export default function OpPage({ setNotice, canEdit }: Props) {
                             visit_type: appointment.visit_type,
                             department: appointment.department || "",
                             doctor_name: appointment.doctor_name || "",
-                            appointment_date: toDateTimeLocalValue(appointment.appointment_date),
+                            appointment_date: toDateTimeLocalValue(
+                              appointment.appointment_date,
+                            ),
                             status: appointment.status,
-                            appointment_kind: appointment.appointment_kind || "new",
-                            follow_up_for: appointment.follow_up_for ? String(appointment.follow_up_for) : "",
+                            appointment_kind:
+                              appointment.appointment_kind || "new",
+                            follow_up_for: appointment.follow_up_for
+                              ? String(appointment.follow_up_for)
+                              : "",
                             consultation_fee: appointmentForm.consultation_fee,
                             payment_mode: appointmentForm.payment_mode || "upi",
                             notes: appointment.notes || "",
@@ -674,18 +1022,37 @@ export default function OpPage({ setNotice, canEdit }: Props) {
                         <Button
                           type="button"
                           variant="secondary"
-                          onClick={() => void quickUpdateAppointment(appointment, appointment.status === "scheduled" ? "checked_in" : appointment.status === "checked_in" ? "in_consultation" : "completed")}
+                          onClick={() =>
+                            void quickUpdateAppointment(
+                              appointment,
+                              appointment.status === "scheduled"
+                                ? "checked_in"
+                                : appointment.status === "checked_in"
+                                  ? "in_consultation"
+                                  : "completed",
+                            )
+                          }
                         >
                           Advance
                         </Button>
                       ) : null}
                       {canEdit && !appointment.reminder_sent_at ? (
-                        <Button type="button" variant="ghost" onClick={() => void markReminderSent(appointment)}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => void markReminderSent(appointment)}
+                        >
                           Reminder
                         </Button>
                       ) : null}
-                      {canEdit && appointment.status === "scheduled" && !appointment.no_show_marked ? (
-                        <Button type="button" variant="destructive" onClick={() => void markNoShow(appointment)}>
+                      {canEdit &&
+                      appointment.status === "scheduled" &&
+                      !appointment.no_show_marked ? (
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          onClick={() => void markNoShow(appointment)}
+                        >
                           No-Show
                         </Button>
                       ) : null}
@@ -697,7 +1064,7 @@ export default function OpPage({ setNotice, canEdit }: Props) {
           </Table>
         </div>
       </div>
-      
+
       {uploadPrescriptionPatient && (
         <PrescriptionUploadModal
           patientId={uploadPrescriptionPatient.id}

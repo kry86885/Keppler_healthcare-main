@@ -45,7 +45,12 @@ describe("PharmacyPage", () => {
       const requestUrl = String(url);
       const method = (options?.method || "GET").toUpperCase();
       if (requestUrl.includes("/api/pharmacy/summary")) {
-        return jsonResponse({ low_stock_count: 0, out_of_stock_count: 0, damaged_stock_count: 0, sales_total: 0 });
+        return jsonResponse({
+          low_stock_count: 0,
+          out_of_stock_count: 0,
+          damaged_stock_count: 0,
+          sales_total: 0,
+        });
       }
       if (requestUrl.includes("/api/pharmacy/inventory") && method === "GET") {
         return jsonResponse({ items: inventory });
@@ -54,10 +59,21 @@ describe("PharmacyPage", () => {
         return jsonResponse({ sales: [] });
       }
       if (requestUrl.includes("/api/pharmacy/suppliers")) {
-        return jsonResponse({ suppliers: [{ id: 9, supplier_name: "MediSupply", status: "active" }] });
+        return jsonResponse({
+          suppliers: [{ id: 9, supplier_name: "MediSupply", status: "active" }],
+        });
       }
       if (requestUrl.includes("/api/pharmacy/purchases")) {
-        return jsonResponse({ purchases: [{ id: 4, supplier_id: 9, medicine_name: "Ibuprofen", status: "ordered" }] });
+        return jsonResponse({
+          purchases: [
+            {
+              id: 4,
+              supplier_id: 9,
+              medicine_name: "Ibuprofen",
+              status: "ordered",
+            },
+          ],
+        });
       }
       return jsonResponse({});
     }) as any;
@@ -79,10 +95,18 @@ describe("PharmacyPage", () => {
     expect(container.textContent).toContain("Create Order");
     expect(container.textContent).toContain("Inventory Snapshot");
     expect(container.textContent).toContain("MediSupply");
-    expect(container.querySelector('input[aria-label="Medicine name"]')).toBeTruthy();
-    expect(container.querySelector('select[aria-label="Medicine for sale"]')).toBeTruthy();
-    expect(container.querySelector('input[aria-label="Supplier name"]')).toBeTruthy();
-    expect(container.querySelector('select[aria-label="Purchase supplier"]')).toBeTruthy();
+    expect(
+      container.querySelector('input[aria-label="Medicine name"]'),
+    ).toBeTruthy();
+    expect(
+      container.querySelector('select[aria-label="Medicine for sale"]'),
+    ).toBeTruthy();
+    expect(
+      container.querySelector('input[aria-label="Supplier name"]'),
+    ).toBeTruthy();
+    expect(
+      container.querySelector('select[aria-label="Purchase supplier"]'),
+    ).toBeTruthy();
 
     act(() => {
       root.unmount();

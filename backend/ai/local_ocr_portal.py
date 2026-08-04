@@ -54,7 +54,10 @@ def list_ocr_blueprints(hospital_id, username):
 
 # ---- OCR: upload / job status / result / export ----------------------------
 
-def upload_ocr_document(hospital_id, username, filename, file_bytes, mimetype, blueprint):
+
+def upload_ocr_document(
+    hospital_id, username, filename, file_bytes, mimetype, blueprint
+):
     """Runs synchronously -- OCR of a single document takes seconds, well within a
     normal request timeout, so there's no need for a job queue here."""
     try:
@@ -64,8 +67,15 @@ def upload_ocr_document(hospital_id, username, filename, file_bytes, mimetype, b
         text, status, error_message = "", "FAILED", str(exc)
 
     document_id = create_ocr_portal_document(
-        hospital_id, username, filename, blueprint, mimetype, text,
-        confidence_score=None, status=status, error_message=error_message,
+        hospital_id,
+        username,
+        filename,
+        blueprint,
+        mimetype,
+        text,
+        confidence_score=None,
+        status=status,
+        error_message=error_message,
     )
     return {"job_id": str(document_id)}
 
@@ -106,6 +116,7 @@ def _require_document(hospital_id, username, doc_id):
 
 
 # ---- Vault -------------------------------------------------------------------
+
 
 def list_vault_documents(hospital_id, username):
     rows = list_ocr_portal_documents(hospital_id, username)
@@ -154,7 +165,10 @@ def _export_document(document, fmt):
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
     if fmt == "xlsx":
-        return _generate_xlsx(text), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        return (
+            _generate_xlsx(text),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
     raise OcrPortalError(400, f"Unsupported export format: {fmt}")
 
 
@@ -172,6 +186,7 @@ def _generate_xlsx(text):
 
 
 # ---- Assistant (RAG chat) -----------------------------------------------------
+
 
 def _chunk_text(text, size=_CHUNK_SIZE, overlap=_CHUNK_OVERLAP):
     text = text.strip()
@@ -194,9 +209,13 @@ def ingest_vault_docs(hospital_id, username, doc_ids):
         document = get_ocr_portal_document(doc_id, hospital_id, username)
         if not document or not document["ocr_text"]:
             continue
-        delete_ocr_portal_chunks(hospital_id, doc_id)  # avoid duplicate chunks on re-ingest
+        delete_ocr_portal_chunks(
+            hospital_id, doc_id
+        )  # avoid duplicate chunks on re-ingest
         for chunk in _chunk_text(document["ocr_text"]):
-            store_document_embedding("ocr_portal_documents", doc_id, chunk, hospital_id=hospital_id)
+            store_document_embedding(
+                "ocr_portal_documents", doc_id, chunk, hospital_id=hospital_id
+            )
         set_ocr_portal_document_kb_flag(doc_id, hospital_id, username, True)
         ingested.append(doc_id)
     return {"ingested": ingested}
@@ -205,7 +224,12 @@ def ingest_vault_docs(hospital_id, username, doc_ids):
 def list_kb_documents(hospital_id, username):
     rows = list_ocr_portal_kb_documents(hospital_id, username)
     return [
-        {"doc_id": row["id"], "filename": row["filename"], "category": row["doc_category"], "chunk_count": None}
+        {
+            "doc_id": row["id"],
+            "filename": row["filename"],
+            "category": row["doc_category"],
+            "chunk_count": None,
+        }
         for row in rows
     ]
 
@@ -226,7 +250,9 @@ Relevant excerpts:
 """
 
 
-def send_chat_message(hospital_id, username, message, session_id="default", doc_ids=None):
+def send_chat_message(
+    hospital_id, username, message, session_id="default", doc_ids=None
+):
     save_ocr_portal_chat_message(hospital_id, username, session_id, "user", message)
 
     kb_docs = list_ocr_portal_kb_documents(hospital_id, username)
@@ -236,13 +262,18 @@ def send_chat_message(hospital_id, username, message, session_id="default", doc_
     if not matches:
         answer = (
             "I couldn't find anything relevant in your knowledge base. Add a document first from "
-            "My Documents (\"Add to KB\")."
+            'My Documents ("Add to KB").'
         )
         citations = []
     else:
-        excerpts = "\n\n".join(f"[{i + 1}] {m['content_text'][:800]}" for i, m in enumerate(matches))
+        excerpts = "\n\n".join(
+            f"[{i + 1}] {m['content_text'][:800]}" for i, m in enumerate(matches)
+        )
         prompt = _CHAT_PROMPT.format(question=message, excerpts=excerpts)
-        answer = llm_provider.generate(prompt) or "The local AI model is unavailable right now."
+        answer = (
+            llm_provider.generate(prompt)
+            or "The local AI model is unavailable right now."
+        )
         doc_lookup = {row["id"]: row["filename"] for row in kb_docs}
         citations = [
             {
@@ -254,7 +285,12 @@ def send_chat_message(hospital_id, username, message, session_id="default", doc_
         ]
 
     save_ocr_portal_chat_message(
-        hospital_id, username, session_id, "assistant", answer, citations=json.dumps(citations)
+        hospital_id,
+        username,
+        session_id,
+        "assistant",
+        answer,
+        citations=json.dumps(citations),
     )
     return {"role": "assistant", "content": answer, "citations": citations}
 
@@ -269,7 +305,9 @@ def get_chat_history(hospital_id, username, session_id="default"):
                 citations = json.loads(row["citations"])
             except (TypeError, ValueError):
                 pass
-        history.append({"role": row["role"], "content": row["content"], "citations": citations})
+        history.append(
+            {"role": row["role"], "content": row["content"], "citations": citations}
+        )
     return history
 
 

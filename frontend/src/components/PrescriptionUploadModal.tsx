@@ -1,5 +1,13 @@
 import { useState, useRef } from "react";
-import { Button, Input, Table, TableCell, TableHead, TableRow, Textarea } from "./ui";
+import {
+  Button,
+  Input,
+  Table,
+  TableCell,
+  TableHead,
+  TableRow,
+  Textarea,
+} from "./ui";
 import { apiFetch, withAuthHeaders } from "../lib/api";
 import { API_BASE } from "../lib/constants";
 import type { Notice } from "../types";
@@ -25,7 +33,13 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export default function PrescriptionUploadModal({ patientId, patientName, doctorName, onClose, setNotice }: Props) {
+export default function PrescriptionUploadModal({
+  patientId,
+  patientName,
+  doctorName,
+  onClose,
+  setNotice,
+}: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [parsing, setParsing] = useState(false);
@@ -34,7 +48,9 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
   const [ocrText, setOcrText] = useState("");
   const [medicines, setMedicines] = useState<ParsedMedicine[]>([]);
   const [documentId, setDocumentId] = useState<number | null>(null);
-  const [step, setStep] = useState<"upload" | "review" | "verify" | "done">("upload");
+  const [step, setStep] = useState<"upload" | "review" | "verify" | "done">(
+    "upload",
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = async () => {
@@ -64,9 +80,10 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
       let errorMessage = "";
       for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
         await sleep(POLL_INTERVAL_MS);
-        const statusData = await apiFetch<{ status: string; error_message?: string }>(
-          `/api/ocr-portal/jobs/${job_id}`
-        );
+        const statusData = await apiFetch<{
+          status: string;
+          error_message?: string;
+        }>(`/api/ocr-portal/jobs/${job_id}`);
         const status = (statusData.status || "").toUpperCase();
         if (status === "COMPLETED") {
           finalStatus = status;
@@ -81,11 +98,13 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
         throw new Error(errorMessage);
       }
       if (finalStatus !== "COMPLETED") {
-        throw new Error("OCR is taking longer than expected. Please try again shortly.");
+        throw new Error(
+          "OCR is taking longer than expected. Please try again shortly.",
+        );
       }
 
       const resultData = await apiFetch<{ combined_markdown?: string }>(
-        `/api/ocr-portal/jobs/${job_id}/result`
+        `/api/ocr-portal/jobs/${job_id}/result`,
       );
       const extractedText = resultData.combined_markdown || "";
 
@@ -96,7 +115,10 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
       setOcrText(extractedText);
       setStep("review");
     } catch (err: any) {
-      setNotice({ type: "error", message: err.message || "Failed to process prescription." });
+      setNotice({
+        type: "error",
+        message: err.message || "Failed to process prescription.",
+      });
     } finally {
       setUploading(false);
     }
@@ -108,7 +130,10 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
     try {
       const res = await fetch(`${API_BASE}/api/export/pdf`, {
         method: "POST",
-        headers: withAuthHeaders({ "Content-Type": "application/json" }, "POST"),
+        headers: withAuthHeaders(
+          { "Content-Type": "application/json" },
+          "POST",
+        ),
         credentials: "include",
         body: JSON.stringify({
           patient_name: patientName,
@@ -125,7 +150,10 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
       const blobUrl = URL.createObjectURL(blob);
       const printWindow = window.open(blobUrl, "_blank");
       if (!printWindow) {
-        setNotice({ type: "warning", message: "Allow pop-ups to print the prescription." });
+        setNotice({
+          type: "warning",
+          message: "Allow pop-ups to print the prescription.",
+        });
         return;
       }
       // Blob-URL PDFs opened via window.open don't reliably fire "load" on the
@@ -135,7 +163,10 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
         printWindow.print();
       }, 800);
     } catch (err: any) {
-      setNotice({ type: "error", message: err.message || "Failed to print prescription." });
+      setNotice({
+        type: "error",
+        message: err.message || "Failed to print prescription.",
+      });
     } finally {
       setPrinting(false);
     }
@@ -153,12 +184,15 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
         formData.append("doctor_name", doctorName);
       }
 
-      const res = await fetch(`${API_BASE}/api/patients/${patientId}/documents`, {
-        method: "POST",
-        body: formData,
-        headers: withAuthHeaders({}, "POST"),
-        credentials: "include",
-      });
+      const res = await fetch(
+        `${API_BASE}/api/patients/${patientId}/documents`,
+        {
+          method: "POST",
+          body: formData,
+          headers: withAuthHeaders({}, "POST"),
+          credentials: "include",
+        },
+      );
 
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -169,9 +203,16 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
         setDocumentId(payload.document_id);
       }
 
-      setNotice({ type: "success", message: "Prescription saved. The patient will be notified on WhatsApp shortly." });
+      setNotice({
+        type: "success",
+        message:
+          "Prescription saved. The patient will be notified on WhatsApp shortly.",
+      });
     } catch (err: any) {
-      setNotice({ type: "error", message: err.message || "Failed to save prescription text." });
+      setNotice({
+        type: "error",
+        message: err.message || "Failed to save prescription text.",
+      });
     } finally {
       setSavingText(false);
     }
@@ -180,15 +221,21 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
   const handleParseMedicines = async () => {
     setParsing(true);
     try {
-      const parseData = await apiFetch<{ medicines: ParsedMedicine[] }>("/api/ocr-portal/parse-prescription", {
-        method: "POST",
-        body: JSON.stringify({ text: ocrText }),
-      });
+      const parseData = await apiFetch<{ medicines: ParsedMedicine[] }>(
+        "/api/ocr-portal/parse-prescription",
+        {
+          method: "POST",
+          body: JSON.stringify({ text: ocrText }),
+        },
+      );
 
       setMedicines(parseData.medicines || []);
       setStep("verify");
     } catch (err: any) {
-      setNotice({ type: "error", message: err.message || "Failed to parse medicines." });
+      setNotice({
+        type: "error",
+        message: err.message || "Failed to parse medicines.",
+      });
     } finally {
       setParsing(false);
     }
@@ -204,15 +251,25 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
           doc_id: documentId,
         }),
       });
-      setNotice({ type: "success", message: "Prescription sent to pharmacy successfully." });
+      setNotice({
+        type: "success",
+        message: "Prescription sent to pharmacy successfully.",
+      });
       setStep("done");
       setTimeout(onClose, 1500);
     } catch (err: any) {
-      setNotice({ type: "error", message: err.message || "Failed to send prescription." });
+      setNotice({
+        type: "error",
+        message: err.message || "Failed to send prescription.",
+      });
     }
   };
 
-  const handleMedicineChange = (index: number, field: keyof ParsedMedicine, value: any) => {
+  const handleMedicineChange = (
+    index: number,
+    field: keyof ParsedMedicine,
+    value: any,
+  ) => {
     setMedicines((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
@@ -222,27 +279,70 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content" style={{ width: "90%", maxWidth: "600px", background: "var(--color-bg)", padding: "1.5rem", borderRadius: "8px", position: "relative", zIndex: 1000, margin: "10vh auto" }}>
-        <div className="modal-header" style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem" }}>
+      <div
+        className="modal-content"
+        style={{
+          width: "90%",
+          maxWidth: "600px",
+          background: "var(--color-bg)",
+          padding: "1.5rem",
+          borderRadius: "8px",
+          position: "relative",
+          zIndex: 1000,
+          margin: "10vh auto",
+        }}
+      >
+        <div
+          className="modal-header"
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: "1rem",
+          }}
+        >
           <h2>Upload Prescription for {patientName}</h2>
-          <button className="modal-close" onClick={onClose} aria-label="Close modal" style={{ cursor: "pointer", background: "none", border: "none", fontSize: "1.5rem" }}>
+          <button
+            className="modal-close"
+            onClick={onClose}
+            aria-label="Close modal"
+            style={{
+              cursor: "pointer",
+              background: "none",
+              border: "none",
+              fontSize: "1.5rem",
+            }}
+          >
             &times;
           </button>
         </div>
 
         {step === "upload" && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1.5rem" }}>
-            <p style={{ textAlign: "center", color: "hsl(var(--muted-foreground))" }}>Select a scanned image or photo of the prescription to digitize.</p>
-            <div 
-              style={{ 
-                border: "2px dashed hsl(var(--border))", 
-                borderRadius: "12px", 
-                padding: "3rem 2rem", 
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "1.5rem",
+            }}
+          >
+            <p
+              style={{
+                textAlign: "center",
+                color: "hsl(var(--muted-foreground))",
+              }}
+            >
+              Select a scanned image or photo of the prescription to digitize.
+            </p>
+            <div
+              style={{
+                border: "2px dashed hsl(var(--border))",
+                borderRadius: "12px",
+                padding: "3rem 2rem",
                 width: "100%",
                 textAlign: "center",
                 background: "hsl(var(--card))",
                 cursor: "pointer",
-                transition: "all 0.2s ease"
+                transition: "all 0.2s ease",
               }}
               onClick={() => fileInputRef.current?.click()}
               onDragOver={(e) => {
@@ -268,36 +368,83 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
                 }
               }}
             >
-              <div style={{ 
-                width: "64px", height: "64px", borderRadius: "50%", 
-                background: "hsl(var(--background))", 
-                display: "flex", alignItems: "center", justifyContent: "center", 
-                margin: "0 auto 1.5rem auto",
-                boxShadow: "0 4px 12px -4px rgba(0,0,0,0.1)"
-              }}>
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--primary))" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <div
+                style={{
+                  width: "64px",
+                  height: "64px",
+                  borderRadius: "50%",
+                  background: "hsl(var(--background))",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 1.5rem auto",
+                  boxShadow: "0 4px 12px -4px rgba(0,0,0,0.1)",
+                }}
+              >
+                <svg
+                  width="32"
+                  height="32"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                   <polyline points="17 8 12 3 7 8"></polyline>
                   <line x1="12" y1="3" x2="12" y2="15"></line>
                 </svg>
               </div>
-              <h3 style={{ margin: "0 0 0.75rem 0", color: "hsl(var(--foreground))", fontSize: "1.25rem", fontWeight: 600 }}>
+              <h3
+                style={{
+                  margin: "0 0 0.75rem 0",
+                  color: "hsl(var(--foreground))",
+                  fontSize: "1.25rem",
+                  fontWeight: 600,
+                }}
+              >
                 Click or drag and drop to upload
               </h3>
-              <p style={{ margin: 0, color: "hsl(var(--muted-foreground))", fontSize: "0.95rem" }}>SVG, PNG, JPG or PDF</p>
-              
+              <p
+                style={{
+                  margin: 0,
+                  color: "hsl(var(--muted-foreground))",
+                  fontSize: "0.95rem",
+                }}
+              >
+                SVG, PNG, JPG or PDF
+              </p>
+
               {file && (
-                <div style={{ 
-                  marginTop: "2rem", padding: "1rem", 
-                  background: "hsl(var(--background))", borderRadius: "8px",
-                  display: "inline-flex", alignItems: "center", gap: "0.75rem",
-                  boxShadow: "0 2px 8px -2px rgba(0,0,0,0.05)"
-                }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--primary))" strokeWidth="2">
+                <div
+                  style={{
+                    marginTop: "2rem",
+                    padding: "1rem",
+                    background: "hsl(var(--background))",
+                    borderRadius: "8px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.75rem",
+                    boxShadow: "0 2px 8px -2px rgba(0,0,0,0.05)",
+                  }}
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth="2"
+                  >
                     <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
                     <polyline points="13 2 13 9 20 9"></polyline>
                   </svg>
-                  <span style={{ color: "hsl(var(--foreground))", fontWeight: 500 }}>{file.name}</span>
+                  <span
+                    style={{ color: "hsl(var(--foreground))", fontWeight: 500 }}
+                  >
+                    {file.name}
+                  </span>
                 </div>
               )}
               <input
@@ -305,18 +452,60 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
                 accept="image/*,.pdf"
                 ref={fileInputRef}
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
-                style={{ opacity: 0, width: 0, height: 0, position: "absolute", overflow: "hidden" }}
+                style={{
+                  opacity: 0,
+                  width: 0,
+                  height: 0,
+                  position: "absolute",
+                  overflow: "hidden",
+                }}
               />
             </div>
-            <div style={{ display: "flex", gap: "1rem", justifyContent: "flex-end", width: "100%", marginTop: "0.5rem" }}>
-              <Button variant="secondary" onClick={onClose} style={{ padding: "0.75rem 1.5rem" }}>Cancel</Button>
-              <Button onClick={handleUpload} disabled={!file || uploading} style={{ padding: "0.75rem 1.5rem", minWidth: "200px" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: "1rem",
+                justifyContent: "flex-end",
+                width: "100%",
+                marginTop: "0.5rem",
+              }}
+            >
+              <Button
+                variant="secondary"
+                onClick={onClose}
+                style={{ padding: "0.75rem 1.5rem" }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleUpload}
+                disabled={!file || uploading}
+                style={{ padding: "0.75rem 1.5rem", minWidth: "200px" }}
+              >
                 {uploading ? (
-                  <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <span className="spinner" style={{ width: "16px", height: "16px", border: "2px solid currentColor", borderRightColor: "transparent", borderRadius: "50%", animation: "spin 0.75s linear infinite" }}></span>
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                    }}
+                  >
+                    <span
+                      className="spinner"
+                      style={{
+                        width: "16px",
+                        height: "16px",
+                        border: "2px solid currentColor",
+                        borderRightColor: "transparent",
+                        borderRadius: "50%",
+                        animation: "spin 0.75s linear infinite",
+                      }}
+                    ></span>
                     Extracting...
                   </span>
-                ) : "Upload & Extract Text"}
+                ) : (
+                  "Upload & Extract Text"
+                )}
               </Button>
             </div>
           </div>
@@ -324,23 +513,46 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
 
         {step === "review" && (
           <div>
-            <p>Review the extracted text below. Correct any OCR mistakes before saving.</p>
+            <p>
+              Review the extracted text below. Correct any OCR mistakes before
+              saving.
+            </p>
             <Textarea
               value={ocrText}
               onChange={(e) => setOcrText(e.target.value)}
               rows={12}
-              style={{ width: "100%", marginBottom: "1rem", fontFamily: "monospace" }}
+              style={{
+                width: "100%",
+                marginBottom: "1rem",
+                fontFamily: "monospace",
+              }}
             />
-            <div style={{ display: "flex", gap: "1rem", justifyContent: "space-between", flexWrap: "wrap" }}>
-              <Button onClick={handleParseMedicines} disabled={parsing || !ocrText.trim()}>
+            <div
+              style={{
+                display: "flex",
+                gap: "1rem",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+              }}
+            >
+              <Button
+                onClick={handleParseMedicines}
+                disabled={parsing || !ocrText.trim()}
+              >
                 {parsing ? "Parsing..." : "Parse Medicines for Pharmacy"}
               </Button>
               <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
                 <Button onClick={onClose}>Close</Button>
-                <Button onClick={handlePrint} disabled={printing || !ocrText.trim()}>
+                <Button
+                  onClick={handlePrint}
+                  disabled={printing || !ocrText.trim()}
+                >
                   {printing ? "Preparing..." : "Print"}
                 </Button>
-                <Button onClick={handleSaveText} disabled={savingText || !ocrText.trim()}>
+                <Button
+                  onClick={handleSaveText}
+                  disabled={savingText || !ocrText.trim()}
+                >
                   {savingText ? "Saving..." : "Save & Notify Patient"}
                 </Button>
               </div>
@@ -350,51 +562,88 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
 
         {step === "verify" && (
           <div>
-            <p>Review the extracted medicines. You can edit them before sending to pharmacy.</p>
-            <div style={{ overflowX: "auto", marginBottom: "1rem", width: "100%" }}>
+            <p>
+              Review the extracted medicines. You can edit them before sending
+              to pharmacy.
+            </p>
+            <div
+              style={{ overflowX: "auto", marginBottom: "1rem", width: "100%" }}
+            >
               <Table>
-              <TableHead>
-                <TableCell>Medicine</TableCell>
-                <TableCell>Dosage</TableCell>
-                <TableCell>Qty</TableCell>
-                <TableCell>Action</TableCell>
-              </TableHead>
-              {medicines.map((med, i) => (
-                <TableRow key={i}>
-                  <TableCell>
-                    <Input
-                      value={med.name}
-                      onChange={(e) => handleMedicineChange(i, "name", e.target.value)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      value={med.dosage}
-                      onChange={(e) => handleMedicineChange(i, "dosage", e.target.value)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      type="number"
-                      value={med.quantity}
-                      onChange={(e) => handleMedicineChange(i, "quantity", Number(e.target.value))}
-                      style={{ width: "60px" }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Button onClick={() => setMedicines(medicines.filter((_, idx) => idx !== i))}>Remove</Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+                <TableHead>
+                  <TableCell>Medicine</TableCell>
+                  <TableCell>Dosage</TableCell>
+                  <TableCell>Qty</TableCell>
+                  <TableCell>Action</TableCell>
+                </TableHead>
+                {medicines.map((med, i) => (
+                  <TableRow key={i}>
+                    <TableCell>
+                      <Input
+                        value={med.name}
+                        onChange={(e) =>
+                          handleMedicineChange(i, "name", e.target.value)
+                        }
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={med.dosage}
+                        onChange={(e) =>
+                          handleMedicineChange(i, "dosage", e.target.value)
+                        }
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        value={med.quantity}
+                        onChange={(e) =>
+                          handleMedicineChange(
+                            i,
+                            "quantity",
+                            Number(e.target.value),
+                          )
+                        }
+                        style={{ width: "60px" }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        onClick={() =>
+                          setMedicines(medicines.filter((_, idx) => idx !== i))
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </Table>
             </div>
-            <div style={{ display: "flex", gap: "1rem", justifyContent: "space-between", flexWrap: "wrap" }}>
-              <Button onClick={() => setMedicines([...medicines, { name: "", dosage: "", quantity: 1 }])}>
+            <div
+              style={{
+                display: "flex",
+                gap: "1rem",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+              }}
+            >
+              <Button
+                onClick={() =>
+                  setMedicines([
+                    ...medicines,
+                    { name: "", dosage: "", quantity: 1 },
+                  ])
+                }
+              >
                 Add Medicine
               </Button>
               <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
                 <Button onClick={() => setStep("review")}>Back</Button>
-                <Button onClick={handleConfirm}>Confirm & Send to Pharmacy</Button>
+                <Button onClick={handleConfirm}>
+                  Confirm & Send to Pharmacy
+                </Button>
               </div>
             </div>
           </div>

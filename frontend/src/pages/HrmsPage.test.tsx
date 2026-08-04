@@ -17,7 +17,15 @@ describe("HrmsPage", () => {
   test("renders hr write forms across tabs", async () => {
     global.fetch = vi.fn((url: string) => {
       if (url.includes("/api/hr/departments")) {
-        return jsonResponse({ departments: [{ id: 1, department_name: "Nursing", mapped_head_employee_id: "EMP-9" }] });
+        return jsonResponse({
+          departments: [
+            {
+              id: 1,
+              department_name: "Nursing",
+              mapped_head_employee_id: "EMP-9",
+            },
+          ],
+        });
       }
       if (url.includes("/api/hr/attendance")) {
         return jsonResponse({ attendance: [] });
@@ -42,9 +50,15 @@ describe("HrmsPage", () => {
     });
 
     expect(container.textContent).toContain("Add Attendance");
-    const payrollTab = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Payroll");
-    const leavesTab = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Leaves");
-    const departmentsTab = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Departments");
+    const payrollTab = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.trim() === "Payroll",
+    );
+    const leavesTab = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.trim() === "Leaves",
+    );
+    const departmentsTab = Array.from(
+      container.querySelectorAll("button"),
+    ).find((button) => button.textContent?.trim() === "Departments");
 
     await act(async () => {
       payrollTab?.dispatchEvent(new MouseEvent("click", { bubbles: true }));

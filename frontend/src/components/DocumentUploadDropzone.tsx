@@ -9,7 +9,13 @@ type Props = {
   onFileSelect: (file: File | null) => void;
 };
 
-export default function DocumentUploadDropzone({ accept, file, helperText, disabled = false, onFileSelect }: Props) {
+export default function DocumentUploadDropzone({
+  accept,
+  file,
+  helperText,
+  disabled = false,
+  onFileSelect,
+}: Props) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -62,15 +68,29 @@ export default function DocumentUploadDropzone({ accept, file, helperText, disab
         onDragLeave={handleDragLeave}
       >
         <p className="upload-title">Drop file here or click to browse</p>
-        {file ? <p className="upload-file-name">{file.name}</p> : <p className="upload-placeholder">No file selected</p>}
+        {file ? (
+          <p className="upload-file-name">{file.name}</p>
+        ) : (
+          <p className="upload-placeholder">No file selected</p>
+        )}
         {helperText && <p className="upload-helper">{helperText}</p>}
       </div>
 
       <div className="upload-actions">
-        <Button variant="secondary" type="button" onClick={pickFile} disabled={disabled}>
+        <Button
+          variant="secondary"
+          type="button"
+          onClick={pickFile}
+          disabled={disabled}
+        >
           Choose File
         </Button>
-        <Button variant="ghost" type="button" onClick={() => onFileSelect(null)} disabled={disabled || !file}>
+        <Button
+          variant="ghost"
+          type="button"
+          onClick={() => onFileSelect(null)}
+          disabled={disabled || !file}
+        >
           Remove
         </Button>
       </div>

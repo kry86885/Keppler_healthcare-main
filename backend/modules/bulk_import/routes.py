@@ -4,7 +4,12 @@ import re
 from flask import Blueprint, g, jsonify, request
 from werkzeug.utils import secure_filename
 
-from app import require_permissions, current_hospital_id, log_audit_event, save_uploaded_file
+from app import (
+    require_permissions,
+    current_hospital_id,
+    log_audit_event,
+    save_uploaded_file,
+)
 from ai.service import translate_patient_filter_prompt, answer_bulk_document_prompt
 from utils.database import (
     create_bulk_import_job,
@@ -14,7 +19,13 @@ from utils.database import (
     BULK_IMPORT_PATIENT_FIELDS,
 )
 
-from .tasks import suggest_mapping_task, import_rows_task, extract_document_task, is_document_file, DOCUMENT_EXTENSIONS
+from .tasks import (
+    suggest_mapping_task,
+    import_rows_task,
+    extract_document_task,
+    is_document_file,
+    DOCUMENT_EXTENSIONS,
+)
 
 bulk_import_bp = Blueprint("bulk_import", __name__)
 
@@ -55,7 +66,14 @@ def bulk_import_upload():
     uploaded_file = request.files["file"]
     filename = secure_filename(uploaded_file.filename or "") or "upload"
     if not filename.lower().endswith(ALLOWED_EXTENSIONS):
-        return jsonify({"error": "Only .xlsx, .csv, .pdf, or .docx files are supported. Please re-save .xls files as .xlsx, or .doc files as .docx."}), 400
+        return (
+            jsonify(
+                {
+                    "error": "Only .xlsx, .csv, .pdf, or .docx files are supported. Please re-save .xls files as .xlsx, or .doc files as .docx."
+                }
+            ),
+            400,
+        )
 
     file_bytes = uploaded_file.read()
     if not file_bytes:
@@ -88,7 +106,11 @@ def bulk_import_job_status(job_id):
     # The full document text is only ever needed server-side (by /ask) -- it can be up
     # to 120k characters, far more than the frontend's polling loop needs to render.
     response.pop("extracted_text", None)
-    response["kind"] = "document" if is_document_file(job.get("original_filename") or "") else "spreadsheet"
+    response["kind"] = (
+        "document"
+        if is_document_file(job.get("original_filename") or "")
+        else "spreadsheet"
+    )
     for field in ("detected_columns", "suggested_mapping", "confirmed_mapping"):
         if response.get(field):
             try:
@@ -106,7 +128,12 @@ def bulk_import_confirm_mapping(job_id):
     if not job:
         return jsonify({"error": "Job not found"}), 404
     if job["status"] != "AWAITING_MAPPING":
-        return jsonify({"error": f"Job is not awaiting a mapping (status: {job['status']})"}), 409
+        return (
+            jsonify(
+                {"error": f"Job is not awaiting a mapping (status: {job['status']})"}
+            ),
+            409,
+        )
 
     payload = request.get_json(silent=True) or {}
     mapping = payload.get("mapping") or {}
@@ -116,9 +143,19 @@ def bulk_import_confirm_mapping(job_id):
     valid_targets = set(BULK_IMPORT_PATIENT_FIELDS) | {"phone"}
     invalid_targets = set(mapping.values()) - valid_targets
     if invalid_targets:
-        return jsonify({"error": f"Unknown target field(s): {sorted(invalid_targets)}"}), 400
+        return (
+            jsonify({"error": f"Unknown target field(s): {sorted(invalid_targets)}"}),
+            400,
+        )
     if "phone" not in mapping.values():
-        return jsonify({"error": "At least one column must be mapped to 'phone' -- it's required to contact or dedupe patients."}), 400
+        return (
+            jsonify(
+                {
+                    "error": "At least one column must be mapped to 'phone' -- it's required to contact or dedupe patients."
+                }
+            ),
+            400,
+        )
 
     update_bulk_import_job(job_id, status="IMPORTING")
     import_rows_task.delay(job_id, mapping)
@@ -174,13 +211,30 @@ def _deterministic_filter_clause(prompt):
                 return f" AND age {implied_op} ?", [int(match.group(1))]
             return f" AND age {match.group(1)} ?", [int(match.group(2))]
 
-    between_match = re.search(r"\b(?:between|from)\s+(\d{1,3})\s+(?:and|to)\s+(\d{1,3})\b", text)
+    between_match = re.search(
+        r"\b(?:between|from)\s+(\d{1,3})\s+(?:and|to)\s+(\d{1,3})\b", text
+    )
     if between_match and "age" in text:
         low, high = sorted([int(between_match.group(1)), int(between_match.group(2))])
         return " AND age BETWEEN ? AND ?", [low, high]
 
-    if re.search(r"\b(?:list|show|display|get|all|every|everyone|patients|patient list|full list)\b", text):
-        filter_words = ("above", "over", "older", "below", "under", "younger", "between", "diabetes", "diabetic", "area", "city")
+    if re.search(
+        r"\b(?:list|show|display|get|all|every|everyone|patients|patient list|full list)\b",
+        text,
+    ):
+        filter_words = (
+            "above",
+            "over",
+            "older",
+            "below",
+            "under",
+            "younger",
+            "between",
+            "diabetes",
+            "diabetic",
+            "area",
+            "city",
+        )
         if not any(word in text for word in filter_words):
             return "", []
 
@@ -200,15 +254,23 @@ def bulk_import_query():
     scope_clause, scope_params = _job_scope_clause(job_id)
 
     if not prompt:
-        rows, total = query_bulk_patients(hospital_id, scope_clause, scope_params, page=page, page_size=page_size)
-        return jsonify({"results": rows, "total": total, "page": page, "page_size": page_size})
+        rows, total = query_bulk_patients(
+            hospital_id, scope_clause, scope_params, page=page, page_size=page_size
+        )
+        return jsonify(
+            {"results": rows, "total": total, "page": page, "page_size": page_size}
+        )
 
     where_clause, params = _deterministic_filter_clause(prompt)
     if where_clause is not None:
         where_clause = scope_clause + where_clause
         params = scope_params + params
-        rows, total = query_bulk_patients(hospital_id, where_clause, params, page=page, page_size=page_size)
-        return jsonify({"results": rows, "total": total, "page": page, "page_size": page_size})
+        rows, total = query_bulk_patients(
+            hospital_id, where_clause, params, page=page, page_size=page_size
+        )
+        return jsonify(
+            {"results": rows, "total": total, "page": page, "page_size": page_size}
+        )
 
     filter_result = translate_patient_filter_prompt(prompt, list(ALLOWED_FIELDS))
     if not filter_result or not filter_result.get("conditions"):
@@ -217,7 +279,9 @@ def bulk_import_query():
         where_clause = scope_clause + f" AND ({' OR '.join(fallback_clauses)})"
         params = scope_params + [search_term] * len(FALLBACK_SEARCH_FIELDS)
     else:
-        where_clause, params = _build_filter_clause(filter_result.get("conditions") or [], filter_result.get("logic"))
+        where_clause, params = _build_filter_clause(
+            filter_result.get("conditions") or [], filter_result.get("logic")
+        )
         if not where_clause:
             search_term = f"%{prompt}%"
             fallback_clauses = [f"{f} LIKE ?" for f in FALLBACK_SEARCH_FIELDS]
@@ -226,8 +290,12 @@ def bulk_import_query():
         where_clause = scope_clause + where_clause
         params = scope_params + params
 
-    rows, total = query_bulk_patients(hospital_id, where_clause, params, page=page, page_size=page_size)
-    return jsonify({"results": rows, "total": total, "page": page, "page_size": page_size})
+    rows, total = query_bulk_patients(
+        hospital_id, where_clause, params, page=page, page_size=page_size
+    )
+    return jsonify(
+        {"results": rows, "total": total, "page": page, "page_size": page_size}
+    )
 
 
 @bulk_import_bp.post("/api/bulk-import/jobs/<int:job_id>/ask")
@@ -238,7 +306,14 @@ def bulk_import_ask_document(job_id):
     if not job:
         return jsonify({"error": "Job not found"}), 404
     if job["status"] != "AWAITING_PROMPT":
-        return jsonify({"error": f"This document isn't ready to answer questions yet (status: {job['status']})"}), 409
+        return (
+            jsonify(
+                {
+                    "error": f"This document isn't ready to answer questions yet (status: {job['status']})"
+                }
+            ),
+            409,
+        )
 
     payload = request.get_json(silent=True) or {}
     prompt = (payload.get("prompt") or "").strip()
@@ -247,7 +322,10 @@ def bulk_import_ask_document(job_id):
 
     answer_result = answer_bulk_document_prompt(prompt, job.get("extracted_text") or "")
     if not answer_result:
-        return jsonify({"error": "Could not understand that prompt. Try rephrasing it."}), 422
+        return (
+            jsonify({"error": "Could not understand that prompt. Try rephrasing it."}),
+            422,
+        )
 
     raw_entries = answer_result.get("entries") or []
     results = []
@@ -267,8 +345,10 @@ def bulk_import_ask_document(job_id):
             }
         )
 
-    return jsonify({
-        "results": results,
-        "total": len(results),
-        "answer": answer_result.get("answer") or "",
-    })
+    return jsonify(
+        {
+            "results": results,
+            "total": len(results),
+            "answer": answer_result.get("answer") or "",
+        }
+    )

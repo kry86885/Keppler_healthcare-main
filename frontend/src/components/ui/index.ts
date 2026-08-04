@@ -3,7 +3,14 @@ export { default as Input } from "./Input";
 export { default as Textarea } from "./Textarea";
 export { default as Select } from "./Select";
 export { default as Label } from "./Label";
-export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./Card";
+export {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "./Card";
 export { default as Badge } from "./Badge";
 export { Tabs, TabsContent, TabsTrigger } from "./Tabs";
 export { Table, TableCell, TableHead, TableRow } from "./Table";

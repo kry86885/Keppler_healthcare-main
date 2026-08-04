@@ -26,7 +26,10 @@ function mockLocalStorage() {
 }
 
 function setNativeInputValue(input: HTMLInputElement, value: string) {
-  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+    window.HTMLInputElement.prototype,
+    "value",
+  )!.set!;
   nativeInputValueSetter.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
@@ -52,7 +55,7 @@ describe("AddPatientPage", () => {
           onCreate={vi.fn(async () => null)}
           setNotice={vi.fn()}
           onNavigate={vi.fn()}
-        />
+        />,
       );
       await flush();
       await flush();
@@ -84,19 +87,25 @@ describe("AddPatientPage", () => {
           onCreate={vi.fn(async () => null)}
           setNotice={vi.fn()}
           onNavigate={vi.fn()}
-        />
+        />,
       );
       await flush();
       await flush();
     });
 
-    const nameInputs = Array.from(container.querySelectorAll("input")).filter((input) => input.type === "text");
+    const nameInputs = Array.from(container.querySelectorAll("input")).filter(
+      (input) => input.type === "text",
+    );
     const target = nameInputs[0];
     expect(target).toBeTruthy();
 
     let defaultPrevented = false;
     await act(async () => {
-      const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+      const event = new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      });
       target.dispatchEvent(event);
       defaultPrevented = event.defaultPrevented;
     });
@@ -108,6 +117,4 @@ describe("AddPatientPage", () => {
     });
     container.remove();
   });
-
-
 });

@@ -13,7 +13,14 @@ type Props = {
   disabled?: boolean;
 };
 
-export default function PatientAutocomplete({ value, onChange, onSelect, placeholder, ariaLabel, disabled }: Props) {
+export default function PatientAutocomplete({
+  value,
+  onChange,
+  onSelect,
+  placeholder,
+  ariaLabel,
+  disabled,
+}: Props) {
   const [suggestions, setSuggestions] = useState<Patient[]>([]);
   const [open, setOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
@@ -47,7 +54,9 @@ export default function PatientAutocomplete({ value, onChange, onSelect, placeho
   const runSearch = async (term: string) => {
     latestQueryRef.current = term;
     try {
-      const data = await apiFetch<{ patients?: Patient[] }>(`/api/patients?q=${encodeURIComponent(term)}`);
+      const data = await apiFetch<{ patients?: Patient[] }>(
+        `/api/patients?q=${encodeURIComponent(term)}`,
+      );
       if (latestQueryRef.current !== term) return;
       setSuggestions((data.patients || []).slice(0, 8));
       setOpen(true);
@@ -73,7 +82,9 @@ export default function PatientAutocomplete({ value, onChange, onSelect, placeho
       setHighlightedIndex((prev) => (prev + 1) % suggestions.length);
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      setHighlightedIndex((prev) => (prev <= 0 ? suggestions.length - 1 : prev - 1));
+      setHighlightedIndex((prev) =>
+        prev <= 0 ? suggestions.length - 1 : prev - 1,
+      );
     } else if (event.key === "Enter" && highlightedIndex >= 0) {
       event.preventDefault();
       selectPatient(suggestions[highlightedIndex]);
@@ -109,13 +120,20 @@ export default function PatientAutocomplete({ value, onChange, onSelect, placeho
               key={patient.patient_id}
               role="option"
               aria-selected={index === highlightedIndex}
-              className={index === highlightedIndex ? "patient-autocomplete-option highlighted" : "patient-autocomplete-option"}
+              className={
+                index === highlightedIndex
+                  ? "patient-autocomplete-option highlighted"
+                  : "patient-autocomplete-option"
+              }
               onMouseDown={(event) => {
                 event.preventDefault();
                 selectPatient(patient);
               }}
             >
-              <span>{[patient.name, patient.last_name].filter(Boolean).join(" ") || patient.patient_id}</span>
+              <span>
+                {[patient.name, patient.last_name].filter(Boolean).join(" ") ||
+                  patient.patient_id}
+              </span>
               <span className="muted">
                 {patient.patient_id}
                 {patient.phone ? ` · ${patient.phone}` : ""}

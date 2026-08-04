@@ -1,14 +1,22 @@
 from flask import Blueprint, request, jsonify
 from core.auth import (
-    authenticate, create_session, check_username_exists,
-    signup_hospital_admin, SESSION_COOKIE_NAME,
-    get_session_user, delete_session, ADMIN_ROUTE_AUTH_COOKIE_NAME,
-    get_user_sessions, delete_specific_session, delete_other_sessions
+    authenticate,
+    create_session,
+    check_username_exists,
+    signup_hospital_admin,
+    SESSION_COOKIE_NAME,
+    get_session_user,
+    delete_session,
+    ADMIN_ROUTE_AUTH_COOKIE_NAME,
+    get_user_sessions,
+    delete_specific_session,
+    delete_other_sessions,
 )
 from app import request_hospital_id, require_platform_admin, _session_cookie_settings
 from core.limiter import limiter
 
-auth_bp = Blueprint('auth', __name__)
+auth_bp = Blueprint("auth", __name__)
+
 
 @auth_bp.route("/api/auth/login", methods=["POST", "OPTIONS"])
 @limiter.limit("20 per minute")
@@ -40,7 +48,6 @@ def login():
     return response
 
 
-
 @auth_bp.get("/api/auth/check-username")
 def check_username():
     username = request.args.get("username")
@@ -48,7 +55,6 @@ def check_username():
         return jsonify({"available": False, "error": "username required"}), 400
     available = not check_username_exists(username, hospital_id=request_hospital_id())
     return jsonify({"available": available})
-
 
 
 @auth_bp.route("/api/auth/setup-admin", methods=["POST", "OPTIONS"])
@@ -73,9 +79,15 @@ def setup_hospital_admin():
         hospital_id=hospital_id,
     )
     if not user:
-        return jsonify(
-            {"success": False, "message": "Admin created but automatic login failed."}
-        ), 500
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": "Admin created but automatic login failed.",
+                }
+            ),
+            500,
+        )
 
     session_token, _expires_at = create_session(
         user_id=user["id"],
@@ -97,7 +109,6 @@ def setup_hospital_admin():
     return response, 201
 
 
-
 @auth_bp.get("/api/auth/session")
 def auth_session():
     token = request.cookies.get(SESSION_COOKIE_NAME)
@@ -111,7 +122,6 @@ def auth_session():
     return response
 
 
-
 @auth_bp.post("/api/auth/logout")
 def logout():
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
@@ -120,6 +130,7 @@ def logout():
     response = jsonify({"message": "Logged out successfully"})
     response.set_cookie(SESSION_COOKIE_NAME, "", expires=0)
     return response
+
 
 @auth_bp.get("/api/auth/sessions")
 def list_sessions():
@@ -130,6 +141,7 @@ def list_sessions():
     sessions = get_user_sessions(user["id"])
     return jsonify(sessions)
 
+
 @auth_bp.delete("/api/auth/sessions/<int:session_id>")
 def revoke_session(session_id):
     session_token = request.cookies.get(SESSION_COOKIE_NAME)
@@ -138,6 +150,7 @@ def revoke_session(session_id):
         return jsonify({"error": "Unauthorized"}), 401
     delete_specific_session(session_id, user["id"])
     return jsonify({"message": "Session revoked"})
+
 
 @auth_bp.delete("/api/auth/sessions")
 def revoke_other_sessions():

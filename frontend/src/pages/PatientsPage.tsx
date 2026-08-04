@@ -3,11 +3,48 @@ import type { Dispatch, SetStateAction } from "react";
 import { FiEye, FiTrash2 } from "react-icons/fi";
 import MarkdownReport from "../components/MarkdownReport";
 import DocumentUploadDropzone from "../components/DocumentUploadDropzone";
-import { Alert, Badge, Button, Checkbox, ConfirmDialog, Input, Select, Table, TableCell, TableHead, TableRow, Tabs, TabsContent, TabsTrigger, Textarea } from "../components/ui";
-import { API_BASE, SUPPORTED_DOCUMENT_ACCEPT, SUPPORTED_DOCUMENT_EXTENSIONS } from "../lib/constants";
+import {
+  Alert,
+  Badge,
+  Button,
+  Checkbox,
+  ConfirmDialog,
+  Input,
+  Select,
+  Table,
+  TableCell,
+  TableHead,
+  TableRow,
+  Tabs,
+  TabsContent,
+  TabsTrigger,
+  Textarea,
+} from "../components/ui";
+import {
+  API_BASE,
+  SUPPORTED_DOCUMENT_ACCEPT,
+  SUPPORTED_DOCUMENT_EXTENSIONS,
+} from "../lib/constants";
 import { apiFetch, reportError, withAuthHeaders } from "../lib/api";
-import { formatDate, formatDateTimeIST, getISTDateTimeKey, getTimestamp, stripUploadTimestampPrefix } from "../lib/format";
-import type { Admission, BedAllocation, Certificate, DocumentItem, Encounter, MedicationSchedule, Notice, ObservationNote, Patient, PatientMovement } from "../types";
+import {
+  formatDate,
+  formatDateTimeIST,
+  getISTDateTimeKey,
+  getTimestamp,
+  stripUploadTimestampPrefix,
+} from "../lib/format";
+import type {
+  Admission,
+  BedAllocation,
+  Certificate,
+  DocumentItem,
+  Encounter,
+  MedicationSchedule,
+  Notice,
+  ObservationNote,
+  Patient,
+  PatientMovement,
+} from "../types";
 
 type Props = {
   patients: Patient[];
@@ -51,16 +88,20 @@ function SavedDocumentPreview({ doc }: { doc: DocumentItem }) {
 
     const load = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/documents/${doc.id}/file`, {
-          credentials: "include",
-          signal: controller.signal,
-        });
+        const response = await fetch(
+          `${API_BASE}/api/documents/${doc.id}/file`,
+          {
+            credentials: "include",
+            signal: controller.signal,
+          },
+        );
         if (!response.ok) throw new Error("preview unavailable");
         const blob = await response.blob();
         objectUrl = URL.createObjectURL(blob);
         setUrl(objectUrl);
       } catch {
-        if (!controller.signal.aborted) setError("Original file preview unavailable.");
+        if (!controller.signal.aborted)
+          setError("Original file preview unavailable.");
       }
     };
     void load();
@@ -79,8 +120,22 @@ function SavedDocumentPreview({ doc }: { doc: DocumentItem }) {
   const isPdf = mime === "application/pdf" || name.endsWith(".pdf");
   const isImage = mime.startsWith("image/") || IMAGE_NAME_PATTERN.test(name);
 
-  if (isImage) return <img className="ocr-source-image" src={url} alt={doc.file_name || "Document"} />;
-  if (isPdf) return <iframe className="ocr-source-pdf" src={url} title={`Document ${doc.id}`} />;
+  if (isImage)
+    return (
+      <img
+        className="ocr-source-image"
+        src={url}
+        alt={doc.file_name || "Document"}
+      />
+    );
+  if (isPdf)
+    return (
+      <iframe
+        className="ocr-source-pdf"
+        src={url}
+        title={`Document ${doc.id}`}
+      />
+    );
 
   return (
     <a className="link" href={url} target="_blank" rel="noreferrer">
@@ -130,13 +185,19 @@ export default function PatientsPage({
     setLoading(true);
     setSearched(true);
     try {
-      const data = await apiFetch<{ patients?: Patient[] }>(`/api/patients?q=${encodeURIComponent(trimmed)}`);
+      const data = await apiFetch<{ patients?: Patient[] }>(
+        `/api/patients?q=${encodeURIComponent(trimmed)}`,
+      );
       if (latestQueryRef.current !== trimmed) return;
       setResults(data.patients || []);
     } catch (error) {
       if (latestQueryRef.current !== trimmed) return;
       setResults([]);
-      reportError(setNotice, error as { message?: string; status?: number }, "Search failed.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Search failed.",
+      );
     } finally {
       if (latestQueryRef.current === trimmed) {
         setLoading(false);
@@ -183,7 +244,11 @@ export default function PatientsPage({
   };
 
   const trimmedQuery = query.trim();
-  const displayPatients = trimmedQuery ? (activeQuery === trimmedQuery ? results : []) : patients;
+  const displayPatients = trimmedQuery
+    ? activeQuery === trimmedQuery
+      ? results
+      : []
+    : patients;
   const handleConfirmDeletePatient = async () => {
     if (!deleteTarget) return;
     setDeletingPatient(true);
@@ -243,16 +308,27 @@ export default function PatientsPage({
               <TableCell>Created</TableCell>
             </TableHead>
             {displayPatients.map((patient) => {
-              const expanded = selectedPatient?.patient_id === patient.patient_id;
+              const expanded =
+                selectedPatient?.patient_id === patient.patient_id;
               return (
                 <Fragment key={patient.patient_id}>
-                  <TableRow className={`hover:bg-muted/50 ${expanded ? "active" : ""}`}>
+                  <TableRow
+                    className={`hover:bg-muted/50 ${expanded ? "active" : ""}`}
+                  >
                     <TableCell>
-                      <div className="font-medium text-foreground">{patient.name} {patient.last_name}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">{patient.patient_id}</div>
+                      <div className="font-medium text-foreground">
+                        {patient.name} {patient.last_name}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {patient.patient_id}
+                      </div>
                     </TableCell>
-                    <TableCell className="text-center">{patient.age || "—"}</TableCell>
-                    <TableCell className="text-center">{patient.gender || "—"}</TableCell>
+                    <TableCell className="text-center">
+                      {patient.age || "—"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {patient.gender || "—"}
+                    </TableCell>
                     <TableCell>{patient.phone || "—"}</TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-2">
@@ -274,7 +350,9 @@ export default function PatientsPage({
                             onClick={() =>
                               setDeleteTarget({
                                 patientId: patient.patient_id,
-                                label: `${patient.name} ${patient.last_name || ""}`.trim() || patient.patient_id,
+                                label:
+                                  `${patient.name} ${patient.last_name || ""}`.trim() ||
+                                  patient.patient_id,
                               })
                             }
                             title="Delete patient"
@@ -285,7 +363,9 @@ export default function PatientsPage({
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>{formatDateTimeIST(patient.created_at)}</TableCell>
+                    <TableCell>
+                      {formatDateTimeIST(patient.created_at)}
+                    </TableCell>
                   </TableRow>
                   {expanded && (
                     <div className="table-row-expand">
@@ -300,7 +380,9 @@ export default function PatientsPage({
                         onRequestDelete={(fullPatient) =>
                           setDeleteTarget({
                             patientId: fullPatient.patient_id,
-                            label: `${fullPatient.name} ${fullPatient.last_name || ""}`.trim() || fullPatient.patient_id,
+                            label:
+                              `${fullPatient.name} ${fullPatient.last_name || ""}`.trim() ||
+                              fullPatient.patient_id,
                           })
                         }
                         onPatientUpdated={onPatientUpdated}
@@ -314,18 +396,39 @@ export default function PatientsPage({
           </Table>
         </div>
 
-        <div className="module-mobile-list patient-list-mobile" aria-label="Patient list cards">
+        <div
+          className="module-mobile-list patient-list-mobile"
+          aria-label="Patient list cards"
+        >
           {displayPatients.map((patient) => {
             const expanded = selectedPatient?.patient_id === patient.patient_id;
             return (
-              <article className="module-mobile-card" key={`mobile-${patient.patient_id}`}>
-                <h4>{patient.name} {patient.last_name}</h4>
-                <p><strong>Age:</strong> {patient.age || "-"}</p>
-                <p><strong>Gender:</strong> {patient.gender || "-"}</p>
-                <p><strong>Phone:</strong> {patient.phone || "-"}</p>
-                <p><strong>Created:</strong> {formatDateTimeIST(patient.created_at)}</p>
+              <article
+                className="module-mobile-card"
+                key={`mobile-${patient.patient_id}`}
+              >
+                <h4>
+                  {patient.name} {patient.last_name}
+                </h4>
+                <p>
+                  <strong>Age:</strong> {patient.age || "-"}
+                </p>
+                <p>
+                  <strong>Gender:</strong> {patient.gender || "-"}
+                </p>
+                <p>
+                  <strong>Phone:</strong> {patient.phone || "-"}
+                </p>
+                <p>
+                  <strong>Created:</strong>{" "}
+                  {formatDateTimeIST(patient.created_at)}
+                </p>
                 <div className="module-card-actions">
-                  <Button type="button" size="sm" onClick={() => onSelect(expanded ? null : patient)}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => onSelect(expanded ? null : patient)}
+                  >
                     {expanded ? "Hide" : "View"}
                   </Button>
                   <Button
@@ -335,11 +438,17 @@ export default function PatientsPage({
                     onClick={() =>
                       setDeleteTarget({
                         patientId: patient.patient_id,
-                        label: `${patient.name} ${patient.last_name || ""}`.trim() || patient.patient_id,
+                        label:
+                          `${patient.name} ${patient.last_name || ""}`.trim() ||
+                          patient.patient_id,
                       })
                     }
                     disabled={!canDelete}
-                    title={!canDelete ? "Only Owner / MD / CEO can delete patients." : ""}
+                    title={
+                      !canDelete
+                        ? "Only Owner / MD / CEO can delete patients."
+                        : ""
+                    }
                   >
                     Delete
                   </Button>
@@ -349,8 +458,12 @@ export default function PatientsPage({
           })}
         </div>
 
-        {!loading && searched && displayPatients.length === 0 && <p className="muted">No patients found.</p>}
-        {!loading && !searched && displayPatients.length === 0 && <p className="muted">No patients registered yet.</p>}
+        {!loading && searched && displayPatients.length === 0 && (
+          <p className="muted">No patients found.</p>
+        )}
+        {!loading && !searched && displayPatients.length === 0 && (
+          <p className="muted">No patients registered yet.</p>
+        )}
       </div>
       <ConfirmDialog
         open={!!deleteTarget}
@@ -406,9 +519,18 @@ const toEditForm = (patient: Patient): PatientEditForm => ({
   middle_name: patient.middle_name || "",
   last_name: patient.last_name || "",
   dob: patient.dob || "",
-  age: patient.age === undefined || patient.age === null ? "" : String(patient.age),
-  weight: patient.weight === undefined || patient.weight === null ? "" : String(patient.weight),
-  height: patient.height === undefined || patient.height === null ? "" : String(patient.height),
+  age:
+    patient.age === undefined || patient.age === null
+      ? ""
+      : String(patient.age),
+  weight:
+    patient.weight === undefined || patient.weight === null
+      ? ""
+      : String(patient.weight),
+  height:
+    patient.height === undefined || patient.height === null
+      ? ""
+      : String(patient.height),
   gender: patient.gender || "Female",
   pregnant: patient.pregnant === true || patient.pregnant === 1,
   allergies: patient.allergies || "",
@@ -421,7 +543,11 @@ const toEditForm = (patient: Patient): PatientEditForm => ({
 });
 
 function formatCurrency(amount?: number) {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount || 0);
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount || 0);
 }
 
 function PatientDetail({
@@ -436,7 +562,8 @@ function PatientDetail({
   onPatientUpdated,
   refreshToken = 0,
 }: PatientDetailProps) {
-  const patientId = typeof patientRef === "string" ? patientRef : patientRef.patient_id;
+  const patientId =
+    typeof patientRef === "string" ? patientRef : patientRef.patient_id;
   const [patient, setPatient] = useState<Patient | null>(null);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [admissions, setAdmissions] = useState<Admission[]>([]);
@@ -447,7 +574,9 @@ function PatientDetail({
   const [notes, setNotes] = useState<ObservationNote[]>([]);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [billingInvoices, setBillingInvoices] = useState<PatientInvoice[]>([]);
-  const [downloadReady, setDownloadReady] = useState<Record<number, Record<string, boolean>>>({});
+  const [downloadReady, setDownloadReady] = useState<
+    Record<number, Record<string, boolean>>
+  >({});
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [careTab, setCareTab] = useState("encounters");
@@ -457,7 +586,9 @@ function PatientDetail({
   const [savingMedication, setSavingMedication] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [savingCertificate, setSavingCertificate] = useState(false);
-  const [deletingCertificateId, setDeletingCertificateId] = useState<number | null>(null);
+  const [deletingCertificateId, setDeletingCertificateId] = useState<
+    number | null
+  >(null);
   const [movementForm, setMovementForm] = useState({
     admission_id: "",
     from_department: "",
@@ -503,9 +634,12 @@ function PatientDetail({
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [deletingDocId, setDeletingDocId] = useState<number | null>(null);
-  const [processingOcrDocId, setProcessingOcrDocId] = useState<number | null>(null);
+  const [processingOcrDocId, setProcessingOcrDocId] = useState<number | null>(
+    null,
+  );
   const [expandedDocs, setExpandedDocs] = useState<Record<number, boolean>>({});
-  const [deleteDocumentTarget, setDeleteDocumentTarget] = useState<DeleteDocumentTarget | null>(null);
+  const [deleteDocumentTarget, setDeleteDocumentTarget] =
+    useState<DeleteDocumentTarget | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -514,23 +648,53 @@ function PatientDetail({
     setLoading(true);
     setLoadError(null);
     try {
-      const p = await apiFetch<{ patient: Patient }>(`/api/patients/${patientId}`);
+      const p = await apiFetch<{ patient: Patient }>(
+        `/api/patients/${patientId}`,
+      );
       setPatient(p.patient);
       const requests: Promise<unknown>[] = [
-        apiFetch<{ documents?: DocumentItem[] }>(`/api/patients/${patientId}/documents`),
-        apiFetch<{ admissions?: Admission[] }>(`/api/patients/${patientId}/admissions`),
-        apiFetch<{ movements?: PatientMovement[] }>(`/api/patients/${patientId}/movements`),
-        apiFetch<{ encounters?: Encounter[] }>(`/api/patients/${patientId}/encounters`),
+        apiFetch<{ documents?: DocumentItem[] }>(
+          `/api/patients/${patientId}/documents`,
+        ),
+        apiFetch<{ admissions?: Admission[] }>(
+          `/api/patients/${patientId}/admissions`,
+        ),
+        apiFetch<{ movements?: PatientMovement[] }>(
+          `/api/patients/${patientId}/movements`,
+        ),
+        apiFetch<{ encounters?: Encounter[] }>(
+          `/api/patients/${patientId}/encounters`,
+        ),
         apiFetch<{ beds?: BedAllocation[] }>(`/api/patients/${patientId}/beds`),
-        apiFetch<{ medications?: MedicationSchedule[] }>(`/api/patients/${patientId}/medications`),
-        apiFetch<{ notes?: ObservationNote[] }>(`/api/patients/${patientId}/notes`),
-        apiFetch<{ certificates?: Certificate[] }>(`/api/patients/${patientId}/certificates`),
+        apiFetch<{ medications?: MedicationSchedule[] }>(
+          `/api/patients/${patientId}/medications`,
+        ),
+        apiFetch<{ notes?: ObservationNote[] }>(
+          `/api/patients/${patientId}/notes`,
+        ),
+        apiFetch<{ certificates?: Certificate[] }>(
+          `/api/patients/${patientId}/certificates`,
+        ),
       ];
       if (canReadBilling) {
-        requests.push(apiFetch<{ invoices?: PatientInvoice[] }>(`/api/billing/invoices?patient_id=${encodeURIComponent(patientId)}`));
+        requests.push(
+          apiFetch<{ invoices?: PatientInvoice[] }>(
+            `/api/billing/invoices?patient_id=${encodeURIComponent(patientId)}`,
+          ),
+        );
       }
       const results = await Promise.all(requests);
-      const [docs, adm, mv, enc, bedData, med, noteData, certificateData, maybeInvoices] = results as [
+      const [
+        docs,
+        adm,
+        mv,
+        enc,
+        bedData,
+        med,
+        noteData,
+        certificateData,
+        maybeInvoices,
+      ] = results as [
         { documents?: DocumentItem[] },
         { admissions?: Admission[] },
         { movements?: PatientMovement[] },
@@ -601,7 +765,10 @@ function PatientDetail({
     const name = editForm.name.trim();
     const lastName = editForm.last_name.trim();
     if (!name || !lastName) {
-      setNotice({ type: "warning", message: "First name and last name are required." });
+      setNotice({
+        type: "warning",
+        message: "First name and last name are required.",
+      });
       return;
     }
 
@@ -647,7 +814,11 @@ function PatientDetail({
       setIsEditing(false);
       setNotice({ type: "success", message: "Patient details updated." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Failed to update patient.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Failed to update patient.",
+      );
     } finally {
       setSaving(false);
     }
@@ -655,7 +826,10 @@ function PatientDetail({
 
   const handleExportDoc = async (doc: DocumentItem, type: "pdf" | "word") => {
     if (!doc?.ocr_text || !patient) {
-      setNotice({ type: "error", message: "No OCR text available for export." });
+      setNotice({
+        type: "error",
+        message: "No OCR text available for export.",
+      });
       return;
     }
     const payload = {
@@ -693,12 +867,15 @@ function PatientDetail({
       const formData = new FormData();
       formData.append("file", uploadFile);
       formData.append("doc_type", uploadDocType);
-      const response = await fetch(`${API_BASE}/api/patients/${patient.patient_id}/documents`, {
-        method: "POST",
-        headers: withAuthHeaders({}, "POST"),
-        body: formData,
-        credentials: "include",
-      });
+      const response = await fetch(
+        `${API_BASE}/api/patients/${patient.patient_id}/documents`,
+        {
+          method: "POST",
+          headers: withAuthHeaders({}, "POST"),
+          body: formData,
+          credentials: "include",
+        },
+      );
       if (!response.ok) {
         throw new Error("Unable to upload document.");
       }
@@ -707,7 +884,11 @@ function PatientDetail({
       await onPatientUpdated(patient.patient_id);
       setNotice({ type: "success", message: "Document uploaded." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to upload document.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to upload document.",
+      );
     } finally {
       setUploading(false);
     }
@@ -717,9 +898,15 @@ function PatientDetail({
     if (!patient) return;
     setProcessingOcrDocId(doc.id);
     try {
-      const data = await apiFetch<{ document_id: number; ocr_text: string; ocr_language: string }>(`/api/documents/${doc.id}/ocr`, {
+      const data = await apiFetch<{
+        document_id: number;
+        ocr_text: string;
+        ocr_language: string;
+      }>(`/api/documents/${doc.id}/ocr`, {
         method: "POST",
-        body: JSON.stringify({ language: ocrLanguage || doc.ocr_language || "en" }),
+        body: JSON.stringify({
+          language: ocrLanguage || doc.ocr_language || "en",
+        }),
       });
 
       setDocuments((prev) =>
@@ -730,12 +917,16 @@ function PatientDetail({
                 ocr_text: data.ocr_text,
                 ocr_language: data.ocr_language,
               }
-            : item
-        )
+            : item,
+        ),
       );
       setNotice({ type: "success", message: "OCR processed and saved." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to process OCR.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to process OCR.",
+      );
     } finally {
       setProcessingOcrDocId(null);
     }
@@ -746,13 +937,19 @@ function PatientDetail({
     if (!deleteDocumentTarget) return;
     setDeletingDocId(deleteDocumentTarget.id);
     try {
-      await apiFetch(`/api/documents/${deleteDocumentTarget.id}`, { method: "DELETE" });
+      await apiFetch(`/api/documents/${deleteDocumentTarget.id}`, {
+        method: "DELETE",
+      });
       await loadData();
       await onPatientUpdated(patient.patient_id);
       setDeleteDocumentTarget(null);
       setNotice({ type: "success", message: "Document removed." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to remove document.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to remove document.",
+      );
     } finally {
       setDeletingDocId(null);
     }
@@ -762,12 +959,19 @@ function PatientDetail({
     if (!patient) return;
     const toDepartment = movementForm.to_department.trim();
     if (!toDepartment) {
-      setNotice({ type: "warning", message: "Destination department is required." });
+      setNotice({
+        type: "warning",
+        message: "Destination department is required.",
+      });
       return;
     }
     setAddingMovement(true);
     try {
-      const payload: { admission_id?: number; from_department?: string; to_department: string } = {
+      const payload: {
+        admission_id?: number;
+        from_department?: string;
+        to_department: string;
+      } = {
         to_department: toDepartment,
       };
       if (movementForm.admission_id.trim()) {
@@ -791,7 +995,11 @@ function PatientDetail({
       await onPatientUpdated(patient.patient_id);
       setNotice({ type: "success", message: "Patient movement recorded." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to save patient movement.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to save patient movement.",
+      );
     } finally {
       setAddingMovement(false);
     }
@@ -805,8 +1013,10 @@ function PatientDetail({
         method: "POST",
         body: JSON.stringify({
           encounter_type: encounterForm.encounter_type,
-          insurance_provider: encounterForm.insurance_provider.trim() || undefined,
-          insurance_policy_no: encounterForm.insurance_policy_no.trim() || undefined,
+          insurance_provider:
+            encounterForm.insurance_provider.trim() || undefined,
+          insurance_policy_no:
+            encounterForm.insurance_policy_no.trim() || undefined,
           referral_source: encounterForm.referral_source.trim() || undefined,
           referral_name: encounterForm.referral_name.trim() || undefined,
           is_accident: encounterForm.is_accident,
@@ -824,7 +1034,11 @@ function PatientDetail({
       await onPatientUpdated(patient.patient_id);
       setNotice({ type: "success", message: "Encounter created." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to create encounter.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to create encounter.",
+      );
     } finally {
       setSavingEncounter(false);
     }
@@ -832,8 +1046,16 @@ function PatientDetail({
 
   const handleAssignBed = async () => {
     if (!patient) return;
-    if (!bedForm.admission_id || !bedForm.ward.trim() || !bedForm.room_no.trim() || !bedForm.bed_no.trim()) {
-      setNotice({ type: "warning", message: "Admission, ward, room, and bed are required." });
+    if (
+      !bedForm.admission_id ||
+      !bedForm.ward.trim() ||
+      !bedForm.room_no.trim() ||
+      !bedForm.bed_no.trim()
+    ) {
+      setNotice({
+        type: "warning",
+        message: "Admission, ward, room, and bed are required.",
+      });
       return;
     }
     setSavingBed(true);
@@ -859,7 +1081,11 @@ function PatientDetail({
       await onPatientUpdated(patient.patient_id);
       setNotice({ type: "success", message: "Bed assignment saved." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to assign bed.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to assign bed.",
+      );
     } finally {
       setSavingBed(false);
     }
@@ -896,7 +1122,11 @@ function PatientDetail({
       await onPatientUpdated(patient.patient_id);
       setNotice({ type: "success", message: "Medication schedule saved." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to save medication schedule.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to save medication schedule.",
+      );
     } finally {
       setSavingMedication(false);
     }
@@ -913,7 +1143,9 @@ function PatientDetail({
       await apiFetch(`/api/patients/${patient.patient_id}/notes`, {
         method: "POST",
         body: JSON.stringify({
-          admission_id: noteForm.admission_id ? Number(noteForm.admission_id) : undefined,
+          admission_id: noteForm.admission_id
+            ? Number(noteForm.admission_id)
+            : undefined,
           doctor_name: noteForm.doctor_name.trim() || undefined,
           note: noteForm.note.trim(),
           treatment_plan: noteForm.treatment_plan.trim() || undefined,
@@ -929,7 +1161,11 @@ function PatientDetail({
       await onPatientUpdated(patient.patient_id);
       setNotice({ type: "success", message: "Observation note saved." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to save observation note.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to save observation note.",
+      );
     } finally {
       setSavingNote(false);
     }
@@ -938,7 +1174,10 @@ function PatientDetail({
   const handleCreateCertificate = async () => {
     if (!patient) return;
     if (!certificateForm.title.trim() || !certificateForm.body.trim()) {
-      setNotice({ type: "warning", message: "Certificate title and content are required." });
+      setNotice({
+        type: "warning",
+        message: "Certificate title and content are required.",
+      });
       return;
     }
     setSavingCertificate(true);
@@ -946,7 +1185,9 @@ function PatientDetail({
       await apiFetch(`/api/patients/${patient.patient_id}/certificates`, {
         method: "POST",
         body: JSON.stringify({
-          admission_id: certificateForm.admission_id ? Number(certificateForm.admission_id) : undefined,
+          admission_id: certificateForm.admission_id
+            ? Number(certificateForm.admission_id)
+            : undefined,
           certificate_type: certificateForm.certificate_type,
           title: certificateForm.title.trim(),
           body: certificateForm.body.trim(),
@@ -962,7 +1203,11 @@ function PatientDetail({
       await onPatientUpdated(patient.patient_id);
       setNotice({ type: "success", message: "Certificate created." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to create certificate.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to create certificate.",
+      );
     } finally {
       setSavingCertificate(false);
     }
@@ -971,19 +1216,27 @@ function PatientDetail({
   const handleDeleteCertificate = async (certificateId: number) => {
     setDeletingCertificateId(certificateId);
     try {
-      await apiFetch(`/api/certificates/${certificateId}`, { method: "DELETE" });
+      await apiFetch(`/api/certificates/${certificateId}`, {
+        method: "DELETE",
+      });
       await loadData();
       await onPatientUpdated(patient?.patient_id);
       setNotice({ type: "success", message: "Certificate deleted." });
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to delete certificate.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to delete certificate.",
+      );
     } finally {
       setDeletingCertificateId(null);
     }
   };
 
   const documentGroups = useMemo(() => {
-    const sorted = [...documents].sort((a, b) => getTimestamp(b.created_at) - getTimestamp(a.created_at));
+    const sorted = [...documents].sort(
+      (a, b) => getTimestamp(b.created_at) - getTimestamp(a.created_at),
+    );
     const groups = new Map<string, { label: string; items: DocumentItem[] }>();
     sorted.forEach((doc) => {
       const key = getISTDateTimeKey(doc.created_at) || "unknown";
@@ -993,26 +1246,38 @@ function PatientDetail({
       }
       groups.get(key)?.items.push(doc);
     });
-    return Array.from(groups.entries()).map(([key, value]) => ({ key, ...value }));
+    return Array.from(groups.entries()).map(([key, value]) => ({
+      key,
+      ...value,
+    }));
   }, [documents]);
 
   const visitTimeline = useMemo(() => {
-    const events: { key: string; label: string; at?: string | null; detail: string }[] = [];
+    const events: {
+      key: string;
+      label: string;
+      at?: string | null;
+      detail: string;
+    }[] = [];
     admissions.forEach((adm) =>
       events.push({
         key: `admission-${adm.id}`,
         label: adm.discharge_date ? "Discharge" : "Admission",
         at: adm.discharge_date || adm.admission_date,
         detail: adm.notes || `Admission #${adm.id}`,
-      })
+      }),
     );
     encounters.forEach((enc) =>
       events.push({
         key: `encounter-${enc.id}`,
         label: `${enc.encounter_type} Encounter`,
         at: enc.arrival_at,
-        detail: enc.referral_name || enc.referral_source || enc.status || "Visit created",
-      })
+        detail:
+          enc.referral_name ||
+          enc.referral_source ||
+          enc.status ||
+          "Visit created",
+      }),
     );
     movements.forEach((mv) =>
       events.push({
@@ -1020,7 +1285,7 @@ function PatientDetail({
         label: "Department Transfer",
         at: mv.moved_at,
         detail: `${mv.from_department || "Unknown"} to ${mv.to_department}`,
-      })
+      }),
     );
     notes.forEach((entry) =>
       events.push({
@@ -1028,7 +1293,7 @@ function PatientDetail({
         label: "Clinical Note",
         at: entry.created_at,
         detail: entry.note,
-      })
+      }),
     );
     documents.forEach((doc) =>
       events.push({
@@ -1036,9 +1301,11 @@ function PatientDetail({
         label: "Document Added",
         at: doc.created_at,
         detail: doc.doc_type.replace(/_/g, " "),
-      })
+      }),
     );
-    return events.sort((a, b) => getTimestamp(b.at || "") - getTimestamp(a.at || ""));
+    return events.sort(
+      (a, b) => getTimestamp(b.at || "") - getTimestamp(a.at || ""),
+    );
   }, [admissions, encounters, movements, notes, documents]);
 
   if (loading) {
@@ -1050,11 +1317,11 @@ function PatientDetail({
   }
 
   if (loadError) {
-      return (
-        <section className="panel">
+    return (
+      <section className="panel">
         <Alert variant="error">{loadError}</Alert>
-        </section>
-      );
+      </section>
+    );
   }
 
   if (!patient) return null;
@@ -1080,7 +1347,11 @@ function PatientDetail({
           {isEditing ? "Cancel Edit" : "Edit Patient"}
         </Button>
         {canEdit && isEditing && (
-          <Button variant="primary" onClick={() => void handleSaveEdit()} disabled={saving}>
+          <Button
+            variant="primary"
+            onClick={() => void handleSaveEdit()}
+            disabled={saving}
+          >
             {saving ? "Saving..." : "Save Changes"}
           </Button>
         )}
@@ -1099,37 +1370,114 @@ function PatientDetail({
           {isEditing && editForm ? (
             <>
               <p className="muted">First Name</p>
-              <Input value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} />
+              <Input
+                value={editForm.name}
+                onChange={(event) =>
+                  setEditForm({ ...editForm, name: event.target.value })
+                }
+              />
               <p className="muted">Middle Name</p>
-              <Input value={editForm.middle_name} onChange={(event) => setEditForm({ ...editForm, middle_name: event.target.value })} />
+              <Input
+                value={editForm.middle_name}
+                onChange={(event) =>
+                  setEditForm({ ...editForm, middle_name: event.target.value })
+                }
+              />
               <p className="muted">Last Name</p>
-              <Input value={editForm.last_name} onChange={(event) => setEditForm({ ...editForm, last_name: event.target.value })} />
+              <Input
+                value={editForm.last_name}
+                onChange={(event) =>
+                  setEditForm({ ...editForm, last_name: event.target.value })
+                }
+              />
               <p className="muted">DOB</p>
-              <Input type="date" value={editForm.dob} onChange={(event) => setEditForm({ ...editForm, dob: event.target.value })} />
+              <Input
+                type="date"
+                value={editForm.dob}
+                onChange={(event) =>
+                  setEditForm({ ...editForm, dob: event.target.value })
+                }
+              />
               <p className="muted">Age</p>
-              <Input value={editForm.age} onChange={(event) => setEditForm({ ...editForm, age: event.target.value })} />
+              <Input
+                value={editForm.age}
+                onChange={(event) =>
+                  setEditForm({ ...editForm, age: event.target.value })
+                }
+              />
               <p className="muted">Gender</p>
-              <Select value={editForm.gender} onChange={(event) => setEditForm({ ...editForm, gender: event.target.value })}>
+              <Select
+                value={editForm.gender}
+                onChange={(event) =>
+                  setEditForm({ ...editForm, gender: event.target.value })
+                }
+              >
                 <option value="Female">Female</option>
                 <option value="Male">Male</option>
                 <option value="Other">Other</option>
               </Select>
               <p className="muted">Phone</p>
-              <Input value={editForm.phone} onChange={(event) => setEditForm({ ...editForm, phone: event.target.value })} />
+              <Input
+                value={editForm.phone}
+                onChange={(event) =>
+                  setEditForm({ ...editForm, phone: event.target.value })
+                }
+              />
               <p className="muted">Weight (kg)</p>
-              <Input value={editForm.weight} onChange={(event) => setEditForm({ ...editForm, weight: event.target.value })} />
+              <Input
+                value={editForm.weight}
+                onChange={(event) =>
+                  setEditForm({ ...editForm, weight: event.target.value })
+                }
+              />
               <p className="muted">Height (cm)</p>
-              <Input value={editForm.height} onChange={(event) => setEditForm({ ...editForm, height: event.target.value })} />
+              <Input
+                value={editForm.height}
+                onChange={(event) =>
+                  setEditForm({ ...editForm, height: event.target.value })
+                }
+              />
               <p className="muted">Pregnant</p>
-              <Checkbox checked={editForm.pregnant} onChange={(event) => setEditForm({ ...editForm, pregnant: event.target.checked })} />
+              <Checkbox
+                checked={editForm.pregnant}
+                onChange={(event) =>
+                  setEditForm({ ...editForm, pregnant: event.target.checked })
+                }
+              />
               <p className="muted">Blood Group</p>
-              <Input value={editForm.blood_group} onChange={(event) => setEditForm({ ...editForm, blood_group: event.target.value })} />
+              <Input
+                value={editForm.blood_group}
+                onChange={(event) =>
+                  setEditForm({ ...editForm, blood_group: event.target.value })
+                }
+              />
               <p className="muted">Emergency Contact</p>
-              <Input value={editForm.emergency_contact} onChange={(event) => setEditForm({ ...editForm, emergency_contact: event.target.value })} />
+              <Input
+                value={editForm.emergency_contact}
+                onChange={(event) =>
+                  setEditForm({
+                    ...editForm,
+                    emergency_contact: event.target.value,
+                  })
+                }
+              />
               <p className="muted">Aadhar Number</p>
-              <Input value={editForm.aadhar_number} onChange={(event) => setEditForm({ ...editForm, aadhar_number: event.target.value })} />
+              <Input
+                value={editForm.aadhar_number}
+                onChange={(event) =>
+                  setEditForm({
+                    ...editForm,
+                    aadhar_number: event.target.value,
+                  })
+                }
+              />
               <p className="muted">Address</p>
-              <Textarea value={editForm.address} onChange={(event) => setEditForm({ ...editForm, address: event.target.value })} />
+              <Textarea
+                value={editForm.address}
+                onChange={(event) =>
+                  setEditForm({ ...editForm, address: event.target.value })
+                }
+              />
             </>
           ) : (
             <>
@@ -1152,9 +1500,19 @@ function PatientDetail({
           {isEditing && editForm ? (
             <>
               <p className="muted">Allergies</p>
-              <Textarea value={editForm.allergies} onChange={(event) => setEditForm({ ...editForm, allergies: event.target.value })} />
+              <Textarea
+                value={editForm.allergies}
+                onChange={(event) =>
+                  setEditForm({ ...editForm, allergies: event.target.value })
+                }
+              />
               <p className="muted">Symptoms</p>
-              <Textarea value={editForm.symptoms} onChange={(event) => setEditForm({ ...editForm, symptoms: event.target.value })} />
+              <Textarea
+                value={editForm.symptoms}
+                onChange={(event) =>
+                  setEditForm({ ...editForm, symptoms: event.target.value })
+                }
+              />
             </>
           ) : (
             <>
@@ -1167,8 +1525,11 @@ function PatientDetail({
           <h4>Admissions</h4>
           {admissions.map((adm) => (
             <p key={adm.id}>
-              {formatDateTimeIST(adm.admission_date)} · {adm.notes || "No notes"}{" "}
-              {adm.discharge_date ? `(Discharged: ${formatDateTimeIST(adm.discharge_date)})` : "(Active)"}
+              {formatDateTimeIST(adm.admission_date)} ·{" "}
+              {adm.notes || "No notes"}{" "}
+              {adm.discharge_date
+                ? `(Discharged: ${formatDateTimeIST(adm.discharge_date)})`
+                : "(Active)"}
             </p>
           ))}
         </div>
@@ -1178,7 +1539,12 @@ function PatientDetail({
             <div className="form-actions">
               <Select
                 value={movementForm.admission_id}
-                onChange={(event) => setMovementForm((prev) => ({ ...prev, admission_id: event.target.value }))}
+                onChange={(event) =>
+                  setMovementForm((prev) => ({
+                    ...prev,
+                    admission_id: event.target.value,
+                  }))
+                }
                 disabled={addingMovement}
               >
                 <option value="">Link Admission (Optional)</option>
@@ -1191,16 +1557,30 @@ function PatientDetail({
               <Input
                 placeholder="From department (optional)"
                 value={movementForm.from_department}
-                onChange={(event) => setMovementForm((prev) => ({ ...prev, from_department: event.target.value }))}
+                onChange={(event) =>
+                  setMovementForm((prev) => ({
+                    ...prev,
+                    from_department: event.target.value,
+                  }))
+                }
                 disabled={addingMovement}
               />
               <Input
                 placeholder="To department"
                 value={movementForm.to_department}
-                onChange={(event) => setMovementForm((prev) => ({ ...prev, to_department: event.target.value }))}
+                onChange={(event) =>
+                  setMovementForm((prev) => ({
+                    ...prev,
+                    to_department: event.target.value,
+                  }))
+                }
                 disabled={addingMovement}
               />
-              <Button variant="secondary" onClick={() => void handleAddMovement()} disabled={addingMovement}>
+              <Button
+                variant="secondary"
+                onClick={() => void handleAddMovement()}
+                disabled={addingMovement}
+              >
                 {addingMovement ? "Saving..." : "Add Movement"}
               </Button>
             </div>
@@ -1210,8 +1590,12 @@ function PatientDetail({
           ) : (
             movements.map((movement) => (
               <p key={movement.id}>
-                {formatDateTimeIST(movement.moved_at)} · {movement.from_department || "Unknown"} to {movement.to_department}
-                {movement.admission_id ? ` · Admission #${movement.admission_id}` : ""}
+                {formatDateTimeIST(movement.moved_at)} ·{" "}
+                {movement.from_department || "Unknown"} to{" "}
+                {movement.to_department}
+                {movement.admission_id
+                  ? ` · Admission #${movement.admission_id}`
+                  : ""}
                 {movement.moved_by ? ` · by ${movement.moved_by}` : ""}
               </p>
             ))
@@ -1222,20 +1606,34 @@ function PatientDetail({
         <div className="module-panel-head">
           <div>
             <h4>Clinical Operations</h4>
-            <p className="muted">Manage OP/IP encounters, beds, medications, and observation notes.</p>
+            <p className="muted">
+              Manage OP/IP encounters, beds, medications, and observation notes.
+            </p>
           </div>
         </div>
         <Tabs>
-          <TabsTrigger active={careTab === "encounters"} onClick={() => setCareTab("encounters")}>
+          <TabsTrigger
+            active={careTab === "encounters"}
+            onClick={() => setCareTab("encounters")}
+          >
             Encounters
           </TabsTrigger>
-          <TabsTrigger active={careTab === "beds"} onClick={() => setCareTab("beds")}>
+          <TabsTrigger
+            active={careTab === "beds"}
+            onClick={() => setCareTab("beds")}
+          >
             Beds
           </TabsTrigger>
-          <TabsTrigger active={careTab === "medications"} onClick={() => setCareTab("medications")}>
+          <TabsTrigger
+            active={careTab === "medications"}
+            onClick={() => setCareTab("medications")}
+          >
             Medications
           </TabsTrigger>
-          <TabsTrigger active={careTab === "notes"} onClick={() => setCareTab("notes")}>
+          <TabsTrigger
+            active={careTab === "notes"}
+            onClick={() => setCareTab("notes")}
+          >
             Notes
           </TabsTrigger>
         </Tabs>
@@ -1248,7 +1646,12 @@ function PatientDetail({
                   <div className="form-actions stacked-actions">
                     <Select
                       value={encounterForm.encounter_type}
-                      onChange={(event) => setEncounterForm((prev) => ({ ...prev, encounter_type: event.target.value }))}
+                      onChange={(event) =>
+                        setEncounterForm((prev) => ({
+                          ...prev,
+                          encounter_type: event.target.value,
+                        }))
+                      }
                     >
                       <option value="OP">OP</option>
                       <option value="IP">IP</option>
@@ -1256,31 +1659,60 @@ function PatientDetail({
                     <Input
                       placeholder="Insurance provider"
                       value={encounterForm.insurance_provider}
-                      onChange={(event) => setEncounterForm((prev) => ({ ...prev, insurance_provider: event.target.value }))}
+                      onChange={(event) =>
+                        setEncounterForm((prev) => ({
+                          ...prev,
+                          insurance_provider: event.target.value,
+                        }))
+                      }
                     />
                     <Input
                       placeholder="Insurance policy no."
                       value={encounterForm.insurance_policy_no}
-                      onChange={(event) => setEncounterForm((prev) => ({ ...prev, insurance_policy_no: event.target.value }))}
+                      onChange={(event) =>
+                        setEncounterForm((prev) => ({
+                          ...prev,
+                          insurance_policy_no: event.target.value,
+                        }))
+                      }
                     />
                     <Input
                       placeholder="Referral source"
                       value={encounterForm.referral_source}
-                      onChange={(event) => setEncounterForm((prev) => ({ ...prev, referral_source: event.target.value }))}
+                      onChange={(event) =>
+                        setEncounterForm((prev) => ({
+                          ...prev,
+                          referral_source: event.target.value,
+                        }))
+                      }
                     />
                     <Input
                       placeholder="Referral name"
                       value={encounterForm.referral_name}
-                      onChange={(event) => setEncounterForm((prev) => ({ ...prev, referral_name: event.target.value }))}
+                      onChange={(event) =>
+                        setEncounterForm((prev) => ({
+                          ...prev,
+                          referral_name: event.target.value,
+                        }))
+                      }
                     />
                     <label className="checkbox-line">
                       <Checkbox
                         checked={encounterForm.is_accident}
-                        onChange={(event) => setEncounterForm((prev) => ({ ...prev, is_accident: event.target.checked }))}
+                        onChange={(event) =>
+                          setEncounterForm((prev) => ({
+                            ...prev,
+                            is_accident: event.target.checked,
+                          }))
+                        }
                       />
                       <span>Accident case</span>
                     </label>
-                    <Button variant="secondary" onClick={() => void handleCreateEncounter()} disabled={savingEncounter}>
+                    <Button
+                      variant="secondary"
+                      onClick={() => void handleCreateEncounter()}
+                      disabled={savingEncounter}
+                    >
                       {savingEncounter ? "Saving..." : "Add Encounter"}
                     </Button>
                   </div>
@@ -1304,10 +1736,20 @@ function PatientDetail({
                       <TableRow key={encounter.id}>
                         <TableCell>{encounter.encounter_type}</TableCell>
                         <TableCell>{encounter.status || "active"}</TableCell>
-                        <TableCell>{encounter.insurance_provider || "-"}</TableCell>
-                        <TableCell>{encounter.referral_name || encounter.referral_source || "-"}</TableCell>
-                        <TableCell>{encounter.is_accident ? "Yes" : "No"}</TableCell>
-                        <TableCell>{formatDateTimeIST(encounter.arrival_at)}</TableCell>
+                        <TableCell>
+                          {encounter.insurance_provider || "-"}
+                        </TableCell>
+                        <TableCell>
+                          {encounter.referral_name ||
+                            encounter.referral_source ||
+                            "-"}
+                        </TableCell>
+                        <TableCell>
+                          {encounter.is_accident ? "Yes" : "No"}
+                        </TableCell>
+                        <TableCell>
+                          {formatDateTimeIST(encounter.arrival_at)}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </Table>
@@ -1323,7 +1765,12 @@ function PatientDetail({
                   <div className="form-actions stacked-actions">
                     <Select
                       value={bedForm.admission_id}
-                      onChange={(event) => setBedForm((prev) => ({ ...prev, admission_id: event.target.value }))}
+                      onChange={(event) =>
+                        setBedForm((prev) => ({
+                          ...prev,
+                          admission_id: event.target.value,
+                        }))
+                      }
                     >
                       <option value="">Select Admission</option>
                       {admissions.map((adm) => (
@@ -1332,14 +1779,53 @@ function PatientDetail({
                         </option>
                       ))}
                     </Select>
-                    <Input placeholder="Ward" value={bedForm.ward} onChange={(event) => setBedForm((prev) => ({ ...prev, ward: event.target.value }))} />
-                    <Input placeholder="Room No." value={bedForm.room_no} onChange={(event) => setBedForm((prev) => ({ ...prev, room_no: event.target.value }))} />
-                    <Input placeholder="Bed No." value={bedForm.bed_no} onChange={(event) => setBedForm((prev) => ({ ...prev, bed_no: event.target.value }))} />
-                    <Select value={bedForm.status} onChange={(event) => setBedForm((prev) => ({ ...prev, status: event.target.value }))}>
+                    <Input
+                      placeholder="Ward"
+                      value={bedForm.ward}
+                      onChange={(event) =>
+                        setBedForm((prev) => ({
+                          ...prev,
+                          ward: event.target.value,
+                        }))
+                      }
+                    />
+                    <Input
+                      placeholder="Room No."
+                      value={bedForm.room_no}
+                      onChange={(event) =>
+                        setBedForm((prev) => ({
+                          ...prev,
+                          room_no: event.target.value,
+                        }))
+                      }
+                    />
+                    <Input
+                      placeholder="Bed No."
+                      value={bedForm.bed_no}
+                      onChange={(event) =>
+                        setBedForm((prev) => ({
+                          ...prev,
+                          bed_no: event.target.value,
+                        }))
+                      }
+                    />
+                    <Select
+                      value={bedForm.status}
+                      onChange={(event) =>
+                        setBedForm((prev) => ({
+                          ...prev,
+                          status: event.target.value,
+                        }))
+                      }
+                    >
                       <option value="active">Active</option>
                       <option value="released">Released</option>
                     </Select>
-                    <Button variant="secondary" onClick={() => void handleAssignBed()} disabled={savingBed}>
+                    <Button
+                      variant="secondary"
+                      onClick={() => void handleAssignBed()}
+                      disabled={savingBed}
+                    >
                       {savingBed ? "Saving..." : "Assign Bed"}
                     </Button>
                   </div>
@@ -1366,7 +1852,9 @@ function PatientDetail({
                         <TableCell>{bed.room_no}</TableCell>
                         <TableCell>{bed.bed_no}</TableCell>
                         <TableCell>{bed.status || "active"}</TableCell>
-                        <TableCell>{formatDateTimeIST(bed.allocated_at)}</TableCell>
+                        <TableCell>
+                          {formatDateTimeIST(bed.allocated_at)}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </Table>
@@ -1383,38 +1871,72 @@ function PatientDetail({
                     <Input
                       placeholder="Medicine name"
                       value={medicationForm.medicine_name}
-                      onChange={(event) => setMedicationForm((prev) => ({ ...prev, medicine_name: event.target.value }))}
+                      onChange={(event) =>
+                        setMedicationForm((prev) => ({
+                          ...prev,
+                          medicine_name: event.target.value,
+                        }))
+                      }
                     />
                     <Input
                       placeholder="Dosage"
                       value={medicationForm.dosage}
-                      onChange={(event) => setMedicationForm((prev) => ({ ...prev, dosage: event.target.value }))}
+                      onChange={(event) =>
+                        setMedicationForm((prev) => ({
+                          ...prev,
+                          dosage: event.target.value,
+                        }))
+                      }
                     />
                     <Input
                       type="datetime-local"
                       value={medicationForm.schedule_time}
-                      onChange={(event) => setMedicationForm((prev) => ({ ...prev, schedule_time: event.target.value }))}
+                      onChange={(event) =>
+                        setMedicationForm((prev) => ({
+                          ...prev,
+                          schedule_time: event.target.value,
+                        }))
+                      }
                     />
                     <Textarea
                       placeholder="Notes"
                       value={medicationForm.notes}
-                      onChange={(event) => setMedicationForm((prev) => ({ ...prev, notes: event.target.value }))}
+                      onChange={(event) =>
+                        setMedicationForm((prev) => ({
+                          ...prev,
+                          notes: event.target.value,
+                        }))
+                      }
                     />
                     <label className="checkbox-line">
                       <Checkbox
                         checked={medicationForm.administered}
-                        onChange={(event) => setMedicationForm((prev) => ({ ...prev, administered: event.target.checked }))}
+                        onChange={(event) =>
+                          setMedicationForm((prev) => ({
+                            ...prev,
+                            administered: event.target.checked,
+                          }))
+                        }
                       />
                       <span>Already administered</span>
                     </label>
                     <label className="checkbox-line">
                       <Checkbox
                         checked={medicationForm.alert_enabled}
-                        onChange={(event) => setMedicationForm((prev) => ({ ...prev, alert_enabled: event.target.checked }))}
+                        onChange={(event) =>
+                          setMedicationForm((prev) => ({
+                            ...prev,
+                            alert_enabled: event.target.checked,
+                          }))
+                        }
                       />
                       <span>Alert enabled</span>
                     </label>
-                    <Button variant="secondary" onClick={() => void handleAddMedication()} disabled={savingMedication}>
+                    <Button
+                      variant="secondary"
+                      onClick={() => void handleAddMedication()}
+                      disabled={savingMedication}
+                    >
                       {savingMedication ? "Saving..." : "Save Schedule"}
                     </Button>
                   </div>
@@ -1438,9 +1960,15 @@ function PatientDetail({
                       <TableRow key={medication.id}>
                         <TableCell>{medication.medicine_name}</TableCell>
                         <TableCell>{medication.dosage || "-"}</TableCell>
-                        <TableCell>{formatDateTimeIST(medication.schedule_time)}</TableCell>
-                        <TableCell>{medication.administered ? "Yes" : "No"}</TableCell>
-                        <TableCell>{medication.alert_enabled ? "On" : "Off"}</TableCell>
+                        <TableCell>
+                          {formatDateTimeIST(medication.schedule_time)}
+                        </TableCell>
+                        <TableCell>
+                          {medication.administered ? "Yes" : "No"}
+                        </TableCell>
+                        <TableCell>
+                          {medication.alert_enabled ? "On" : "Off"}
+                        </TableCell>
                         <TableCell>{medication.notes || "-"}</TableCell>
                       </TableRow>
                     ))}
@@ -1457,7 +1985,12 @@ function PatientDetail({
                   <div className="form-actions stacked-actions">
                     <Select
                       value={noteForm.admission_id}
-                      onChange={(event) => setNoteForm((prev) => ({ ...prev, admission_id: event.target.value }))}
+                      onChange={(event) =>
+                        setNoteForm((prev) => ({
+                          ...prev,
+                          admission_id: event.target.value,
+                        }))
+                      }
                     >
                       <option value="">Link Admission (Optional)</option>
                       {admissions.map((adm) => (
@@ -1469,19 +2002,38 @@ function PatientDetail({
                     <Input
                       placeholder="Doctor name"
                       value={noteForm.doctor_name}
-                      onChange={(event) => setNoteForm((prev) => ({ ...prev, doctor_name: event.target.value }))}
+                      onChange={(event) =>
+                        setNoteForm((prev) => ({
+                          ...prev,
+                          doctor_name: event.target.value,
+                        }))
+                      }
                     />
                     <Textarea
                       placeholder="Clinical note"
                       value={noteForm.note}
-                      onChange={(event) => setNoteForm((prev) => ({ ...prev, note: event.target.value }))}
+                      onChange={(event) =>
+                        setNoteForm((prev) => ({
+                          ...prev,
+                          note: event.target.value,
+                        }))
+                      }
                     />
                     <Textarea
                       placeholder="Treatment plan"
                       value={noteForm.treatment_plan}
-                      onChange={(event) => setNoteForm((prev) => ({ ...prev, treatment_plan: event.target.value }))}
+                      onChange={(event) =>
+                        setNoteForm((prev) => ({
+                          ...prev,
+                          treatment_plan: event.target.value,
+                        }))
+                      }
                     />
-                    <Button variant="secondary" onClick={() => void handleAddNote()} disabled={savingNote}>
+                    <Button
+                      variant="secondary"
+                      onClick={() => void handleAddNote()}
+                      disabled={savingNote}
+                    >
                       {savingNote ? "Saving..." : "Save Note"}
                     </Button>
                   </div>
@@ -1497,11 +2049,19 @@ function PatientDetail({
                       <div key={entry.id} className="care-note-card">
                         <div className="care-note-head">
                           <strong>{entry.doctor_name || "Care Team"}</strong>
-                          <span className="muted">{formatDateTimeIST(entry.created_at)}</span>
+                          <span className="muted">
+                            {formatDateTimeIST(entry.created_at)}
+                          </span>
                         </div>
                         <p>{entry.note}</p>
-                        {entry.treatment_plan ? <p className="muted">Plan: {entry.treatment_plan}</p> : null}
-                        {entry.admission_id ? <p className="muted">Admission #{entry.admission_id}</p> : null}
+                        {entry.treatment_plan ? (
+                          <p className="muted">Plan: {entry.treatment_plan}</p>
+                        ) : null}
+                        {entry.admission_id ? (
+                          <p className="muted">
+                            Admission #{entry.admission_id}
+                          </p>
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -1545,16 +2105,27 @@ function PatientDetail({
                   <h5>Billing</h5>
                   <div className="care-note-list">
                     {billingInvoices.slice(0, 6).map((invoice) => (
-                      <div key={`invoice-${invoice.id}`} className="care-note-card">
+                      <div
+                        key={`invoice-${invoice.id}`}
+                        className="care-note-card"
+                      >
                         <div className="care-note-head">
-                          <strong>{invoice.invoice_no || `INV-${invoice.id}`}</strong>
-                          <span className="muted">{formatDateTimeIST(invoice.created_at)}</span>
+                          <strong>
+                            {invoice.invoice_no || `INV-${invoice.id}`}
+                          </strong>
+                          <span className="muted">
+                            {formatDateTimeIST(invoice.created_at)}
+                          </span>
                         </div>
                         <p>
-                          {invoice.module || "Invoice"} · Total {formatCurrency(invoice.total_amount)} · Paid {formatCurrency(invoice.paid_amount)} · Due{" "}
+                          {invoice.module || "Invoice"} · Total{" "}
+                          {formatCurrency(invoice.total_amount)} · Paid{" "}
+                          {formatCurrency(invoice.paid_amount)} · Due{" "}
                           {formatCurrency(invoice.due_amount)}
                         </p>
-                        <p className="muted">Status: {invoice.payment_status || "-"}</p>
+                        <p className="muted">
+                          Status: {invoice.payment_status || "-"}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -1570,7 +2141,10 @@ function PatientDetail({
         <div className="module-panel-head">
           <div>
             <h4>Certificates</h4>
-            <p className="muted">Discharge summaries, medical certificates, insurance documents, and fit-to-work records.</p>
+            <p className="muted">
+              Discharge summaries, medical certificates, insurance documents,
+              and fit-to-work records.
+            </p>
           </div>
         </div>
         <div className="care-panel-grid">
@@ -1580,7 +2154,12 @@ function PatientDetail({
               <div className="form-actions stacked-actions">
                 <Select
                   value={certificateForm.admission_id}
-                  onChange={(event) => setCertificateForm((prev) => ({ ...prev, admission_id: event.target.value }))}
+                  onChange={(event) =>
+                    setCertificateForm((prev) => ({
+                      ...prev,
+                      admission_id: event.target.value,
+                    }))
+                  }
                 >
                   <option value="">Link Admission (Optional)</option>
                   {admissions.map((adm) => (
@@ -1591,25 +2170,46 @@ function PatientDetail({
                 </Select>
                 <Select
                   value={certificateForm.certificate_type}
-                  onChange={(event) => setCertificateForm((prev) => ({ ...prev, certificate_type: event.target.value }))}
+                  onChange={(event) =>
+                    setCertificateForm((prev) => ({
+                      ...prev,
+                      certificate_type: event.target.value,
+                    }))
+                  }
                 >
                   <option value="discharge_summary">Discharge Summary</option>
-                  <option value="medical_certificate">Medical Certificate</option>
+                  <option value="medical_certificate">
+                    Medical Certificate
+                  </option>
                   <option value="insurance_document">Insurance Document</option>
                   <option value="fit_to_work">Fit to Work</option>
                 </Select>
                 <Input
                   placeholder="Certificate title"
                   value={certificateForm.title}
-                  onChange={(event) => setCertificateForm((prev) => ({ ...prev, title: event.target.value }))}
+                  onChange={(event) =>
+                    setCertificateForm((prev) => ({
+                      ...prev,
+                      title: event.target.value,
+                    }))
+                  }
                 />
                 <Textarea
                   placeholder="Certificate content"
                   value={certificateForm.body}
-                  onChange={(event) => setCertificateForm((prev) => ({ ...prev, body: event.target.value }))}
+                  onChange={(event) =>
+                    setCertificateForm((prev) => ({
+                      ...prev,
+                      body: event.target.value,
+                    }))
+                  }
                   rows={6}
                 />
-                <Button variant="secondary" onClick={() => void handleCreateCertificate()} disabled={savingCertificate}>
+                <Button
+                  variant="secondary"
+                  onClick={() => void handleCreateCertificate()}
+                  disabled={savingCertificate}
+                >
                   {savingCertificate ? "Saving..." : "Create Certificate"}
                 </Button>
               </div>
@@ -1625,12 +2225,18 @@ function PatientDetail({
                   <div key={certificate.id} className="care-note-card">
                     <div className="care-note-head">
                       <strong>{certificate.title}</strong>
-                      <span className="muted">{formatDateTimeIST(certificate.created_at)}</span>
+                      <span className="muted">
+                        {formatDateTimeIST(certificate.created_at)}
+                      </span>
                     </div>
                     <p className="muted">
                       {certificate.certificate_type.replace(/_/g, " ")}
-                      {certificate.admission_id ? ` · Admission #${certificate.admission_id}` : ""}
-                      {certificate.issued_by ? ` · Issued by ${certificate.issued_by}` : ""}
+                      {certificate.admission_id
+                        ? ` · Admission #${certificate.admission_id}`
+                        : ""}
+                      {certificate.issued_by
+                        ? ` · Issued by ${certificate.issued_by}`
+                        : ""}
                     </p>
                     <p>{certificate.body}</p>
                     {canEdit ? (
@@ -1639,10 +2245,14 @@ function PatientDetail({
                           type="button"
                           size="sm"
                           variant="destructive"
-                          onClick={() => void handleDeleteCertificate(certificate.id)}
+                          onClick={() =>
+                            void handleDeleteCertificate(certificate.id)
+                          }
                           disabled={deletingCertificateId === certificate.id}
                         >
-                          {deletingCertificateId === certificate.id ? "Deleting..." : "Delete"}
+                          {deletingCertificateId === certificate.id
+                            ? "Deleting..."
+                            : "Delete"}
                         </Button>
                       </div>
                     ) : null}
@@ -1657,7 +2267,10 @@ function PatientDetail({
         <h4>Documents</h4>
         {canEdit && isEditing && (
           <div className="form-actions">
-            <Select value={uploadDocType} onChange={(event) => setUploadDocType(event.target.value)}>
+            <Select
+              value={uploadDocType}
+              onChange={(event) => setUploadDocType(event.target.value)}
+            >
               <option value="test_docs">Test Docs</option>
               <option value="xray_mri">X-Ray / MRI</option>
               <option value="prescriptions">Prescriptions</option>
@@ -1670,7 +2283,11 @@ function PatientDetail({
               disabled={uploading}
               onFileSelect={setUploadFile}
             />
-            <Button variant="secondary" onClick={() => void handleUploadDocument()} disabled={uploading || !uploadFile}>
+            <Button
+              variant="secondary"
+              onClick={() => void handleUploadDocument()}
+              disabled={uploading || !uploadFile}
+            >
               {uploading ? "Uploading..." : "Add Document"}
             </Button>
           </div>
@@ -1690,8 +2307,12 @@ function PatientDetail({
                     className="doc-item"
                     open={!!expandedDocs[doc.id]}
                     onToggle={(event) => {
-                      const isOpen = (event.currentTarget as HTMLDetailsElement).open;
-                      setExpandedDocs((prev) => ({ ...prev, [doc.id]: isOpen }));
+                      const isOpen = (event.currentTarget as HTMLDetailsElement)
+                        .open;
+                      setExpandedDocs((prev) => ({
+                        ...prev,
+                        [doc.id]: isOpen,
+                      }));
                     }}
                   >
                     <summary>
@@ -1703,7 +2324,10 @@ function PatientDetail({
                           onClick={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
-                            setExpandedDocs((prev) => ({ ...prev, [doc.id]: !prev[doc.id] }));
+                            setExpandedDocs((prev) => ({
+                              ...prev,
+                              [doc.id]: !prev[doc.id],
+                            }));
                           }}
                         >
                           {expandedDocs[doc.id] ? "Close" : "Open"}
@@ -1714,7 +2338,11 @@ function PatientDetail({
                           onClick={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
-                            window.open(`${API_BASE}/api/documents/${doc.id}/file`, "_blank", "noopener,noreferrer");
+                            window.open(
+                              `${API_BASE}/api/documents/${doc.id}/file`,
+                              "_blank",
+                              "noopener,noreferrer",
+                            );
                           }}
                         >
                           Open Original
@@ -1728,23 +2356,32 @@ function PatientDetail({
                               event.stopPropagation();
                               setDeleteDocumentTarget({
                                 id: doc.id,
-                                label: stripUploadTimestampPrefix(doc.file_name) || doc.doc_type.replace("_", " "),
+                                label:
+                                  stripUploadTimestampPrefix(doc.file_name) ||
+                                  doc.doc_type.replace("_", " "),
                               });
                             }}
                             disabled={deletingDocId === doc.id}
                           >
-                            {deletingDocId === doc.id ? "Removing..." : "Delete"}
+                            {deletingDocId === doc.id
+                              ? "Removing..."
+                              : "Delete"}
                           </Button>
                         )}
                       </span>
                     </summary>
-                    <p className="muted">Language: {languages?.[doc.ocr_language || ""] || "English"}</p>
+                    <p className="muted">
+                      Language:{" "}
+                      {languages?.[doc.ocr_language || ""] || "English"}
+                    </p>
                     <div className="ocr-side-by-side">
                       <div className="ocr-preview">
                         <p className="muted">Original Document</p>
                         <SavedDocumentPreview doc={doc} />
                       </div>
-                      <div className={`ocr-preview ocr-markdown-preview ${!(doc.ocr_text || "").trim() ? "ocr-markdown-needs-ocr" : ""}`}>
+                      <div
+                        className={`ocr-preview ocr-markdown-preview ${!(doc.ocr_text || "").trim() ? "ocr-markdown-needs-ocr" : ""}`}
+                      >
                         <p className="muted">Markdown OCR</p>
                         {!(doc.ocr_text || "").trim() ? (
                           <div className="ocr-empty-state">
@@ -1752,33 +2389,63 @@ function PatientDetail({
                               type="button"
                               variant="primary"
                               onClick={() => void handleProcessDocumentOcr(doc)}
-                              disabled={!canEdit || processingOcrDocId === doc.id}
-                              title={!canEdit ? "Requires patient write access." : ""}
+                              disabled={
+                                !canEdit || processingOcrDocId === doc.id
+                              }
+                              title={
+                                !canEdit ? "Requires patient write access." : ""
+                              }
                             >
-                              {processingOcrDocId === doc.id ? "Processing..." : "Process OCR"}
+                              {processingOcrDocId === doc.id
+                                ? "Processing..."
+                                : "Process OCR"}
                             </Button>
                           </div>
                         ) : (
                           <div className="ocr-markdown-content">
-                            <MarkdownReport text={doc.ocr_text || "No OCR data"} />
+                            <MarkdownReport
+                              text={doc.ocr_text || "No OCR data"}
+                            />
                           </div>
                         )}
                       </div>
                     </div>
                     <div className="row-actions">
-                      <Button variant="secondary" onClick={() => setDownloadReady((prev) => ({ ...prev, [doc.id]: { ...(prev[doc.id] || {}), pdf: true } }))}>
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          setDownloadReady((prev) => ({
+                            ...prev,
+                            [doc.id]: { ...(prev[doc.id] || {}), pdf: true },
+                          }))
+                        }
+                      >
                         Prepare PDF
                       </Button>
-                      <Button variant="secondary" onClick={() => setDownloadReady((prev) => ({ ...prev, [doc.id]: { ...(prev[doc.id] || {}), word: true } }))}>
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          setDownloadReady((prev) => ({
+                            ...prev,
+                            [doc.id]: { ...(prev[doc.id] || {}), word: true },
+                          }))
+                        }
+                      >
                         Prepare Word
                       </Button>
                       {downloadReady[doc.id]?.pdf && (
-                        <Button variant="secondary" onClick={() => void handleExportDoc(doc, "pdf")}>
+                        <Button
+                          variant="secondary"
+                          onClick={() => void handleExportDoc(doc, "pdf")}
+                        >
                           Download PDF
                         </Button>
                       )}
                       {downloadReady[doc.id]?.word && (
-                        <Button variant="secondary" onClick={() => void handleExportDoc(doc, "word")}>
+                        <Button
+                          variant="secondary"
+                          onClick={() => void handleExportDoc(doc, "word")}
+                        >
                           Download Word
                         </Button>
                       )}

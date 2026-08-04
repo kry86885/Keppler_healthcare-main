@@ -13,12 +13,23 @@ from docx import Document as DocxDocument
 from utils.ocr import _extract_text_from_pdf_bytes
 from .service import extract_text_from_image
 
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".png", ".jpg", ".jpeg", ".webp"}
+SUPPORTED_EXTENSIONS = {
+    ".pdf",
+    ".docx",
+    ".txt",
+    ".md",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+}
 
 
 def _extract_docx_text(file_bytes: bytes) -> str:
     document = DocxDocument(io.BytesIO(file_bytes))
-    return "\n".join(paragraph.text for paragraph in document.paragraphs if paragraph.text.strip())
+    return "\n".join(
+        paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()
+    )
 
 
 def extract_document_text(file_bytes: bytes, filename: str) -> str:
@@ -37,13 +48,17 @@ def extract_document_text(file_bytes: bytes, filename: str) -> str:
         text = _extract_text_from_pdf_bytes(file_bytes)
         if not text.strip():
             # Scanned/image-only PDF: fall back to Gemini vision OCR on the raw bytes.
-            text = extract_text_from_image(file_bytes, doc_type="document", filename=filename)
+            text = extract_text_from_image(
+                file_bytes, doc_type="document", filename=filename
+            )
     elif extension == ".docx":
         text = _extract_docx_text(file_bytes)
     elif extension in (".txt", ".md"):
         text = file_bytes.decode("utf-8", errors="replace")
     else:
-        text = extract_text_from_image(file_bytes, doc_type="document", filename=filename)
+        text = extract_text_from_image(
+            file_bytes, doc_type="document", filename=filename
+        )
 
     text = (text or "").strip()
     if isinstance(text, str) and text.startswith("OCR Error:"):

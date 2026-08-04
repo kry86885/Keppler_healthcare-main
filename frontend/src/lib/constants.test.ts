@@ -1,4 +1,7 @@
-import { isSupportedDocumentFile, SUPPORTED_DOCUMENT_EXTENSIONS } from "./constants";
+import {
+  isSupportedDocumentFile,
+  SUPPORTED_DOCUMENT_EXTENSIONS,
+} from "./constants";
 
 describe("document type validation", () => {
   test("accepts supported document extensions case-insensitively", () => {
@@ -7,13 +10,15 @@ describe("document type validation", () => {
   });
 
   test("rejects unsupported extensions", () => {
-    const file = new File(["demo"], "script.exe", { type: "application/octet-stream" });
+    const file = new File(["demo"], "script.exe", {
+      type: "application/octet-stream",
+    });
     expect(isSupportedDocumentFile(file)).toBe(false);
   });
 
   test("has expected enterprise-safe extension baseline", () => {
     expect(SUPPORTED_DOCUMENT_EXTENSIONS).toEqual(
-      expect.arrayContaining(["pdf", "png", "jpg", "jpeg", "webp"])
+      expect.arrayContaining(["pdf", "png", "jpg", "jpeg", "webp"]),
     );
   });
 });

@@ -10,7 +10,12 @@ export default function Toast({ notice, onClose }: Props) {
     <div className="toast-wrap" role="status" aria-live="polite">
       <div className={`toast ${notice.type}`}>
         <p className="toast-message">{notice.message}</p>
-        <button className="toast-close" type="button" onClick={onClose} aria-label="Close notification">
+        <button
+          className="toast-close"
+          type="button"
+          onClick={onClose}
+          aria-label="Close notification"
+        >
           x
         </button>
       </div>

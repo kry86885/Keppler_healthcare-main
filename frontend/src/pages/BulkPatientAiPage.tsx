@@ -1,9 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import { FaWhatsapp } from "react-icons/fa";
-import { FiCheck, FiLoader, FiSearch, FiUploadCloud, FiUsers } from "react-icons/fi";
+import {
+  FiCheck,
+  FiLoader,
+  FiSearch,
+  FiUploadCloud,
+  FiUsers,
+} from "react-icons/fi";
 import DocumentUploadDropzone from "../components/DocumentUploadDropzone";
-import { Button, Modal, Table, TableCell, TableHead, TableRow, Textarea } from "../components/ui";
-import { apiFetch, getHospitalCode, getCsrfToken, reportError } from "../lib/api";
+import {
+  Button,
+  Modal,
+  Table,
+  TableCell,
+  TableHead,
+  TableRow,
+  Textarea,
+} from "../components/ui";
+import {
+  apiFetch,
+  getHospitalCode,
+  getCsrfToken,
+  reportError,
+} from "../lib/api";
 import { API_BASE } from "../lib/constants";
 import type { Notice } from "../types";
 
@@ -61,7 +80,9 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [jobId, setJobId] = useState<number | null>(null);
   const [job, setJob] = useState<JobStatus | null>(null);
-  const [jobKind, setJobKind] = useState<"spreadsheet" | "document">("spreadsheet");
+  const [jobKind, setJobKind] = useState<"spreadsheet" | "document">(
+    "spreadsheet",
+  );
   const [prompt, setPrompt] = useState("");
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<BulkPatientRow[]>([]);
@@ -69,7 +90,9 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [whatsappTarget, setWhatsappTarget] = useState<BulkPatientRow | null>(null);
+  const [whatsappTarget, setWhatsappTarget] = useState<BulkPatientRow | null>(
+    null,
+  );
   const [whatsappMessage, setWhatsappMessage] = useState("");
   const pollingRef = useRef(false);
 
@@ -96,7 +119,10 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
             return;
           }
           if (data.status === "FAILED") {
-            setNotice({ type: "error", message: data.error || "Bulk import failed." });
+            setNotice({
+              type: "error",
+              message: data.error || "Bulk import failed.",
+            });
             pollingRef.current = false;
             return;
           }
@@ -104,7 +130,11 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
             setStep("processing");
           }
         } catch (error) {
-          reportError(setNotice, error as { message?: string; status?: number }, "Unable to check import status.");
+          reportError(
+            setNotice,
+            error as { message?: string; status?: number },
+            "Unable to check import status.",
+          );
           pollingRef.current = false;
           return;
         }
@@ -155,12 +185,18 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
         startPolling(data.job_id);
       } else {
         const payload = JSON.parse(xhr.responseText || "{}");
-        setNotice({ type: "error", message: payload.error || "Upload failed." });
+        setNotice({
+          type: "error",
+          message: payload.error || "Upload failed.",
+        });
       }
     };
     xhr.onerror = () => {
       setUploading(false);
-      setNotice({ type: "error", message: "Upload failed. Check your connection and try again." });
+      setNotice({
+        type: "error",
+        message: "Upload failed. Check your connection and try again.",
+      });
     };
 
     xhr.send(formData);
@@ -168,15 +204,29 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
 
   const runSearch = async (targetPage: number, append: boolean) => {
     try {
-      const data = await apiFetch<{ results: BulkPatientRow[]; total: number }>("/api/bulk-import/query", {
-        method: "POST",
-        body: JSON.stringify({ prompt, job_id: jobId, page: targetPage, page_size: PAGE_SIZE }),
-      });
-      setResults((prev) => (append ? [...prev, ...(data.results || [])] : data.results || []));
+      const data = await apiFetch<{ results: BulkPatientRow[]; total: number }>(
+        "/api/bulk-import/query",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            prompt,
+            job_id: jobId,
+            page: targetPage,
+            page_size: PAGE_SIZE,
+          }),
+        },
+      );
+      setResults((prev) =>
+        append ? [...prev, ...(data.results || [])] : data.results || [],
+      );
       setTotal(data.total || 0);
       setPage(targetPage);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to run that search.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to run that search.",
+      );
     }
   };
 
@@ -184,15 +234,23 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
     if (!jobId || !prompt.trim()) return;
     setSearching(true);
     try {
-      const data = await apiFetch<{ results: BulkPatientRow[]; total: number; answer?: string }>(
-        `/api/bulk-import/jobs/${jobId}/ask`,
-        { method: "POST", body: JSON.stringify({ prompt }) }
-      );
+      const data = await apiFetch<{
+        results: BulkPatientRow[];
+        total: number;
+        answer?: string;
+      }>(`/api/bulk-import/jobs/${jobId}/ask`, {
+        method: "POST",
+        body: JSON.stringify({ prompt }),
+      });
       setResults(data.results || []);
       setTotal(data.total || 0);
       setAnswer(data.answer || "");
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to answer that prompt.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to answer that prompt.",
+      );
     } finally {
       setSearching(false);
     }
@@ -235,14 +293,17 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
     setWhatsappMessage(
       row.medical_condition
         ? `Hello ${name}, our records show: ${row.medical_condition}. Please contact us or visit for a follow-up.`
-        : `Hello ${name}, please contact us at your earliest convenience for a follow-up.`
+        : `Hello ${name}, please contact us at your earliest convenience for a follow-up.`,
     );
   };
 
   const handleSendWhatsapp = () => {
     if (!whatsappTarget?.phone) return;
     const digits = whatsappTarget.phone.replace(/\D/g, "");
-    window.open(`https://wa.me/${digits}?text=${encodeURIComponent(whatsappMessage)}`, "_blank");
+    window.open(
+      `https://wa.me/${digits}?text=${encodeURIComponent(whatsappMessage)}`,
+      "_blank",
+    );
     setWhatsappTarget(null);
   };
 
@@ -251,10 +312,12 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
       <div className="module-panel-head">
         <div>
           <p className="muted">
-            Upload a large patient list (.xlsx or .csv, up to 200MB) -- the AI automatically detects
-            which column is phone/name/age/etc. and imports it, no manual setup needed -- then search it
-            with a plain-English prompt like "diabetic patients in Koramangala". Or upload a PDF/DOCX
-            document (discharge summary, referral letter, etc.) and ask questions about what's in it.
+            Upload a large patient list (.xlsx or .csv, up to 200MB) -- the AI
+            automatically detects which column is phone/name/age/etc. and
+            imports it, no manual setup needed -- then search it with a
+            plain-English prompt like "diabetic patients in Koramangala". Or
+            upload a PDF/DOCX document (discharge summary, referral letter,
+            etc.) and ask questions about what's in it.
           </p>
         </div>
         {jobId && (
@@ -266,20 +329,33 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
 
       <div className="journey-steps" role="list" aria-label="AI Mode steps">
         {STEPS.map((s, index) => {
-          const isDone = index < stepIndex || (step === "query" && s.key !== "query");
+          const isDone =
+            index < stepIndex || (step === "query" && s.key !== "query");
           const isActive = index === stepIndex;
-          const state = isActive ? "journey-step-active" : isDone ? "journey-step-completed" : "journey-step-upcoming";
+          const state = isActive
+            ? "journey-step-active"
+            : isDone
+              ? "journey-step-completed"
+              : "journey-step-upcoming";
           return (
             <div className="journey-step-wrap" key={s.key}>
               <div className={`journey-step ${state}`}>
-                <span className="journey-step-circle">{isDone ? <FiCheck aria-hidden /> : index + 1}</span>
+                <span className="journey-step-circle">
+                  {isDone ? <FiCheck aria-hidden /> : index + 1}
+                </span>
                 <span className="journey-step-text">
                   <span className="journey-step-label">{s.label}</span>
                   <span className="journey-step-hint">{s.hint}</span>
                 </span>
               </div>
               {index < STEPS.length - 1 && (
-                <span className={isDone ? "journey-step-connector filled" : "journey-step-connector"} />
+                <span
+                  className={
+                    isDone
+                      ? "journey-step-connector filled"
+                      : "journey-step-connector"
+                  }
+                />
               )}
             </div>
           );
@@ -301,14 +377,19 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
           {uploading && (
             <div className="ai-upload-progress">
               <div className="trend-bar-track">
-                <div className="trend-bar-fill" style={{ width: `${uploadProgress}%` }} />
+                <div
+                  className="trend-bar-fill"
+                  style={{ width: `${uploadProgress}%` }}
+                />
               </div>
               <span className="muted">Uploading... {uploadProgress}%</span>
             </div>
           )}
           <div style={{ marginTop: "1.1rem" }}>
             <Button onClick={handleUpload} disabled={!file || uploading}>
-              {uploading ? "Uploading..." : (
+              {uploading ? (
+                "Uploading..."
+              ) : (
                 <>
                   <FiUploadCloud aria-hidden /> Upload &amp; Analyze
                 </>
@@ -329,8 +410,8 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
                 <h4>2. Extracting text from your document...</h4>
               </div>
               <p className="muted">
-                Reading and OCR'ing your document -- this only takes a moment. Feel free to leave this page and
-                come back.
+                Reading and OCR'ing your document -- this only takes a moment.
+                Feel free to leave this page and come back.
               </p>
             </>
           ) : (
@@ -339,10 +420,13 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
                 <h4>2. Reading columns &amp; importing patient records...</h4>
               </div>
               <p className="muted">
-                The AI is detecting which column is phone/name/age/etc. and importing automatically -- no manual
-                setup needed. Processed {job?.processed_rows ?? 0} rows so far ({job?.imported_count ?? 0} contactable,{" "}
-                {job?.skipped_count ?? 0} skipped for missing phone numbers). This can take a while for large files --
-                feel free to leave this page and come back.
+                The AI is detecting which column is phone/name/age/etc. and
+                importing automatically -- no manual setup needed. Processed{" "}
+                {job?.processed_rows ?? 0} rows so far (
+                {job?.imported_count ?? 0} contactable,{" "}
+                {job?.skipped_count ?? 0} skipped for missing phone numbers).
+                This can take a while for large files -- feel free to leave this
+                page and come back.
               </p>
             </>
           )}
@@ -358,7 +442,11 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
         <>
           <div className="panel">
             <div className="module-panel-head">
-              <h4>{jobKind === "document" ? "3. Ask about your document" : "3. Search your uploaded list"}</h4>
+              <h4>
+                {jobKind === "document"
+                  ? "3. Ask about your document"
+                  : "3. Search your uploaded list"}
+              </h4>
               <Button variant="ghost" onClick={handleStartOver}>
                 <FiUploadCloud aria-hidden /> Reupload
               </Button>
@@ -382,8 +470,19 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
                   }
                 }}
               />
-              <Button onClick={handleSearch} disabled={searching || (jobKind === "document" && !prompt.trim())}>
-                {searching ? (jobKind === "document" ? "Asking..." : "Searching...") : jobKind === "document" ? "Ask" : "Search"}
+              <Button
+                onClick={handleSearch}
+                disabled={
+                  searching || (jobKind === "document" && !prompt.trim())
+                }
+              >
+                {searching
+                  ? jobKind === "document"
+                    ? "Asking..."
+                    : "Searching..."
+                  : jobKind === "document"
+                    ? "Ask"
+                    : "Search"}
               </Button>
             </div>
           </div>
@@ -393,7 +492,9 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
               <div className="module-panel-head">
                 <h4>Answer</h4>
               </div>
-              <p className="muted" style={{ whiteSpace: "pre-wrap" }}>{answer}</p>
+              <p className="muted" style={{ whiteSpace: "pre-wrap" }}>
+                {answer}
+              </p>
             </div>
           )}
 
@@ -419,7 +520,11 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
                       : `Showing ${results.length} of ${total} matching patient${total === 1 ? "" : "s"}`}
                   </p>
                 </div>
-                <Table className="module-table module-table-bulk-ai" role="table" aria-label="Bulk patient search results">
+                <Table
+                  className="module-table module-table-bulk-ai"
+                  role="table"
+                  aria-label="Bulk patient search results"
+                >
                   <TableHead>
                     <TableCell>Name</TableCell>
                     <TableCell>Phone</TableCell>
@@ -431,7 +536,10 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
                   </TableHead>
                   {results.map((row) => (
                     <TableRow key={row.patient_id}>
-                      <TableCell>{`${row.name || ""} ${row.last_name || ""}`.trim() || "-"}</TableCell>
+                      <TableCell>
+                        {`${row.name || ""} ${row.last_name || ""}`.trim() ||
+                          "-"}
+                      </TableCell>
                       <TableCell>{row.phone || "-"}</TableCell>
                       <TableCell>{row.area || "-"}</TableCell>
                       <TableCell>{row.medical_condition || "-"}</TableCell>
@@ -456,8 +564,14 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
                 </Table>
                 {jobKind === "spreadsheet" && results.length < total && (
                   <div className="ai-load-more">
-                    <Button variant="secondary" onClick={handleLoadMore} disabled={loadingMore}>
-                      {loadingMore ? "Loading..." : `Load more (${total - results.length} remaining)`}
+                    <Button
+                      variant="secondary"
+                      onClick={handleLoadMore}
+                      disabled={loadingMore}
+                    >
+                      {loadingMore
+                        ? "Loading..."
+                        : `Load more (${total - results.length} remaining)`}
                     </Button>
                   </div>
                 )}
@@ -473,8 +587,20 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
         title={`Message ${whatsappTarget ? `${whatsappTarget.name || ""} ${whatsappTarget.last_name || ""}`.trim() : ""}`}
         description="Edit the message before it opens in WhatsApp -- nothing is sent automatically."
       >
-        <Textarea rows={5} value={whatsappMessage} onChange={(event) => setWhatsappMessage(event.target.value)} style={{ width: "100%" }} />
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "1rem" }}>
+        <Textarea
+          rows={5}
+          value={whatsappMessage}
+          onChange={(event) => setWhatsappMessage(event.target.value)}
+          style={{ width: "100%" }}
+        />
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: "0.75rem",
+            marginTop: "1rem",
+          }}
+        >
           <Button variant="ghost" onClick={() => setWhatsappTarget(null)}>
             Cancel
           </Button>

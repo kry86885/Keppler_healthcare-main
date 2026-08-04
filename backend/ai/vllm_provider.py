@@ -14,7 +14,9 @@ from utils.ocr import (
     _vision_prompt,
 )
 
-VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://host.docker.internal:8700/v1").rstrip("/")
+VLLM_BASE_URL = os.getenv(
+    "VLLM_BASE_URL", "http://host.docker.internal:8700/v1"
+).rstrip("/")
 VLLM_MODEL = os.getenv("VLLM_MODEL", "qwen2.5-vl-7b")
 VLLM_API_KEY = os.getenv("VLLM_API_KEY", "local")
 VLLM_TIMEOUT_SECONDS = int(os.getenv("VLLM_TIMEOUT_SECONDS", "240"))
@@ -50,7 +52,9 @@ def _chat_completion(messages, temperature=0.1, max_tokens=2048, json_mode=False
 class VLLMLLMProvider:
     def is_configured(self) -> bool:
         try:
-            response = requests.get(f"{VLLM_BASE_URL}/models", headers=_headers(), timeout=5)
+            response = requests.get(
+                f"{VLLM_BASE_URL}/models", headers=_headers(), timeout=5
+            )
             return response.status_code == 200
         except Exception:
             return False
@@ -66,7 +70,9 @@ class VLLMLLMProvider:
 
 
 class VLLMOCRProvider:
-    def extract_text(self, file_bytes, language="en", doc_type="document", filename=None):
+    def extract_text(
+        self, file_bytes, language="en", doc_type="document", filename=None
+    ):
         mime_type = _detect_mime_type(file_bytes, filename)
         target_language = {
             "en": "English",
@@ -80,7 +86,14 @@ class VLLMOCRProvider:
                 raw_text = _extract_text_from_pdf_bytes(file_bytes)
                 if raw_text:
                     response = _chat_completion(
-                        [{"role": "user", "content": _pdf_formatting_prompt(raw_text, target_language, doc_type)}],
+                        [
+                            {
+                                "role": "user",
+                                "content": _pdf_formatting_prompt(
+                                    raw_text, target_language, doc_type
+                                ),
+                            }
+                        ],
                         temperature=0.1,
                         max_tokens=4096,
                         json_mode=True,
@@ -105,7 +118,9 @@ class VLLMOCRProvider:
                             {"type": "text", "text": prompt},
                             {
                                 "type": "image_url",
-                                "image_url": {"url": f"data:{content_mime};base64,{encoded}"},
+                                "image_url": {
+                                    "url": f"data:{content_mime};base64,{encoded}"
+                                },
                             },
                         ],
                     }

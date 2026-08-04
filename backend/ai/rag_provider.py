@@ -22,7 +22,9 @@ from utils.embeddings import generate_embedding
 from .service import llm_provider
 
 EMBEDDING_DIM = int(os.getenv("GEMINI_EMBEDDING_DIM", "768"))
-WORKSPACE_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "rag_workspaces")
+WORKSPACE_ROOT = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "rag_workspaces"
+)
 
 _llm_provider = llm_provider
 
@@ -51,7 +53,9 @@ async def gemini_llm_func(prompt, system_prompt=None, history_messages=None, **_
 
     result = await asyncio.to_thread(_call)
     if not result:
-        raise RuntimeError("Gemini LLM call returned no content (check GEMINI_API_KEY).")
+        raise RuntimeError(
+            "Gemini LLM call returned no content (check GEMINI_API_KEY)."
+        )
     return result
 
 
@@ -93,7 +97,9 @@ def _get_bg_loop() -> asyncio.AbstractEventLoop:
         with _bg_loop_lock:
             if _bg_loop is None:
                 loop = asyncio.new_event_loop()
-                thread = threading.Thread(target=_run_bg_loop, args=(loop,), daemon=True)
+                thread = threading.Thread(
+                    target=_run_bg_loop, args=(loop,), daemon=True
+                )
                 thread.start()
                 _bg_loop = loop
     return _bg_loop

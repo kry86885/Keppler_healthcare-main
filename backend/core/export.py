@@ -1,4 +1,5 @@
 """Export utilities for generating PDF and Word documents from OCR text"""
+
 import io
 import re
 from datetime import datetime
@@ -45,7 +46,7 @@ def parse_bold_segments(text):
 
     for match in re.finditer(pattern, text):
         if match.start() > last_end:
-            segments.append((text[last_end:match.start()], False))
+            segments.append((text[last_end : match.start()], False))
         segments.append((match.group(1), True))
         last_end = match.end()
 
@@ -58,7 +59,9 @@ def parse_bold_segments(text):
     return segments
 
 
-def generate_pdf(patient_name: str, doc_type: str, ocr_text: str, date_str: str = None) -> bytes:
+def generate_pdf(
+    patient_name: str, doc_type: str, ocr_text: str, date_str: str = None
+) -> bytes:
     """Generate PDF with OCR extracted text - properly formatted"""
     if date_str is None:
         date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -164,7 +167,9 @@ def generate_pdf(patient_name: str, doc_type: str, ocr_text: str, date_str: str 
     return bytes(pdf.output())
 
 
-def generate_word(patient_name: str, doc_type: str, ocr_text: str, date_str: str = None) -> bytes:
+def generate_word(
+    patient_name: str, doc_type: str, ocr_text: str, date_str: str = None
+) -> bytes:
     """Generate Word document with OCR extracted text - properly formatted"""
     if date_str is None:
         date_str = datetime.now().strftime("%Y-%m-%d %H:%M")

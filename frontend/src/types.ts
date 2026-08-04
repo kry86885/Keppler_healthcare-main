@@ -1,5 +1,16 @@
 export type UserType = "admin" | "normal";
-export type ModuleId = "dashboard" | "patients" | "op" | "billing" | "pharmacy" | "hrms" | "accounts" | "reports" | "symptom_ai" | "employees" | "patient_experience";
+export type ModuleId =
+  | "dashboard"
+  | "patients"
+  | "op"
+  | "billing"
+  | "pharmacy"
+  | "hrms"
+  | "accounts"
+  | "reports"
+  | "symptom_ai"
+  | "employees"
+  | "patient_experience";
 
 // A stored module_access entry is either a bare ModuleId (full access to that
 // module) or a dotted "module.subitem" string (access to just one sub-item
@@ -432,7 +443,8 @@ export interface NavItem {
   subtitle?: string;
   permission?: string;
   deniedHint?: string;
-  group?: "overview" | "ai" | "registration" | "operations" | "finance" | "admin";
+  group?:
+    "overview" | "ai" | "registration" | "operations" | "finance" | "admin";
   module?: ModuleId;
 }
 
@@ -467,4 +479,3 @@ export interface Refund {
   status?: string;
   created_at?: string;
 }
-

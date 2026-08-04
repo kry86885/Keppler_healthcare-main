@@ -29,7 +29,14 @@ function mockFetchForUser(user: any = null) {
     if (url.includes("/api/stats")) {
       return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({ total: 0, today: 0, active_admissions: 0, documents: 0, readmitted_patients: 0 }),
+        json: () =>
+          Promise.resolve({
+            total: 0,
+            today: 0,
+            active_admissions: 0,
+            documents: 0,
+            readmitted_patients: 0,
+          }),
       });
     }
 
@@ -94,7 +101,9 @@ describe("App role-based UI", () => {
       await flush();
     });
 
-    const employeesTab = Array.from(container.querySelectorAll("button")).find((el) => el.textContent?.trim() === "Employee Management");
+    const employeesTab = Array.from(container.querySelectorAll("button")).find(
+      (el) => el.textContent?.trim() === "Employee Management",
+    );
     expect(employeesTab).toBeFalsy();
   });
 
@@ -126,18 +135,19 @@ describe("App role-based UI", () => {
     // The Administration group should show count ≥ 2 (Employee Management + Patient Experience,
     // and HRMS if hr.read permission is present)
     const adminToggle = Array.from(container.querySelectorAll("button")).find(
-      (el) => el.textContent?.includes("Administration")
+      (el) => el.textContent?.includes("Administration"),
     );
     expect(adminToggle).toBeTruthy();
     // Count is at least 2: Employee Management + Patient Experience
-    const adminCount = parseInt(adminToggle?.querySelector(".sidebar-nav-count")?.textContent || "0", 10);
+    const adminCount = parseInt(
+      adminToggle?.querySelector(".sidebar-nav-count")?.textContent || "0",
+      10,
+    );
     expect(adminCount).toBeGreaterThanOrEqual(2);
 
     // The user has hrms in module_access so they land on HRMS page by default
     expect(container.textContent).toContain("HRMS");
   });
-
-
 
   test("returns to login when a protected request receives 401", async () => {
     global.fetch = vi.fn((url: string) => {

@@ -17,10 +17,17 @@ describe("BillingPage", () => {
   test("renders record payment workflow by default", async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url.includes("/api/billing/revenue-summary")) {
-        return jsonResponse({ total_billed: 0, total_collected: 0, total_due: 0, payment_mode_breakdown: [] });
+        return jsonResponse({
+          total_billed: 0,
+          total_collected: 0,
+          total_due: 0,
+          payment_mode_breakdown: [],
+        });
       }
       if (url.includes("/api/billing/invoices")) {
-        return jsonResponse({ invoices: [{ id: 1, invoice_no: "INV-1", due_amount: 2500 }] });
+        return jsonResponse({
+          invoices: [{ id: 1, invoice_no: "INV-1", due_amount: 2500 }],
+        });
       }
       return jsonResponse({});
     });
@@ -37,10 +44,21 @@ describe("BillingPage", () => {
     });
 
     expect(container.textContent).toContain("Record Payment");
-    expect(container.querySelector('select[aria-label="Billing payment invoice"]')).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/billing/revenue-summary"), expect.any(Object));
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/billing/invoices"), expect.any(Object));
-    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/billing/claims"), expect.any(Object));
+    expect(
+      container.querySelector('select[aria-label="Billing payment invoice"]'),
+    ).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/billing/revenue-summary"),
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/billing/invoices"),
+      expect.any(Object),
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/billing/claims"),
+      expect.any(Object),
+    );
 
     act(() => {
       root.unmount();

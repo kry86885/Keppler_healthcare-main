@@ -11,7 +11,9 @@ from utils.ocr import get_genai_model, _generate_content
 
 
 class GeminiOCRProvider:
-    def extract_text(self, file_bytes, language="en", doc_type="document", filename=None):
+    def extract_text(
+        self, file_bytes, language="en", doc_type="document", filename=None
+    ):
         return _gemini_extract_text(file_bytes, language, doc_type, filename=filename)
 
 
@@ -22,7 +24,9 @@ class GeminiLLMProvider:
     def generate(self, prompt: str, context: str = "", **kwargs):
         client = get_genai_model()
         if client is None:
-            raise RuntimeError("GEMINI_API_KEY is not configured or is invalid. Cannot call Gemini AI.")
+            raise RuntimeError(
+                "GEMINI_API_KEY is not configured or is invalid. Cannot call Gemini AI."
+            )
         full_prompt = f"{context}\n\n{prompt}" if context else prompt
         # Do NOT catch exceptions here — let them propagate to the route handler
         # so error messages can be shown to the user instead of silently failing.

@@ -21,9 +21,15 @@ SESSION_TTL_HOURS = int(os.getenv("SESSION_TTL_HOURS", "12"))
 SESSION_TTL_SECONDS = SESSION_TTL_HOURS * 60 * 60
 SESSION_PEPPER = os.getenv("SESSION_PEPPER", "")
 ADMIN_ROUTE_PASSWORD = os.getenv("ADMIN_ROUTE_PASSWORD", "")
-ADMIN_ROUTE_AUTH_COOKIE_NAME = os.getenv("ADMIN_ROUTE_AUTH_COOKIE_NAME", "hospai_admin_route_auth")
+ADMIN_ROUTE_AUTH_COOKIE_NAME = os.getenv(
+    "ADMIN_ROUTE_AUTH_COOKIE_NAME", "hospai_admin_route_auth"
+)
 ADMIN_ROUTE_AUTH_TTL_SECONDS = int(os.getenv("ADMIN_ROUTE_AUTH_TTL_SECONDS", "3600"))
-ADMIN_ROUTE_AUTH_SECRET = os.getenv("ADMIN_ROUTE_AUTH_SECRET", "") or SESSION_PEPPER or "hospai-admin-route-auth"
+ADMIN_ROUTE_AUTH_SECRET = (
+    os.getenv("ADMIN_ROUTE_AUTH_SECRET", "")
+    or SESSION_PEPPER
+    or "hospai-admin-route-auth"
+)
 
 USER_TYPES = ("admin", "normal")
 
@@ -34,8 +40,17 @@ USER_TYPES = ("admin", "normal")
 # those backend blueprints are stub scaffolding (Phase A/E/F/G/H) with no real
 # pages behind them yet; there's nothing to protect there.
 ASSIGNABLE_MODULES = (
-    "dashboard", "patients", "op", "billing", "pharmacy", "hrms",
-    "accounts", "reports", "symptom_ai", "employees", "patient_experience",
+    "dashboard",
+    "patients",
+    "op",
+    "billing",
+    "pharmacy",
+    "hrms",
+    "accounts",
+    "reports",
+    "symptom_ai",
+    "employees",
+    "patient_experience",
 )
 DEFAULT_NORMAL_MODULES = ("dashboard", "patients", "symptom_ai")
 
@@ -64,58 +79,124 @@ MODULE_BASE_PERMISSION = {
 # just "billing.invoices" while withholding "billing.claims".
 SUB_MODULES = {
     "patients": {
-        "directory": {"label": "Patient Directory (edit/delete)", "permissions": ["patients.write", "patients.delete"]},
-        "registration": {"label": "Patient Registration", "permissions": ["patients.registration.write"]},
-        "consent_desk": {"label": "Consent Desk", "permissions": ["patients.consent.write"]},
-        "insurance_desk": {"label": "Insurance Desk", "permissions": ["patients.insurance.write"]},
-        "appointments": {"label": "Appointments", "permissions": ["patients.appointments.write"]},
-        "documents": {"label": "Documents & OCR", "permissions": ["patients.documents.write"]},
-        "clinical_records": {"label": "Clinical Records (encounters/notes/certificates)", "permissions": ["patients.clinical.write"]},
-        "bulk_ai": {"label": "Bulk Patient AI", "permissions": ["patients.bulk_ai.write"]},
+        "directory": {
+            "label": "Patient Directory (edit/delete)",
+            "permissions": ["patients.write", "patients.delete"],
+        },
+        "registration": {
+            "label": "Patient Registration",
+            "permissions": ["patients.registration.write"],
+        },
+        "consent_desk": {
+            "label": "Consent Desk",
+            "permissions": ["patients.consent.write"],
+        },
+        "insurance_desk": {
+            "label": "Insurance Desk",
+            "permissions": ["patients.insurance.write"],
+        },
+        "appointments": {
+            "label": "Appointments",
+            "permissions": ["patients.appointments.write"],
+        },
+        "documents": {
+            "label": "Documents & OCR",
+            "permissions": ["patients.documents.write"],
+        },
+        "clinical_records": {
+            "label": "Clinical Records (encounters/notes/certificates)",
+            "permissions": ["patients.clinical.write"],
+        },
+        "bulk_ai": {
+            "label": "Bulk Patient AI",
+            "permissions": ["patients.bulk_ai.write"],
+        },
     },
     # Standalone, matching the sidebar's "Operations" grouping (Doctor
     # Scheduling / Pharmacy / Lab & Diagnostics / OT) -- NOT nested under
     # "patients", even though its routes are patient-adjacent.
     "op": {
-        "schedules": {"label": "Doctor Schedules", "permissions": ["op.schedules.write"]},
+        "schedules": {
+            "label": "Doctor Schedules",
+            "permissions": ["op.schedules.write"],
+        },
         "doctors": {"label": "Doctor Directory", "permissions": ["op.doctors.write"]},
     },
     "billing": {
-        "invoices": {"label": "Invoices & Payments", "permissions": ["billing.invoices.write"]},
-        "claims": {"label": "Insurance Claims", "permissions": ["billing.claims.write"]},
+        "invoices": {
+            "label": "Invoices & Payments",
+            "permissions": ["billing.invoices.write"],
+        },
+        "claims": {
+            "label": "Insurance Claims",
+            "permissions": ["billing.claims.write"],
+        },
     },
     "pharmacy": {
-        "inventory": {"label": "Inventory", "permissions": ["pharmacy.inventory.write"]},
+        "inventory": {
+            "label": "Inventory",
+            "permissions": ["pharmacy.inventory.write"],
+        },
         "sales": {"label": "Sales", "permissions": ["pharmacy.sales.write"]},
-        "suppliers": {"label": "Suppliers", "permissions": ["pharmacy.suppliers.write"]},
-        "purchases": {"label": "Purchases", "permissions": ["pharmacy.purchases.write"]},
-        "prescriptions": {"label": "Prescriptions", "permissions": ["pharmacy.prescriptions.write"]},
+        "suppliers": {
+            "label": "Suppliers",
+            "permissions": ["pharmacy.suppliers.write"],
+        },
+        "purchases": {
+            "label": "Purchases",
+            "permissions": ["pharmacy.purchases.write"],
+        },
+        "prescriptions": {
+            "label": "Prescriptions",
+            "permissions": ["pharmacy.prescriptions.write"],
+        },
     },
     "hrms": {
-        "departments": {"label": "Departments", "permissions": ["hr.departments.write"]},
+        "departments": {
+            "label": "Departments",
+            "permissions": ["hr.departments.write"],
+        },
         "attendance": {"label": "Attendance", "permissions": ["hr.attendance.write"]},
         "payroll": {"label": "Payroll", "permissions": ["hr.payroll.write"]},
         "leaves": {"label": "Leave Requests", "permissions": ["hr.leaves.write"]},
     },
     "accounts": {
         "ledger": {"label": "Ledger", "permissions": ["accounts.ledger.write"]},
-        "vendor_payments": {"label": "Vendor Payments", "permissions": ["accounts.vendors.write"]},
-        "doctor_payouts": {"label": "Doctor Payouts", "permissions": ["accounts.doctors.write"]},
+        "vendor_payments": {
+            "label": "Vendor Payments",
+            "permissions": ["accounts.vendors.write"],
+        },
+        "doctor_payouts": {
+            "label": "Doctor Payouts",
+            "permissions": ["accounts.doctors.write"],
+        },
     },
     "symptom_ai": {
-        "documents": {"label": "Knowledge Vault Documents", "permissions": ["symptom_ai.documents.write"]},
+        "documents": {
+            "label": "Knowledge Vault Documents",
+            "permissions": ["symptom_ai.documents.write"],
+        },
     },
     "employees": {
-        "profile": {"label": "Edit Profile Fields", "permissions": ["employees.profile.write"]},
+        "profile": {
+            "label": "Edit Profile Fields",
+            "permissions": ["employees.profile.write"],
+        },
         # Deliberately separate from "profile": this is the permission that lets
         # someone change a colleague's user_type/access_role/module_access, i.e.
         # actually grant or revoke access -- see signup_employee/update_employee
         # for the server-side clamp that stops a holder of this from granting
         # more than they themselves have.
-        "access": {"label": "Manage Roles & Module Access", "permissions": ["employees.access.write"]},
+        "access": {
+            "label": "Manage Roles & Module Access",
+            "permissions": ["employees.access.write"],
+        },
     },
     "patient_experience": {
-        "feedback": {"label": "Respond to Feedback", "permissions": ["patient_experience.write"]},
+        "feedback": {
+            "label": "Respond to Feedback",
+            "permissions": ["patient_experience.write"],
+        },
     },
 }
 
@@ -139,7 +220,10 @@ _VALID_MODULE_ACCESS_KEYS = set(ASSIGNABLE_MODULES) | {
 # Admin always gets literally everything any module/sub-item can grant, plus
 # the two permissions with no module-level equivalent (derived, not
 # hand-listed, so it can never drift out of sync with MODULE_PERMISSION_MAP).
-ADMIN_PERMISSIONS = set().union(*MODULE_PERMISSION_MAP.values()) | {"audit.read", "admin.use"}
+ADMIN_PERMISSIONS = set().union(*MODULE_PERMISSION_MAP.values()) | {
+    "audit.read",
+    "admin.use",
+}
 
 
 def hash_password(password: str) -> str:
@@ -187,7 +271,9 @@ def create_admin_route_auth_token() -> str:
     nonce = secrets.token_urlsafe(18)
     expires_at = int(_now_utc().timestamp()) + ADMIN_ROUTE_AUTH_TTL_SECONDS
     payload = f"{nonce}:{expires_at}"
-    signature = hmac.new(ADMIN_ROUTE_AUTH_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    signature = hmac.new(
+        ADMIN_ROUTE_AUTH_SECRET.encode(), payload.encode(), hashlib.sha256
+    ).hexdigest()
     return f"{nonce}.{expires_at}.{signature}"
 
 
@@ -205,11 +291,17 @@ def verify_admin_route_auth_token(token: Optional[str]) -> bool:
     if int(_now_utc().timestamp()) >= expires_at:
         return False
     payload = f"{nonce}:{expires_at}"
-    expected_signature = hmac.new(ADMIN_ROUTE_AUTH_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    expected_signature = hmac.new(
+        ADMIN_ROUTE_AUTH_SECRET.encode(), payload.encode(), hashlib.sha256
+    ).hexdigest()
     return hmac.compare_digest(signature, expected_signature)
 
 
-def normalize_user_type(user_type: Optional[str], access_role: Optional[str] = None, legacy_role: Optional[str] = None) -> str:
+def normalize_user_type(
+    user_type: Optional[str],
+    access_role: Optional[str] = None,
+    legacy_role: Optional[str] = None,
+) -> str:
     normalized = (user_type or "").strip().lower()
     if normalized in USER_TYPES:
         return normalized
@@ -251,11 +343,16 @@ def _parse_modules(raw_modules) -> list[str]:
     return normalized
 
 
-def default_modules_for_legacy(access_role: Optional[str], legacy_role: Optional[str]) -> list[str]:
+def default_modules_for_legacy(
+    access_role: Optional[str], legacy_role: Optional[str]
+) -> list[str]:
     normalized_access_role = (access_role or "").strip().lower()
     normalized_legacy_role = (legacy_role or "").strip().lower()
 
-    if normalized_access_role in {"owner", "hr_manager"} or normalized_legacy_role == "employee":
+    if (
+        normalized_access_role in {"owner", "hr_manager"}
+        or normalized_legacy_role == "employee"
+    ):
         return list(ASSIGNABLE_MODULES)
     if normalized_access_role == "clinician":
         return ["dashboard", "patients", "lab", "pharmacy", "symptom_ai"]
@@ -268,7 +365,12 @@ def default_modules_for_legacy(access_role: Optional[str], legacy_role: Optional
     return list(DEFAULT_NORMAL_MODULES)
 
 
-def normalize_module_access(raw_modules, user_type: Optional[str] = None, access_role: Optional[str] = None, legacy_role: Optional[str] = None) -> list[str]:
+def normalize_module_access(
+    raw_modules,
+    user_type: Optional[str] = None,
+    access_role: Optional[str] = None,
+    legacy_role: Optional[str] = None,
+) -> list[str]:
     normalized_type = normalize_user_type(user_type, access_role, legacy_role)
     if normalized_type == "admin":
         return list(ASSIGNABLE_MODULES)
@@ -291,13 +393,20 @@ def modules_to_storage(modules: list[str]) -> str:
     return json.dumps(modules, separators=(",", ":"))
 
 
-def get_permissions(user_type: Optional[str], module_access=None, access_role: Optional[str] = None, legacy_role: Optional[str] = None) -> list[str]:
+def get_permissions(
+    user_type: Optional[str],
+    module_access=None,
+    access_role: Optional[str] = None,
+    legacy_role: Optional[str] = None,
+) -> list[str]:
     normalized_type = normalize_user_type(user_type, access_role, legacy_role)
     if normalized_type == "admin":
         return sorted(ADMIN_PERMISSIONS)
 
     permissions: set[str] = set()
-    for entry in normalize_module_access(module_access, normalized_type, access_role, legacy_role):
+    for entry in normalize_module_access(
+        module_access, normalized_type, access_role, legacy_role
+    ):
         if "." in entry:
             module_name, sub_key = entry.split(".", 1)
             sub = SUB_MODULES.get(module_name, {}).get(sub_key)
@@ -331,7 +440,9 @@ def module_access_tree(module_access: list[str]) -> dict[str, list[str]]:
 
 
 def resolve_user_profile(user_row) -> dict:
-    user_type = normalize_user_type(user_row.get("user_type"), user_row.get("access_role"), user_row.get("role"))
+    user_type = normalize_user_type(
+        user_row.get("user_type"), user_row.get("access_role"), user_row.get("role")
+    )
     module_access = normalize_module_access(
         user_row.get("module_access"),
         user_type,
@@ -346,7 +457,9 @@ def resolve_user_profile(user_row) -> dict:
         "job_role": user_row.get("job_role"),
         "user_type": user_type,
         "module_access": module_access,
-        "permissions": get_permissions(user_type, module_access, user_row.get("access_role"), user_row.get("role")),
+        "permissions": get_permissions(
+            user_type, module_access, user_row.get("access_role"), user_row.get("role")
+        ),
         "full_name": user_row.get("full_name"),
         "email": user_row.get("email"),
         "phone": user_row.get("phone"),
@@ -381,7 +494,9 @@ def _entry_is_within(entry: str, granter_permissions: set[str]) -> bool:
     return bool(perms) and perms.issubset(granter_permissions)
 
 
-def authorize_employee_access_change(requested_user_type, requested_module_access, granter_user: dict):
+def authorize_employee_access_change(
+    requested_user_type, requested_module_access, granter_user: dict
+):
     """Guard against privilege escalation via the employee-management "manage
     roles & module access" permission (employees.access.write). Without this,
     anyone holding that permission -- not just a full admin -- could set an
@@ -394,23 +509,35 @@ def authorize_employee_access_change(requested_user_type, requested_module_acces
     set user_type to "admin", and can never grant a module/sub-item whose
     permissions exceed what the granter's own account currently holds.
     """
-    granter_is_admin = normalize_user_type(
-        granter_user.get("user_type"), granter_user.get("access_role"), granter_user.get("role")
-    ) == "admin"
+    granter_is_admin = (
+        normalize_user_type(
+            granter_user.get("user_type"),
+            granter_user.get("access_role"),
+            granter_user.get("role"),
+        )
+        == "admin"
+    )
     if granter_is_admin:
         return True, None
 
-    if requested_user_type is not None and (requested_user_type or "").strip().lower() == "admin":
+    if (
+        requested_user_type is not None
+        and (requested_user_type or "").strip().lower() == "admin"
+    ):
         return False, "Only an existing admin can grant admin access."
 
     if requested_module_access is not None:
         granter_permissions = resolve_user_permissions(granter_user)
         disallowed = [
-            entry for entry in _parse_modules(requested_module_access)
+            entry
+            for entry in _parse_modules(requested_module_access)
             if not _entry_is_within(entry, granter_permissions)
         ]
         if disallowed:
-            return False, f"Cannot grant access you do not have yourself: {', '.join(disallowed)}"
+            return (
+                False,
+                f"Cannot grant access you do not have yourself: {', '.join(disallowed)}",
+            )
 
     return True, None
 
@@ -483,7 +610,13 @@ def create_default_users():
                 "role": "employee",
                 "access_role": "clinician",
                 "user_type": "normal",
-                "module_access": ["dashboard", "patients", "symptom_ai", "lab", "reports"],
+                "module_access": [
+                    "dashboard",
+                    "patients",
+                    "symptom_ai",
+                    "lab",
+                    "reports",
+                ],
                 "job_role": "Doctor",
                 "full_name": "Dr. Clinician",
                 "phone": "+1-234-567-8903",
@@ -555,7 +688,10 @@ def authenticate(username: str, password: str, hospital_id: Optional[int] = None
         except Exception as exc:
             # Backward compatibility for stale/legacy schemas or stale runtime modules.
             msg = str(exc).lower()
-            if "no such column: hospital_id" in msg or "incorrect number of bindings supplied" in msg:
+            if (
+                "no such column: hospital_id" in msg
+                or "incorrect number of bindings supplied" in msg
+            ):
                 cursor.execute(
                     """
                     SELECT id, password_hash, role, access_role, job_role, user_type, module_access, full_name, email, phone, employee_id, status
@@ -573,7 +709,9 @@ def authenticate(username: str, password: str, hospital_id: Optional[int] = None
             if user_map.get("status") == "inactive":
                 return {"error": "Account is inactive. Please contact administrator."}
             if user_map.get("hospital_status") not in (None, "active"):
-                return {"error": "Hospital account is disabled. Please contact administrator."}
+                return {
+                    "error": "Hospital account is disabled. Please contact administrator."
+                }
             profile = resolve_user_profile(
                 {
                     "username": username,
@@ -596,7 +734,9 @@ def authenticate(username: str, password: str, hospital_id: Optional[int] = None
     return None
 
 
-def signup_employee(data: dict, allow_admin_creation: bool = True, hospital_id: Optional[int] = None) -> dict:
+def signup_employee(
+    data: dict, allow_admin_creation: bool = True, hospital_id: Optional[int] = None
+) -> dict:
     """Register a new employee account."""
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     password_error = validate_password(data.get("password", ""))
@@ -605,13 +745,18 @@ def signup_employee(data: dict, allow_admin_creation: bool = True, hospital_id: 
 
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM users WHERE username = ? AND hospital_id = ?", (data["username"], scoped_hospital_id))
+        cursor.execute(
+            "SELECT id FROM users WHERE username = ? AND hospital_id = ?",
+            (data["username"], scoped_hospital_id),
+        )
         if cursor.fetchone():
             return {"success": False, "message": "Username already exists"}
 
     employee_id = generate_employee_id(hospital_id=scoped_hospital_id)
     is_first = check_if_first_user(hospital_id=scoped_hospital_id)
-    requested_user_type = normalize_user_type(data.get("user_type"), data.get("access_role"), data.get("role"))
+    requested_user_type = normalize_user_type(
+        data.get("user_type"), data.get("access_role"), data.get("role")
+    )
     user_type = requested_user_type if allow_admin_creation else "normal"
     module_access = normalize_module_access(
         data.get("module_access"),
@@ -657,7 +802,10 @@ def signup_hospital_admin(data: dict, hospital_id: Optional[int] = None) -> dict
     """Create the first admin user for a hospital (one-time bootstrap)."""
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     if not check_if_first_user(hospital_id=scoped_hospital_id):
-        return {"success": False, "message": "Admin already configured for this hospital."}
+        return {
+            "success": False,
+            "message": "Admin already configured for this hospital.",
+        }
 
     password_error = validate_password(data.get("password", ""))
     if password_error:
@@ -669,7 +817,10 @@ def signup_hospital_admin(data: dict, hospital_id: Optional[int] = None) -> dict
 
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM users WHERE username = ? AND hospital_id = ?", (username, scoped_hospital_id))
+        cursor.execute(
+            "SELECT id FROM users WHERE username = ? AND hospital_id = ?",
+            (username, scoped_hospital_id),
+        )
         if cursor.fetchone():
             return {"success": False, "message": "Username already exists"}
 
@@ -703,7 +854,9 @@ def signup_hospital_admin(data: dict, hospital_id: Optional[int] = None) -> dict
         return {"success": False, "message": f"Admin setup failed: {exc}"}
 
 
-def reset_hospital_admin_password(hospital_id: int, username: str, new_password: str) -> dict:
+def reset_hospital_admin_password(
+    hospital_id: int, username: str, new_password: str
+) -> dict:
     password_error = validate_password(new_password)
     if password_error:
         return {"success": False, "message": password_error}
@@ -726,13 +879,19 @@ def reset_hospital_admin_password(hospital_id: int, username: str, new_password:
         if not user:
             return {"success": False, "message": "Admin account not found."}
         if user["access_role"] != "owner":
-            return {"success": False, "message": "Target account is not a hospital admin."}
+            return {
+                "success": False,
+                "message": "Target account is not a hospital admin.",
+            }
 
         cursor.execute(
             "UPDATE users SET password_hash = ?, status = 'active', password_changed_at = CURRENT_TIMESTAMP WHERE id = ?",
             (hash_password(new_password), user["id"]),
         )
-        cursor.execute("DELETE FROM sessions WHERE user_id = ? AND hospital_id = ?", (user["id"], hospital_id))
+        cursor.execute(
+            "DELETE FROM sessions WHERE user_id = ? AND hospital_id = ?",
+            (user["id"], hospital_id),
+        )
         conn.commit()
         return {"success": True, "message": "Admin password reset successfully."}
 
@@ -741,7 +900,10 @@ def check_username_exists(username: str, hospital_id: Optional[int] = None) -> b
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM users WHERE username = ? AND hospital_id = ?", (username, scoped_hospital_id))
+        cursor.execute(
+            "SELECT id FROM users WHERE username = ? AND hospital_id = ?",
+            (username, scoped_hospital_id),
+        )
         return cursor.fetchone() is not None
 
 
@@ -753,7 +915,12 @@ def purge_expired_sessions():
         conn.commit()
 
 
-def create_session(user_id: int, hospital_id: int, ip_address: Optional[str] = None, user_agent: Optional[str] = None):
+def create_session(
+    user_id: int,
+    hospital_id: int,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
+):
     purge_expired_sessions()
     expires_at = _now_utc() + timedelta(hours=SESSION_TTL_HOURS)
     expires_at_str = _format_ts(expires_at)
@@ -769,7 +936,14 @@ def create_session(user_id: int, hospital_id: int, ip_address: Optional[str] = N
                     INSERT INTO sessions (user_id, hospital_id, token_hash, expires_at, ip_address, user_agent)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                    (user_id, hospital_id, token_hash, expires_at_str, ip_address, user_agent),
+                    (
+                        user_id,
+                        hospital_id,
+                        token_hash,
+                        expires_at_str,
+                        ip_address,
+                        user_agent,
+                    ),
                 )
                 conn.commit()
                 return token, expires_at
@@ -829,7 +1003,9 @@ def get_session_user(token: Optional[str]):
             session_created_at = _parse_ts(row["session_created_at"])
             password_changed_at = _parse_ts(row["password_changed_at"])
             if session_created_at < password_changed_at:
-                cursor.execute("DELETE FROM sessions WHERE id = ?", (row["session_id"],))
+                cursor.execute(
+                    "DELETE FROM sessions WHERE id = ?", (row["session_id"],)
+                )
                 conn.commit()
                 return None
 
@@ -886,25 +1062,37 @@ def delete_session(token: Optional[str]):
         cursor.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
         conn.commit()
 
+
 def get_user_sessions(user_id: int) -> list[dict]:
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, created_at, last_seen, ip_address, user_agent FROM sessions WHERE user_id = ?", (user_id,))
+        cursor.execute(
+            "SELECT id, created_at, last_seen, ip_address, user_agent FROM sessions WHERE user_id = ?",
+            (user_id,),
+        )
         cols = [d[0] for d in cursor.description]
         return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
 
 def delete_specific_session(session_id: int, user_id: int):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM sessions WHERE id = ? AND user_id = ?", (session_id, user_id))
+        cursor.execute(
+            "DELETE FROM sessions WHERE id = ? AND user_id = ?", (session_id, user_id)
+        )
         conn.commit()
+
 
 def delete_other_sessions(user_id: int, current_token: str):
     token_hash = _hash_session_token(current_token)
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?", (user_id, token_hash))
+        cursor.execute(
+            "DELETE FROM sessions WHERE user_id = ? AND token_hash != ?",
+            (user_id, token_hash),
+        )
         conn.commit()
+
 
 def delete_all_user_sessions(user_id: int):
     with get_connection() as conn:

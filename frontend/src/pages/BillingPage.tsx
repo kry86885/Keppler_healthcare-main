@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
 import StatCard from "../components/StatCard";
-import { Button, Input, Label, Select, Table, TableCell, TableHead, TableRow } from "../components/ui";
+import {
+  Button,
+  Input,
+  Label,
+  Select,
+  Table,
+  TableCell,
+  TableHead,
+  TableRow,
+} from "../components/ui";
 import { apiFetch, reportError } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { openRazorpayCheckout } from "../lib/razorpay";
@@ -166,7 +175,10 @@ const DEFAULT_CLAIM_FORM: ClaimForm = {
   external_ref: "",
 };
 
-const BILLING_VIEW_CONFIG: Record<BillingView, { title: string; subtitle: string }> = {
+const BILLING_VIEW_CONFIG: Record<
+  BillingView,
+  { title: string; subtitle: string }
+> = {
   aging: {
     title: "Receivable Aging",
     subtitle: "Track due balances across aging buckets.",
@@ -210,38 +222,70 @@ const BILLING_VIEW_CONFIG: Record<BillingView, { title: string; subtitle: string
 };
 
 function formatCurrency(amount?: number) {
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount || 0);
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount || 0);
 }
 
-export default function BillingPage({ setNotice, view = "record-payment" }: Props) {
+export default function BillingPage({
+  setNotice,
+  view = "record-payment",
+}: Props) {
   const [summary, setSummary] = useState<BillingSummary>(EMPTY_SUMMARY);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [claims, setClaims] = useState<InsuranceClaim[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [invoiceForm, setInvoiceForm] = useState<InvoiceForm>(DEFAULT_INVOICE_FORM);
-  const [paymentForm, setPaymentForm] = useState<PaymentForm>(DEFAULT_PAYMENT_FORM);
+  const [invoiceForm, setInvoiceForm] =
+    useState<InvoiceForm>(DEFAULT_INVOICE_FORM);
+  const [paymentForm, setPaymentForm] =
+    useState<PaymentForm>(DEFAULT_PAYMENT_FORM);
   const [claimForm, setClaimForm] = useState<ClaimForm>(DEFAULT_CLAIM_FORM);
-  const [filters, setFilters] = useState<BillingFilters>(DEFAULT_BILLING_FILTERS);
+  const [filters, setFilters] = useState<BillingFilters>(
+    DEFAULT_BILLING_FILTERS,
+  );
   const [savingInvoice, setSavingInvoice] = useState(false);
   const [savingPayment, setSavingPayment] = useState(false);
   const [savingClaim, setSavingClaim] = useState(false);
   const [isRazorpayReady, setIsRazorpayReady] = useState(true);
-  const maxBreakdownValue = Math.max(1, ...summary.payment_mode_breakdown.map((row) => row.count || 0));
-  const maxModuleCollectionValue = Math.max(1, ...summary.collections_by_module.map((row) => row.count || 0));
-  const needsInvoices = view === "create-invoice" || view === "record-payment" || view === "insurance-claims" || view === "invoices" || view === "consolidated-bill";
+  const maxBreakdownValue = Math.max(
+    1,
+    ...summary.payment_mode_breakdown.map((row) => row.count || 0),
+  );
+  const maxModuleCollectionValue = Math.max(
+    1,
+    ...summary.collections_by_module.map((row) => row.count || 0),
+  );
+  const needsInvoices =
+    view === "create-invoice" ||
+    view === "record-payment" ||
+    view === "insurance-claims" ||
+    view === "invoices" ||
+    view === "consolidated-bill";
   const needsClaims = view === "insurance-claims";
 
   const [walletSearchId, setWalletSearchId] = useState("");
   const [walletData, setWalletData] = useState<PatientWallet | null>(null);
   const [refundsList, setRefundsList] = useState<Refund[]>([]);
   const [walletForm, setWalletForm] = useState({ amount: "", reason: "" });
-  const [refundForm, setRefundForm] = useState({ invoice_id: "", amount: "", reason: "" });
-  const [masterPaymentForm, setMasterPaymentForm] = useState({ patient_id: "", amount: "", payment_mode: "cash", use_wallet: false });
+  const [refundForm, setRefundForm] = useState({
+    invoice_id: "",
+    amount: "",
+    reason: "",
+  });
+  const [masterPaymentForm, setMasterPaymentForm] = useState({
+    patient_id: "",
+    amount: "",
+    payment_mode: "cash",
+    use_wallet: false,
+  });
 
   const buildInvoicePath = (nextFilters: BillingFilters) => {
     const params = new URLSearchParams();
-    if (nextFilters.patient_id.trim()) params.set("patient_id", nextFilters.patient_id.trim());
+    if (nextFilters.patient_id.trim())
+      params.set("patient_id", nextFilters.patient_id.trim());
     if (nextFilters.module) params.set("module", nextFilters.module);
     const query = params.toString();
     return query ? `/api/billing/invoices?${query}` : "/api/billing/invoices";
@@ -251,7 +295,9 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
     setLoading(true);
     setErrorMessage(null);
     try {
-      const summaryRequest = apiFetch<BillingSummary>("/api/billing/revenue-summary");
+      const summaryRequest = apiFetch<BillingSummary>(
+        "/api/billing/revenue-summary",
+      );
       const invoiceRequest = needsInvoices
         ? apiFetch<{ invoices?: Invoice[] }>(buildInvoicePath(nextFilters))
         : Promise.resolve({ invoices: [] as Invoice[] });
@@ -259,7 +305,11 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
         ? apiFetch<{ claims?: InsuranceClaim[] }>("/api/billing/claims")
         : Promise.resolve({ claims: [] as InsuranceClaim[] });
 
-      const [summaryData, invoiceData, claimsData] = await Promise.all([summaryRequest, invoiceRequest, claimsRequest]);
+      const [summaryData, invoiceData, claimsData] = await Promise.all([
+        summaryRequest,
+        invoiceRequest,
+        claimsRequest,
+      ]);
       const fetchedInvoices = invoiceData.invoices || [];
       const fetchedClaims = claimsData.claims || [];
       setInvoices(fetchedInvoices);
@@ -270,12 +320,21 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
         payment_mode_breakdown: summaryData.payment_mode_breakdown || [],
         collections_by_module: summaryData.collections_by_module || [],
         conversion_breakdown: summaryData.conversion_breakdown || [],
-        aging_buckets: { ...EMPTY_SUMMARY.aging_buckets, ...(summaryData.aging_buckets || {}) },
-        reconciliation_summary: { ...EMPTY_SUMMARY.reconciliation_summary, ...(summaryData.reconciliation_summary || {}) },
+        aging_buckets: {
+          ...EMPTY_SUMMARY.aging_buckets,
+          ...(summaryData.aging_buckets || {}),
+        },
+        reconciliation_summary: {
+          ...EMPTY_SUMMARY.reconciliation_summary,
+          ...(summaryData.reconciliation_summary || {}),
+        },
       });
       setPaymentForm((current) => {
         if (current.invoice_id) return current;
-        return { ...current, invoice_id: fetchedInvoices[0] ? String(fetchedInvoices[0].id) : "" };
+        return {
+          ...current,
+          invoice_id: fetchedInvoices[0] ? String(fetchedInvoices[0].id) : "",
+        };
       });
       setClaimForm((current) => {
         if (current.invoice_id) return current;
@@ -306,11 +365,16 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
 
   const ensureRazorpayConfigured = async () => {
     try {
-      const config = await apiFetch<{ configured?: boolean }>("/api/payments/razorpay/config");
+      const config = await apiFetch<{ configured?: boolean }>(
+        "/api/payments/razorpay/config",
+      );
       const configured = config.configured !== false;
       setIsRazorpayReady(configured);
       if (!configured) {
-        setNotice({ type: "error", message: "Razorpay is not configured. Add keys in backend .env." });
+        setNotice({
+          type: "error",
+          message: "Razorpay is not configured. Add keys in backend .env.",
+        });
         return false;
       }
       return true;
@@ -321,7 +385,9 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
 
   const visibleInvoices = useMemo(() => {
     if (!filters.status) return invoices;
-    return invoices.filter((invoice) => (invoice.payment_status || "due") === filters.status);
+    return invoices.filter(
+      (invoice) => (invoice.payment_status || "due") === filters.status,
+    );
   }, [invoices, filters.status]);
 
   const handleFilterSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -341,14 +407,19 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
     const advanceAmount = Number(invoiceForm.advance_amount) || 0;
     const refundedAmount = Number(invoiceForm.refunded_amount) || 0;
     if (totalAmount <= 0) {
-      setNotice({ type: "error", message: "Invoice total amount must be greater than zero." });
+      setNotice({
+        type: "error",
+        message: "Invoice total amount must be greater than zero.",
+      });
       return;
     }
 
     setSavingInvoice(true);
     try {
       const editingInvoiceId = Number(invoiceForm.id);
-      const path = editingInvoiceId ? `/api/billing/invoices/${editingInvoiceId}` : "/api/billing/invoices";
+      const path = editingInvoiceId
+        ? `/api/billing/invoices/${editingInvoiceId}`
+        : "/api/billing/invoices";
       await apiFetch(path, {
         method: editingInvoiceId ? "PUT" : "POST",
         body: JSON.stringify({
@@ -360,7 +431,8 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
           advance_amount: advanceAmount,
           refunded_amount: refundedAmount,
           payment_status:
-            Math.max(paidAmount + advanceAmount - refundedAmount, 0) >= totalAmount
+            Math.max(paidAmount + advanceAmount - refundedAmount, 0) >=
+            totalAmount
               ? "paid"
               : paidAmount > 0 || advanceAmount > 0
                 ? "partial"
@@ -368,10 +440,19 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
         }),
       });
       setInvoiceForm({ ...DEFAULT_INVOICE_FORM });
-      setNotice({ type: "success", message: editingInvoiceId ? "Invoice updated successfully." : "Invoice created successfully." });
+      setNotice({
+        type: "success",
+        message: editingInvoiceId
+          ? "Invoice updated successfully."
+          : "Invoice created successfully.",
+      });
       await loadBilling(filters);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to create invoice.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to create invoice.",
+      );
     } finally {
       setSavingInvoice(false);
     }
@@ -391,13 +472,20 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
   };
 
   const handleDeleteInvoice = async (invoice: Invoice) => {
-    if (!window.confirm(`Delete ${invoice.invoice_no || `INV-${invoice.id}`}?`)) return;
+    if (!window.confirm(`Delete ${invoice.invoice_no || `INV-${invoice.id}`}?`))
+      return;
     try {
-      await apiFetch(`/api/billing/invoices/${invoice.id}`, { method: "DELETE" });
+      await apiFetch(`/api/billing/invoices/${invoice.id}`, {
+        method: "DELETE",
+      });
       setNotice({ type: "success", message: "Invoice deleted." });
       await loadBilling(filters);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to delete invoice.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to delete invoice.",
+      );
     }
   };
 
@@ -410,7 +498,10 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
       return;
     }
     if (amount <= 0) {
-      setNotice({ type: "error", message: "Payment amount must be greater than zero." });
+      setNotice({
+        type: "error",
+        message: "Payment amount must be greater than zero.",
+      });
       return;
     }
 
@@ -426,26 +517,40 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
           converted_to_mode: paymentForm.converted_to_mode || undefined,
         }),
       });
-      setPaymentForm((current) => ({ ...DEFAULT_PAYMENT_FORM, invoice_id: current.invoice_id }));
+      setPaymentForm((current) => ({
+        ...DEFAULT_PAYMENT_FORM,
+        invoice_id: current.invoice_id,
+      }));
       setNotice({ type: "success", message: "Payment recorded successfully." });
       await loadBilling(filters);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to record payment.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to record payment.",
+      );
     } finally {
       setSavingPayment(false);
     }
   };
 
-
   const loadWalletAndRefunds = async (patientId: string) => {
     if (!patientId.trim()) return;
     try {
-      const wData = await apiFetch<{ wallet: import("../types").PatientWallet }>(`/api/billing/wallet/${patientId}`);
+      const wData = await apiFetch<{
+        wallet: import("../types").PatientWallet;
+      }>(`/api/billing/wallet/${patientId}`);
       setWalletData(wData.wallet);
-      const rData = await apiFetch<{ refunds: import("../types").Refund[] }>(`/api/billing/refunds`);
+      const rData = await apiFetch<{ refunds: import("../types").Refund[] }>(
+        `/api/billing/refunds`,
+      );
       setRefundsList(rData.refunds || []);
     } catch (e) {
-      reportError(setNotice, e as { message?: string }, "Failed to load wallet data.");
+      reportError(
+        setNotice,
+        e as { message?: string },
+        "Failed to load wallet data.",
+      );
     }
   };
 
@@ -458,13 +563,21 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
     try {
       await apiFetch("/api/billing/wallet", {
         method: "POST",
-        body: JSON.stringify({ patient_id: walletSearchId, amount: Number(walletForm.amount), reason: walletForm.reason })
+        body: JSON.stringify({
+          patient_id: walletSearchId,
+          amount: Number(walletForm.amount),
+          reason: walletForm.reason,
+        }),
       });
       setNotice({ type: "success", message: "Wallet updated" });
       setWalletForm({ amount: "", reason: "" });
       void loadWalletAndRefunds(walletSearchId);
     } catch (e) {
-      reportError(setNotice, e as { message?: string }, "Failed to add to wallet.");
+      reportError(
+        setNotice,
+        e as { message?: string },
+        "Failed to add to wallet.",
+      );
     }
   };
 
@@ -477,25 +590,43 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
     try {
       await apiFetch("/api/billing/refunds", {
         method: "POST",
-        body: JSON.stringify({ invoice_id: Number(refundForm.invoice_id), amount: Number(refundForm.amount), reason: refundForm.reason })
+        body: JSON.stringify({
+          invoice_id: Number(refundForm.invoice_id),
+          amount: Number(refundForm.amount),
+          reason: refundForm.reason,
+        }),
       });
       setNotice({ type: "success", message: "Refund created" });
       setRefundForm({ invoice_id: "", amount: "", reason: "" });
       void loadWalletAndRefunds(walletSearchId);
     } catch (e) {
-      reportError(setNotice, e as { message?: string }, "Failed to create refund.");
+      reportError(
+        setNotice,
+        e as { message?: string },
+        "Failed to create refund.",
+      );
     }
   };
 
   const handleMasterPayment = async (e: FormEvent) => {
     e.preventDefault();
-    const patientInvoices = invoices.filter(inv => inv.patient_id === masterPaymentForm.patient_id && (inv.due_amount || 0) > 0);
+    const patientInvoices = invoices.filter(
+      (inv) =>
+        inv.patient_id === masterPaymentForm.patient_id &&
+        (inv.due_amount || 0) > 0,
+    );
     if (patientInvoices.length === 0) {
-      setNotice({ type: "error", message: "No pending invoices found for this patient" });
+      setNotice({
+        type: "error",
+        message: "No pending invoices found for this patient",
+      });
       return;
     }
-    
-    const allocations = patientInvoices.map(inv => ({ invoice_id: inv.id, amount: inv.due_amount }));
+
+    const allocations = patientInvoices.map((inv) => ({
+      invoice_id: inv.id,
+      amount: inv.due_amount,
+    }));
     try {
       await apiFetch("/api/billing/master-payment", {
         method: "POST",
@@ -504,14 +635,23 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
           total_amount: Number(masterPaymentForm.amount),
           payment_mode: masterPaymentForm.payment_mode,
           use_wallet: masterPaymentForm.use_wallet,
-          allocations
-        })
+          allocations,
+        }),
       });
       setNotice({ type: "success", message: "Master payment applied" });
-      setMasterPaymentForm({ patient_id: "", amount: "", payment_mode: "cash", use_wallet: false });
+      setMasterPaymentForm({
+        patient_id: "",
+        amount: "",
+        payment_mode: "cash",
+        use_wallet: false,
+      });
       void loadBilling();
     } catch (err) {
-      reportError(setNotice, err as { message?: string }, "Master payment failed.");
+      reportError(
+        setNotice,
+        err as { message?: string },
+        "Master payment failed.",
+      );
     }
   };
 
@@ -526,7 +666,10 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
       return;
     }
     if (amount <= 0) {
-      setNotice({ type: "error", message: "Payment amount must be greater than zero." });
+      setNotice({
+        type: "error",
+        message: "Payment amount must be greater than zero.",
+      });
       return;
     }
 
@@ -582,11 +725,21 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
         }),
       });
 
-      setPaymentForm((current) => ({ ...DEFAULT_PAYMENT_FORM, invoice_id: current.invoice_id }));
-      setNotice({ type: "success", message: "Razorpay payment recorded successfully." });
+      setPaymentForm((current) => ({
+        ...DEFAULT_PAYMENT_FORM,
+        invoice_id: current.invoice_id,
+      }));
+      setNotice({
+        type: "success",
+        message: "Razorpay payment recorded successfully.",
+      });
       await loadBilling(filters);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to complete Razorpay payment.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to complete Razorpay payment.",
+      );
     } finally {
       setSavingPayment(false);
     }
@@ -597,14 +750,19 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
     const invoiceId = Number(claimForm.invoice_id);
     const claimAmount = Number(claimForm.claim_amount) || 0;
     if (!invoiceId || !claimForm.insurer_name.trim() || claimAmount <= 0) {
-      setNotice({ type: "error", message: "Invoice, insurer, and claim amount are required." });
+      setNotice({
+        type: "error",
+        message: "Invoice, insurer, and claim amount are required.",
+      });
       return;
     }
 
     setSavingClaim(true);
     try {
       const claimId = Number(claimForm.id);
-      const path = claimId ? `/api/billing/claims/${claimId}` : "/api/billing/claims";
+      const path = claimId
+        ? `/api/billing/claims/${claimId}`
+        : "/api/billing/claims";
       await apiFetch(path, {
         method: claimId ? "PUT" : "POST",
         body: JSON.stringify({
@@ -622,10 +780,19 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
         invoice_id: current.invoice_id,
         patient_id: current.patient_id,
       }));
-      setNotice({ type: "success", message: claimId ? "Insurance claim updated." : "Insurance claim created." });
+      setNotice({
+        type: "success",
+        message: claimId
+          ? "Insurance claim updated."
+          : "Insurance claim created.",
+      });
       await loadBilling(filters);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to save insurance claim.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to save insurance claim.",
+      );
     } finally {
       setSavingClaim(false);
     }
@@ -651,7 +818,11 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
       setNotice({ type: "success", message: "Insurance claim deleted." });
       await loadBilling(filters);
     } catch (error) {
-      reportError(setNotice, error as { message?: string; status?: number }, "Unable to delete insurance claim.");
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to delete insurance claim.",
+      );
     }
   };
 
@@ -665,23 +836,49 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
           <div className="bar-chart">
             <div className="bar-row">
               <span>0-30 days</span>
-              <div className="bar"><div style={{ width: `${Math.max(8, (summary.aging_buckets.bucket_0_30 / Math.max(summary.total_due, 1)) * 100)}%` }} /></div>
+              <div className="bar">
+                <div
+                  style={{
+                    width: `${Math.max(8, (summary.aging_buckets.bucket_0_30 / Math.max(summary.total_due, 1)) * 100)}%`,
+                  }}
+                />
+              </div>
               <span>{formatCurrency(summary.aging_buckets.bucket_0_30)}</span>
             </div>
             <div className="bar-row">
               <span>31-60 days</span>
-              <div className="bar"><div style={{ width: `${Math.max(8, (summary.aging_buckets.bucket_31_60 / Math.max(summary.total_due, 1)) * 100)}%` }} /></div>
+              <div className="bar">
+                <div
+                  style={{
+                    width: `${Math.max(8, (summary.aging_buckets.bucket_31_60 / Math.max(summary.total_due, 1)) * 100)}%`,
+                  }}
+                />
+              </div>
               <span>{formatCurrency(summary.aging_buckets.bucket_31_60)}</span>
             </div>
             <div className="bar-row">
               <span>61-90 days</span>
-              <div className="bar"><div style={{ width: `${Math.max(8, (summary.aging_buckets.bucket_61_90 / Math.max(summary.total_due, 1)) * 100)}%` }} /></div>
+              <div className="bar">
+                <div
+                  style={{
+                    width: `${Math.max(8, (summary.aging_buckets.bucket_61_90 / Math.max(summary.total_due, 1)) * 100)}%`,
+                  }}
+                />
+              </div>
               <span>{formatCurrency(summary.aging_buckets.bucket_61_90)}</span>
             </div>
             <div className="bar-row">
               <span>91+ days</span>
-              <div className="bar"><div style={{ width: `${Math.max(8, (summary.aging_buckets.bucket_91_plus / Math.max(summary.total_due, 1)) * 100)}%` }} /></div>
-              <span>{formatCurrency(summary.aging_buckets.bucket_91_plus)}</span>
+              <div className="bar">
+                <div
+                  style={{
+                    width: `${Math.max(8, (summary.aging_buckets.bucket_91_plus / Math.max(summary.total_due, 1)) * 100)}%`,
+                  }}
+                />
+              </div>
+              <span>
+                {formatCurrency(summary.aging_buckets.bucket_91_plus)}
+              </span>
             </div>
           </div>
         </div>
@@ -697,11 +894,17 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
           <div className="care-note-list">
             <div className="care-note-card">
               <strong>Gateway Collected</strong>
-              <p>{formatCurrency(summary.reconciliation_summary.gateway_collected)}</p>
+              <p>
+                {formatCurrency(
+                  summary.reconciliation_summary.gateway_collected,
+                )}
+              </p>
             </div>
             <div className="care-note-card">
               <strong>Converted Payments</strong>
-              <p>{formatCurrency(summary.reconciliation_summary.converted_total)}</p>
+              <p>
+                {formatCurrency(summary.reconciliation_summary.converted_total)}
+              </p>
             </div>
           </div>
           {summary.conversion_breakdown.length === 0 ? (
@@ -711,7 +914,13 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
               {summary.conversion_breakdown.map((row) => (
                 <div className="bar-row" key={row.label}>
                   <span>{row.label}</span>
-                  <div className="bar"><div style={{ width: `${Math.max(8, (row.count / Math.max(summary.reconciliation_summary.converted_total, 1)) * 100)}%` }} /></div>
+                  <div className="bar">
+                    <div
+                      style={{
+                        width: `${Math.max(8, (row.count / Math.max(summary.reconciliation_summary.converted_total, 1)) * 100)}%`,
+                      }}
+                    />
+                  </div>
                   <span>{formatCurrency(row.count)}</span>
                 </div>
               ))}
@@ -727,12 +936,20 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
           <div className="module-panel-head">
             <h3>Create Invoice</h3>
           </div>
-          <form className="module-form-grid module-sales-grid" onSubmit={handleCreateInvoice}>
+          <form
+            className="module-form-grid module-sales-grid"
+            onSubmit={handleCreateInvoice}
+          >
             <Label>
               Patient ID (optional)
               <Input
                 value={invoiceForm.patient_id}
-                onChange={(event) => setInvoiceForm((current) => ({ ...current, patient_id: event.target.value }))}
+                onChange={(event) =>
+                  setInvoiceForm((current) => ({
+                    ...current,
+                    patient_id: event.target.value,
+                  }))
+                }
                 placeholder="Patient ID"
                 aria-label="Billing patient id"
               />
@@ -741,7 +958,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
               Billing Module
               <Select
                 value={invoiceForm.module}
-                onChange={(event) => setInvoiceForm((current) => ({ ...current, module: event.target.value }))}
+                onChange={(event) =>
+                  setInvoiceForm((current) => ({
+                    ...current,
+                    module: event.target.value,
+                  }))
+                }
                 aria-label="Billing module"
               >
                 <option value="OP">OP</option>
@@ -756,7 +978,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
                 type="number"
                 min={0}
                 value={invoiceForm.total_amount}
-                onChange={(event) => setInvoiceForm((current) => ({ ...current, total_amount: event.target.value }))}
+                onChange={(event) =>
+                  setInvoiceForm((current) => ({
+                    ...current,
+                    total_amount: event.target.value,
+                  }))
+                }
                 placeholder="Total amount"
                 aria-label="Billing total amount"
               />
@@ -767,7 +994,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
                 type="number"
                 min={0}
                 value={invoiceForm.paid_amount}
-                onChange={(event) => setInvoiceForm((current) => ({ ...current, paid_amount: event.target.value }))}
+                onChange={(event) =>
+                  setInvoiceForm((current) => ({
+                    ...current,
+                    paid_amount: event.target.value,
+                  }))
+                }
                 placeholder="Initial paid amount"
                 aria-label="Billing paid amount"
               />
@@ -778,7 +1010,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
                 type="number"
                 min={0}
                 value={invoiceForm.advance_amount}
-                onChange={(event) => setInvoiceForm((current) => ({ ...current, advance_amount: event.target.value }))}
+                onChange={(event) =>
+                  setInvoiceForm((current) => ({
+                    ...current,
+                    advance_amount: event.target.value,
+                  }))
+                }
                 placeholder="Advance amount"
                 aria-label="Billing advance amount"
               />
@@ -789,7 +1026,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
                 type="number"
                 min={0}
                 value={invoiceForm.refunded_amount}
-                onChange={(event) => setInvoiceForm((current) => ({ ...current, refunded_amount: event.target.value }))}
+                onChange={(event) =>
+                  setInvoiceForm((current) => ({
+                    ...current,
+                    refunded_amount: event.target.value,
+                  }))
+                }
                 placeholder="Refund amount"
                 aria-label="Billing refund amount"
               />
@@ -798,14 +1040,25 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
               Doctor Name
               <Input
                 value={invoiceForm.doctor_name}
-                onChange={(event) => setInvoiceForm((current) => ({ ...current, doctor_name: event.target.value }))}
+                onChange={(event) =>
+                  setInvoiceForm((current) => ({
+                    ...current,
+                    doctor_name: event.target.value,
+                  }))
+                }
                 placeholder="Doctor name"
                 aria-label="Billing doctor name"
               />
             </Label>
-            <Button type="submit" disabled={savingInvoice}>{savingInvoice ? "Saving..." : "Create Invoice"}</Button>
+            <Button type="submit" disabled={savingInvoice}>
+              {savingInvoice ? "Saving..." : "Create Invoice"}
+            </Button>
             {invoiceForm.id ? (
-              <Button type="button" variant="ghost" onClick={() => setInvoiceForm({ ...DEFAULT_INVOICE_FORM })}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setInvoiceForm({ ...DEFAULT_INVOICE_FORM })}
+              >
                 Cancel Edit
               </Button>
             ) : null}
@@ -820,18 +1073,30 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
           <div className="module-panel-head">
             <h3>Record Payment</h3>
           </div>
-          <form className="module-form-grid module-sales-grid" onSubmit={handleRecordPayment}>
+          <form
+            className="module-form-grid module-sales-grid"
+            onSubmit={handleRecordPayment}
+          >
             <Label>
               Invoice
               <Select
                 value={paymentForm.invoice_id}
-                onChange={(event) => setPaymentForm((current) => ({ ...current, invoice_id: event.target.value }))}
+                onChange={(event) =>
+                  setPaymentForm((current) => ({
+                    ...current,
+                    invoice_id: event.target.value,
+                  }))
+                }
                 aria-label="Billing payment invoice"
               >
                 <option value="">Select invoice</option>
                 {invoices.map((invoice) => (
-                  <option key={`payment-invoice-${invoice.id}`} value={invoice.id}>
-                    {(invoice.invoice_no || `INV-${invoice.id}`) + ` (${formatCurrency(invoice.due_amount)})`}
+                  <option
+                    key={`payment-invoice-${invoice.id}`}
+                    value={invoice.id}
+                  >
+                    {(invoice.invoice_no || `INV-${invoice.id}`) +
+                      ` (${formatCurrency(invoice.due_amount)})`}
                   </option>
                 ))}
               </Select>
@@ -842,7 +1107,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
                 type="number"
                 min={0}
                 value={paymentForm.amount}
-                onChange={(event) => setPaymentForm((current) => ({ ...current, amount: event.target.value }))}
+                onChange={(event) =>
+                  setPaymentForm((current) => ({
+                    ...current,
+                    amount: event.target.value,
+                  }))
+                }
                 placeholder="Payment amount"
                 aria-label="Billing payment amount"
               />
@@ -851,7 +1121,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
               Payment Mode
               <Select
                 value={paymentForm.payment_mode}
-                onChange={(event) => setPaymentForm((current) => ({ ...current, payment_mode: event.target.value }))}
+                onChange={(event) =>
+                  setPaymentForm((current) => ({
+                    ...current,
+                    payment_mode: event.target.value,
+                  }))
+                }
                 aria-label="Billing payment mode"
               >
                 <option value="cash">Cash</option>
@@ -864,7 +1139,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
               Gateway Reference
               <Input
                 value={paymentForm.gateway_ref}
-                onChange={(event) => setPaymentForm((current) => ({ ...current, gateway_ref: event.target.value }))}
+                onChange={(event) =>
+                  setPaymentForm((current) => ({
+                    ...current,
+                    gateway_ref: event.target.value,
+                  }))
+                }
                 placeholder="Gateway reference"
                 aria-label="Billing gateway reference"
               />
@@ -873,7 +1153,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
               Converted From Mode
               <Select
                 value={paymentForm.converted_from_mode}
-                onChange={(event) => setPaymentForm((current) => ({ ...current, converted_from_mode: event.target.value }))}
+                onChange={(event) =>
+                  setPaymentForm((current) => ({
+                    ...current,
+                    converted_from_mode: event.target.value,
+                  }))
+                }
                 aria-label="Billing converted from mode"
               >
                 <option value="">No conversion</option>
@@ -887,7 +1172,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
               Converted To Mode
               <Select
                 value={paymentForm.converted_to_mode}
-                onChange={(event) => setPaymentForm((current) => ({ ...current, converted_to_mode: event.target.value }))}
+                onChange={(event) =>
+                  setPaymentForm((current) => ({
+                    ...current,
+                    converted_to_mode: event.target.value,
+                  }))
+                }
                 aria-label="Billing converted to mode"
                 disabled={!paymentForm.converted_from_mode}
               >
@@ -898,13 +1188,33 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
                 <option value="bank">Bank Transfer</option>
               </Select>
             </Label>
-            <Button type="submit" disabled={savingPayment || invoices.length === 0}>{savingPayment ? "Saving..." : "Record Payment"}</Button>
-            <Button type="button" variant="secondary" disabled={savingPayment || invoices.length === 0 || !isRazorpayReady} onClick={() => void handleRazorpayBillingPayment()}>
+            <Button
+              type="submit"
+              disabled={savingPayment || invoices.length === 0}
+            >
+              {savingPayment ? "Saving..." : "Record Payment"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={
+                savingPayment || invoices.length === 0 || !isRazorpayReady
+              }
+              onClick={() => void handleRazorpayBillingPayment()}
+            >
               {savingPayment ? "Processing..." : "Pay via Razorpay"}
             </Button>
           </form>
-          {invoices.length === 0 ? <p className="muted">Create an invoice first before recording payment.</p> : null}
-          {!isRazorpayReady ? <p className="muted">Razorpay payments are disabled until backend keys are configured.</p> : null}
+          {invoices.length === 0 ? (
+            <p className="muted">
+              Create an invoice first before recording payment.
+            </p>
+          ) : null}
+          {!isRazorpayReady ? (
+            <p className="muted">
+              Razorpay payments are disabled until backend keys are configured.
+            </p>
+          ) : null}
         </div>
       );
     }
@@ -915,14 +1225,19 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
           <div className="module-panel-head">
             <h3>Insurance Claims</h3>
           </div>
-          <form className="module-form-grid module-sales-grid" onSubmit={handleClaimSubmit}>
+          <form
+            className="module-form-grid module-sales-grid"
+            onSubmit={handleClaimSubmit}
+          >
             <Label>
               Invoice
               <Select
                 value={claimForm.invoice_id}
                 onChange={(event) => {
                   const nextInvoiceId = event.target.value;
-                  const linked = invoices.find((invoice) => String(invoice.id) === nextInvoiceId);
+                  const linked = invoices.find(
+                    (invoice) => String(invoice.id) === nextInvoiceId,
+                  );
                   setClaimForm((current) => ({
                     ...current,
                     invoice_id: nextInvoiceId,
@@ -933,7 +1248,10 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
               >
                 <option value="">Select invoice</option>
                 {invoices.map((invoice) => (
-                  <option key={`claim-invoice-${invoice.id}`} value={invoice.id}>
+                  <option
+                    key={`claim-invoice-${invoice.id}`}
+                    value={invoice.id}
+                  >
                     {invoice.invoice_no || `INV-${invoice.id}`}
                   </option>
                 ))}
@@ -943,7 +1261,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
               Insurer
               <Input
                 value={claimForm.insurer_name}
-                onChange={(event) => setClaimForm((current) => ({ ...current, insurer_name: event.target.value }))}
+                onChange={(event) =>
+                  setClaimForm((current) => ({
+                    ...current,
+                    insurer_name: event.target.value,
+                  }))
+                }
                 placeholder="Insurer"
                 aria-label="Billing insurer"
               />
@@ -954,7 +1277,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
                 type="number"
                 min={0}
                 value={claimForm.claim_amount}
-                onChange={(event) => setClaimForm((current) => ({ ...current, claim_amount: event.target.value }))}
+                onChange={(event) =>
+                  setClaimForm((current) => ({
+                    ...current,
+                    claim_amount: event.target.value,
+                  }))
+                }
                 placeholder="Claim amount"
                 aria-label="Billing claim amount"
               />
@@ -965,7 +1293,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
                 type="number"
                 min={0}
                 value={claimForm.approved_amount}
-                onChange={(event) => setClaimForm((current) => ({ ...current, approved_amount: event.target.value }))}
+                onChange={(event) =>
+                  setClaimForm((current) => ({
+                    ...current,
+                    approved_amount: event.target.value,
+                  }))
+                }
                 placeholder="Approved amount"
                 aria-label="Billing approved amount"
               />
@@ -974,7 +1307,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
               Claim Status
               <Select
                 value={claimForm.claim_status}
-                onChange={(event) => setClaimForm((current) => ({ ...current, claim_status: event.target.value }))}
+                onChange={(event) =>
+                  setClaimForm((current) => ({
+                    ...current,
+                    claim_status: event.target.value,
+                  }))
+                }
                 aria-label="Billing claim status"
               >
                 <option value="submitted">Submitted</option>
@@ -988,16 +1326,32 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
               Claim Reference
               <Input
                 value={claimForm.external_ref}
-                onChange={(event) => setClaimForm((current) => ({ ...current, external_ref: event.target.value }))}
+                onChange={(event) =>
+                  setClaimForm((current) => ({
+                    ...current,
+                    external_ref: event.target.value,
+                  }))
+                }
                 placeholder="Claim reference"
                 aria-label="Billing claim reference"
               />
             </Label>
-            <Button type="submit" disabled={savingClaim || invoices.length === 0}>
-              {savingClaim ? "Saving..." : claimForm.id ? "Update Claim" : "Create Claim"}
+            <Button
+              type="submit"
+              disabled={savingClaim || invoices.length === 0}
+            >
+              {savingClaim
+                ? "Saving..."
+                : claimForm.id
+                  ? "Update Claim"
+                  : "Create Claim"}
             </Button>
             {claimForm.id ? (
-              <Button type="button" variant="ghost" onClick={() => setClaimForm({ ...DEFAULT_CLAIM_FORM })}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setClaimForm({ ...DEFAULT_CLAIM_FORM })}
+              >
                 Cancel Edit
               </Button>
             ) : null}
@@ -1007,7 +1361,11 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
             <p className="muted">No insurance claims recorded yet.</p>
           ) : (
             <>
-              <Table className="module-table" role="table" aria-label="Billing insurance claims table">
+              <Table
+                className="module-table"
+                role="table"
+                aria-label="Billing insurance claims table"
+              >
                 <TableHead>
                   <TableCell>Invoice</TableCell>
                   <TableCell>Insurer</TableCell>
@@ -1018,15 +1376,34 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
                 </TableHead>
                 {claims.slice(0, 10).map((claim) => (
                   <TableRow key={claim.id}>
-                    <TableCell>{invoices.find((invoice) => invoice.id === claim.invoice_id)?.invoice_no || `INV-${claim.invoice_id}`}</TableCell>
+                    <TableCell>
+                      {invoices.find(
+                        (invoice) => invoice.id === claim.invoice_id,
+                      )?.invoice_no || `INV-${claim.invoice_id}`}
+                    </TableCell>
                     <TableCell>{claim.insurer_name}</TableCell>
                     <TableCell>{formatCurrency(claim.claim_amount)}</TableCell>
-                    <TableCell>{formatCurrency(claim.approved_amount)}</TableCell>
+                    <TableCell>
+                      {formatCurrency(claim.approved_amount)}
+                    </TableCell>
                     <TableCell>{claim.claim_status || "-"}</TableCell>
                     <TableCell>
                       <div className="module-inline-actions">
-                        <Button type="button" size="sm" onClick={() => handleEditClaim(claim)}>Edit</Button>
-                        <Button type="button" size="sm" variant="destructive" onClick={() => void handleDeleteClaim(claim)}>Delete</Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => handleEditClaim(claim)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => void handleDeleteClaim(claim)}
+                        >
+                          Delete
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -1045,12 +1422,20 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
             <h3>Invoices</h3>
           </div>
 
-          <form className="module-form-grid module-filter-grid" onSubmit={handleFilterSubmit}>
+          <form
+            className="module-form-grid module-filter-grid"
+            onSubmit={handleFilterSubmit}
+          >
             <Label>
               Filter by Patient ID
               <Input
                 value={filters.patient_id}
-                onChange={(event) => setFilters((current) => ({ ...current, patient_id: event.target.value }))}
+                onChange={(event) =>
+                  setFilters((current) => ({
+                    ...current,
+                    patient_id: event.target.value,
+                  }))
+                }
                 placeholder="Patient ID"
                 aria-label="Billing filter patient"
               />
@@ -1059,7 +1444,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
               Module
               <Select
                 value={filters.module}
-                onChange={(event) => setFilters((current) => ({ ...current, module: event.target.value }))}
+                onChange={(event) =>
+                  setFilters((current) => ({
+                    ...current,
+                    module: event.target.value,
+                  }))
+                }
                 aria-label="Billing filter module"
               >
                 <option value="">All Modules</option>
@@ -1073,7 +1463,12 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
               Payment Status
               <Select
                 value={filters.status}
-                onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
+                onChange={(event) =>
+                  setFilters((current) => ({
+                    ...current,
+                    status: event.target.value,
+                  }))
+                }
                 aria-label="Billing filter status"
               >
                 <option value="">All Statuses</option>
@@ -1084,17 +1479,29 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
             </Label>
             <div className="module-inline-actions">
               <Button type="submit">Apply</Button>
-              <Button type="button" variant="ghost" onClick={() => void clearFilters()}>Clear</Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => void clearFilters()}
+              >
+                Clear
+              </Button>
             </div>
           </form>
 
           {loading ? <p className="muted">Loading billing records...</p> : null}
           {errorMessage ? <p className="notice error">{errorMessage}</p> : null}
-          {!loading && !errorMessage && visibleInvoices.length === 0 ? <p className="muted">No invoices available for this filter.</p> : null}
+          {!loading && !errorMessage && visibleInvoices.length === 0 ? (
+            <p className="muted">No invoices available for this filter.</p>
+          ) : null}
 
           {!loading && !errorMessage && visibleInvoices.length > 0 ? (
             <>
-              <Table className="module-table module-table-billing" role="table" aria-label="Billing invoices table">
+              <Table
+                className="module-table module-table-billing"
+                role="table"
+                aria-label="Billing invoices table"
+              >
                 <TableHead>
                   <TableCell>Invoice</TableCell>
                   <TableCell>Patient</TableCell>
@@ -1108,40 +1515,100 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
                 </TableHead>
                 {visibleInvoices.slice(0, 12).map((invoice) => (
                   <TableRow key={invoice.id}>
-                    <TableCell>{invoice.invoice_no || `INV-${invoice.id}`}</TableCell>
+                    <TableCell>
+                      {invoice.invoice_no || `INV-${invoice.id}`}
+                    </TableCell>
                     <TableCell>{invoice.patient_id || "-"}</TableCell>
                     <TableCell>{invoice.module || "-"}</TableCell>
-                    <TableCell>{formatCurrency(invoice.total_amount)}</TableCell>
-                    <TableCell>{formatCurrency(invoice.advance_amount)}</TableCell>
-                    <TableCell>{formatCurrency(invoice.refunded_amount)}</TableCell>
+                    <TableCell>
+                      {formatCurrency(invoice.total_amount)}
+                    </TableCell>
+                    <TableCell>
+                      {formatCurrency(invoice.advance_amount)}
+                    </TableCell>
+                    <TableCell>
+                      {formatCurrency(invoice.refunded_amount)}
+                    </TableCell>
                     <TableCell>{formatCurrency(invoice.due_amount)}</TableCell>
                     <TableCell>{invoice.payment_status || "-"}</TableCell>
                     <TableCell>
                       <div className="module-inline-actions">
-                        <Button type="button" size="sm" onClick={() => handleEditInvoice(invoice)}>Edit</Button>
-                        <Button type="button" size="sm" variant="destructive" onClick={() => void handleDeleteInvoice(invoice)}>Delete</Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => handleEditInvoice(invoice)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => void handleDeleteInvoice(invoice)}
+                        >
+                          Delete
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
                 ))}
               </Table>
 
-              <div className="module-mobile-list" aria-label="Billing invoices cards">
+              <div
+                className="module-mobile-list"
+                aria-label="Billing invoices cards"
+              >
                 {visibleInvoices.slice(0, 12).map((invoice) => (
-                  <article className="module-mobile-card" key={`mobile-${invoice.id}`}>
+                  <article
+                    className="module-mobile-card"
+                    key={`mobile-${invoice.id}`}
+                  >
                     <h4>{invoice.invoice_no || `INV-${invoice.id}`}</h4>
-                    <p><strong>Patient:</strong> {invoice.patient_id || "-"}</p>
-                    <p><strong>Module:</strong> {invoice.module || "-"}</p>
-                    <p><strong>Total:</strong> {formatCurrency(invoice.total_amount)}</p>
-                    <p><strong>Advance:</strong> {formatCurrency(invoice.advance_amount)}</p>
-                    <p><strong>Refund:</strong> {formatCurrency(invoice.refunded_amount)}</p>
-                    <p><strong>Due:</strong> {formatCurrency(invoice.due_amount)}</p>
-                    <p><strong>Status:</strong> {invoice.payment_status || "-"}</p>
+                    <p>
+                      <strong>Patient:</strong> {invoice.patient_id || "-"}
+                    </p>
+                    <p>
+                      <strong>Module:</strong> {invoice.module || "-"}
+                    </p>
+                    <p>
+                      <strong>Total:</strong>{" "}
+                      {formatCurrency(invoice.total_amount)}
+                    </p>
+                    <p>
+                      <strong>Advance:</strong>{" "}
+                      {formatCurrency(invoice.advance_amount)}
+                    </p>
+                    <p>
+                      <strong>Refund:</strong>{" "}
+                      {formatCurrency(invoice.refunded_amount)}
+                    </p>
+                    <p>
+                      <strong>Due:</strong> {formatCurrency(invoice.due_amount)}
+                    </p>
+                    <p>
+                      <strong>Status:</strong> {invoice.payment_status || "-"}
+                    </p>
                     <div className="module-card-actions">
-                      <Button type="button" size="sm" onClick={() => handleEditInvoice(invoice)}>Edit</Button>
-                      <Button type="button" size="sm" variant="destructive" onClick={() => void handleDeleteInvoice(invoice)}>Delete</Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleEditInvoice(invoice)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => void handleDeleteInvoice(invoice)}
+                      >
+                        Delete
+                      </Button>
                     </div>
-                    <p className="muted"><strong>Created:</strong> {formatDateTime(invoice.created_at)}</p>
+                    <p className="muted">
+                      <strong>Created:</strong>{" "}
+                      {formatDateTime(invoice.created_at)}
+                    </p>
                   </article>
                 ))}
               </div>
@@ -1152,44 +1619,96 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
     }
 
     if (view === "consolidated-bill") {
-      const patientInvoices = invoices.filter(inv => inv.patient_id === masterPaymentForm.patient_id && (inv.due_amount || 0) > 0);
+      const patientInvoices = invoices.filter(
+        (inv) =>
+          inv.patient_id === masterPaymentForm.patient_id &&
+          (inv.due_amount || 0) > 0,
+      );
       return (
         <div className="panel">
           <div className="module-panel-head">
             <h3>Consolidated Bill & Payment</h3>
           </div>
-          <form className="module-filters" onSubmit={(e) => { e.preventDefault(); }}>
+          <form
+            className="module-filters"
+            onSubmit={(e) => {
+              e.preventDefault();
+            }}
+          >
             <Label title="Patient ID">
-              <Input type="text" placeholder="Patient ID" value={masterPaymentForm.patient_id} onChange={(e) => setMasterPaymentForm({ ...masterPaymentForm, patient_id: e.target.value })} required />
+              <Input
+                type="text"
+                placeholder="Patient ID"
+                value={masterPaymentForm.patient_id}
+                onChange={(e) =>
+                  setMasterPaymentForm({
+                    ...masterPaymentForm,
+                    patient_id: e.target.value,
+                  })
+                }
+                required
+              />
             </Label>
           </form>
           {masterPaymentForm.patient_id && (
             <>
               {patientInvoices.length > 0 ? (
                 <>
-                  <Table className="module-table" role="table" aria-label="Pending Invoices">
+                  <Table
+                    className="module-table"
+                    role="table"
+                    aria-label="Pending Invoices"
+                  >
                     <TableHead>
                       <TableCell>Invoice</TableCell>
                       <TableCell>Module</TableCell>
                       <TableCell>Total</TableCell>
                       <TableCell>Due</TableCell>
                     </TableHead>
-                    {patientInvoices.map(inv => (
+                    {patientInvoices.map((inv) => (
                       <TableRow key={inv.id}>
-                        <TableCell>{inv.invoice_no || `INV-${inv.id}`}</TableCell>
+                        <TableCell>
+                          {inv.invoice_no || `INV-${inv.id}`}
+                        </TableCell>
                         <TableCell>{inv.module || "-"}</TableCell>
-                        <TableCell>{formatCurrency(inv.total_amount)}</TableCell>
+                        <TableCell>
+                          {formatCurrency(inv.total_amount)}
+                        </TableCell>
                         <TableCell>{formatCurrency(inv.due_amount)}</TableCell>
                       </TableRow>
                     ))}
                   </Table>
-                  <form className="module-form" onSubmit={handleMasterPayment} style={{ marginTop: '1rem' }}>
+                  <form
+                    className="module-form"
+                    onSubmit={handleMasterPayment}
+                    style={{ marginTop: "1rem" }}
+                  >
                     <div className="form-grid">
                       <Label title="Master Payment Amount">
-                        <Input type="number" step="0.01" min="0.01" value={masterPaymentForm.amount} onChange={e => setMasterPaymentForm({...masterPaymentForm, amount: e.target.value})} required />
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={masterPaymentForm.amount}
+                          onChange={(e) =>
+                            setMasterPaymentForm({
+                              ...masterPaymentForm,
+                              amount: e.target.value,
+                            })
+                          }
+                          required
+                        />
                       </Label>
                       <Label title="Payment Mode">
-                        <Select value={masterPaymentForm.payment_mode} onChange={e => setMasterPaymentForm({...masterPaymentForm, payment_mode: e.target.value})}>
+                        <Select
+                          value={masterPaymentForm.payment_mode}
+                          onChange={(e) =>
+                            setMasterPaymentForm({
+                              ...masterPaymentForm,
+                              payment_mode: e.target.value,
+                            })
+                          }
+                        >
                           <option value="cash">Cash</option>
                           <option value="card">Card</option>
                           <option value="upi">UPI</option>
@@ -1197,14 +1716,26 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
                         </Select>
                       </Label>
                       <Label title="Deduct from Wallet?">
-                        <input type="checkbox" checked={masterPaymentForm.use_wallet} onChange={e => setMasterPaymentForm({...masterPaymentForm, use_wallet: e.target.checked})} style={{ marginLeft: "0.5rem" }} />
+                        <input
+                          type="checkbox"
+                          checked={masterPaymentForm.use_wallet}
+                          onChange={(e) =>
+                            setMasterPaymentForm({
+                              ...masterPaymentForm,
+                              use_wallet: e.target.checked,
+                            })
+                          }
+                          style={{ marginLeft: "0.5rem" }}
+                        />
                       </Label>
                     </div>
                     <Button type="submit">Apply Master Payment</Button>
                   </form>
                 </>
               ) : (
-                <p className="muted" style={{ marginTop: "1rem" }}>No pending invoices for this patient.</p>
+                <p className="muted" style={{ marginTop: "1rem" }}>
+                  No pending invoices for this patient.
+                </p>
               )}
             </>
           )}
@@ -1218,28 +1749,67 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
           <div className="module-panel-head">
             <h3>Patient Wallet & Refunds</h3>
           </div>
-          <form className="module-filters" onSubmit={(e) => { e.preventDefault(); void loadWalletAndRefunds(walletSearchId); }}>
+          <form
+            className="module-filters"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void loadWalletAndRefunds(walletSearchId);
+            }}
+          >
             <Label title="Patient ID">
-              <Input type="text" placeholder="Patient ID" value={walletSearchId} onChange={(e) => setWalletSearchId(e.target.value)} required />
+              <Input
+                type="text"
+                placeholder="Patient ID"
+                value={walletSearchId}
+                onChange={(e) => setWalletSearchId(e.target.value)}
+                required
+              />
             </Label>
             <Button type="submit">Search</Button>
           </form>
 
           {walletData && (
-            <div className="stat-grid module-stat-grid" style={{ marginTop: '1rem' }}>
-              <StatCard label="Current Wallet Balance" value={formatCurrency(walletData.balance)} />
+            <div
+              className="stat-grid module-stat-grid"
+              style={{ marginTop: "1rem" }}
+            >
+              <StatCard
+                label="Current Wallet Balance"
+                value={formatCurrency(walletData.balance)}
+              />
             </div>
           )}
 
           {walletData && (
-            <form className="module-form" onSubmit={handleAddWallet} style={{ marginTop: '1rem' }}>
+            <form
+              className="module-form"
+              onSubmit={handleAddWallet}
+              style={{ marginTop: "1rem" }}
+            >
               <h4>Add Funds to Wallet</h4>
               <div className="form-grid">
                 <Label title="Amount">
-                  <Input type="number" step="0.01" min="0.01" value={walletForm.amount} onChange={e => setWalletForm({...walletForm, amount: e.target.value})} required />
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={walletForm.amount}
+                    onChange={(e) =>
+                      setWalletForm({ ...walletForm, amount: e.target.value })
+                    }
+                    required
+                  />
                 </Label>
                 <Label title="Reason">
-                  <Input type="text" placeholder="e.g. Advance deposit" value={walletForm.reason} onChange={e => setWalletForm({...walletForm, reason: e.target.value})} required />
+                  <Input
+                    type="text"
+                    placeholder="e.g. Advance deposit"
+                    value={walletForm.reason}
+                    onChange={(e) =>
+                      setWalletForm({ ...walletForm, reason: e.target.value })
+                    }
+                    required
+                  />
                 </Label>
               </div>
               <Button type="submit">Add Funds</Button>
@@ -1252,25 +1822,58 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
             <h4>Issue Refund against Invoice</h4>
             <div className="form-grid">
               <Label title="Invoice ID">
-                <Input type="number" value={refundForm.invoice_id} onChange={e => setRefundForm({...refundForm, invoice_id: e.target.value})} required />
+                <Input
+                  type="number"
+                  value={refundForm.invoice_id}
+                  onChange={(e) =>
+                    setRefundForm({ ...refundForm, invoice_id: e.target.value })
+                  }
+                  required
+                />
               </Label>
               <Label title="Refund Amount">
-                <Input type="number" step="0.01" min="0.01" value={refundForm.amount} onChange={e => setRefundForm({...refundForm, amount: e.target.value})} required />
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={refundForm.amount}
+                  onChange={(e) =>
+                    setRefundForm({ ...refundForm, amount: e.target.value })
+                  }
+                  required
+                />
               </Label>
               <Label title="Reason">
-                <Input type="text" placeholder="Refund reason" value={refundForm.reason} onChange={e => setRefundForm({...refundForm, reason: e.target.value})} required />
+                <Input
+                  type="text"
+                  placeholder="Refund reason"
+                  value={refundForm.reason}
+                  onChange={(e) =>
+                    setRefundForm({ ...refundForm, reason: e.target.value })
+                  }
+                  required
+                />
               </Label>
             </div>
-            <Button type="submit" variant="destructive">Issue Refund</Button>
+            <Button type="submit" variant="destructive">
+              Issue Refund
+            </Button>
           </form>
 
           <hr style={{ margin: "2rem 0" }} />
 
           <h4>Recent Refunds</h4>
           {refundsList.length === 0 ? (
-            <p className="muted" style={{ marginTop: "1rem" }}>No recent refunds found.</p>
+            <p className="muted" style={{ marginTop: "1rem" }}>
+              No recent refunds found.
+            </p>
           ) : (
-            <Table className="module-table" role="table" aria-label="Refunds List" style={{ marginTop: "1rem" }}>
+            <Table
+              className="module-table"
+              role="table"
+              aria-label="Refunds List"
+              style={{ marginTop: "1rem" }}
+            >
               <TableHead>
                 <TableCell>Invoice</TableCell>
                 <TableCell>Amount</TableCell>
@@ -1278,7 +1881,7 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
                 <TableCell>Status</TableCell>
                 <TableCell>Date</TableCell>
               </TableHead>
-              {refundsList.map(ref => (
+              {refundsList.map((ref) => (
                 <TableRow key={ref.id}>
                   <TableCell>{ref.invoice_id}</TableCell>
                   <TableCell>{formatCurrency(ref.amount)}</TableCell>
@@ -1306,7 +1909,13 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
               {summary.payment_mode_breakdown.map((row) => (
                 <div className="bar-row" key={row.label}>
                   <span>{row.label}</span>
-                  <div className="bar"><div style={{ width: `${Math.max(8, (row.count / maxBreakdownValue) * 100)}%` }} /></div>
+                  <div className="bar">
+                    <div
+                      style={{
+                        width: `${Math.max(8, (row.count / maxBreakdownValue) * 100)}%`,
+                      }}
+                    />
+                  </div>
                   <span>{formatCurrency(row.count)}</span>
                 </div>
               ))}
@@ -1328,7 +1937,13 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
             {summary.collections_by_module.map((row) => (
               <div className="bar-row" key={row.label}>
                 <span>{row.label}</span>
-                <div className="bar"><div style={{ width: `${Math.max(8, (row.count / maxModuleCollectionValue) * 100)}%` }} /></div>
+                <div className="bar">
+                  <div
+                    style={{
+                      width: `${Math.max(8, (row.count / maxModuleCollectionValue) * 100)}%`,
+                    }}
+                  />
+                </div>
                 <span>{formatCurrency(row.count)}</span>
               </div>
             ))}
@@ -1350,11 +1965,26 @@ export default function BillingPage({ setNotice, view = "record-payment" }: Prop
       </div>
 
       <div className="stat-grid module-stat-grid">
-        <StatCard label="Total Billed" value={formatCurrency(summary.total_billed)} />
-        <StatCard label="Collected" value={formatCurrency(summary.total_collected)} />
-        <StatCard label="Pending Due" value={formatCurrency(summary.total_due)} />
-        <StatCard label="Advances" value={formatCurrency(summary.total_advance)} />
-        <StatCard label="Refunds" value={formatCurrency(summary.total_refunded)} />
+        <StatCard
+          label="Total Billed"
+          value={formatCurrency(summary.total_billed)}
+        />
+        <StatCard
+          label="Collected"
+          value={formatCurrency(summary.total_collected)}
+        />
+        <StatCard
+          label="Pending Due"
+          value={formatCurrency(summary.total_due)}
+        />
+        <StatCard
+          label="Advances"
+          value={formatCurrency(summary.total_advance)}
+        />
+        <StatCard
+          label="Refunds"
+          value={formatCurrency(summary.total_refunded)}
+        />
       </div>
 
       {viewContent}

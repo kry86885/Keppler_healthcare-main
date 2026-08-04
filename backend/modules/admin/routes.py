@@ -9,7 +9,7 @@ from core.auth import (
     reset_hospital_admin_password,
     ADMIN_ROUTE_AUTH_TTL_SECONDS,
     signup_employee,
-    ASSIGNABLE_MODULES
+    ASSIGNABLE_MODULES,
 )
 from utils.database import (
     list_hospitals,
@@ -18,18 +18,19 @@ from utils.database import (
     get_all_employees,
     get_employee,
     update_employee,
-    get_hospital_by_code
+    get_hospital_by_code,
 )
 from app import (
-    require_platform_admin, 
-    require_admin_route_auth, 
-    request_hospital_id, 
-    validate_hospital_code, 
-    row_to_dict, 
-    rows_to_dicts
+    require_platform_admin,
+    require_admin_route_auth,
+    request_hospital_id,
+    validate_hospital_code,
+    row_to_dict,
+    rows_to_dicts,
 )
 
-admin_bp = Blueprint('admin', __name__)
+admin_bp = Blueprint("admin", __name__)
+
 
 @admin_bp.get("/api/platform/hospitals")
 def platform_hospitals_list():
@@ -38,7 +39,6 @@ def platform_hospitals_list():
         return admin_gate
     hospitals = list_hospitals()
     return jsonify({"hospitals": rows_to_dicts(hospitals)})
-
 
 
 @admin_bp.post("/api/platform/hospitals")
@@ -52,14 +52,16 @@ def platform_hospitals_create():
     hospital_id, created = create_hospital(hospital_code, hospital_name)
     hospital = get_hospital_by_code(hospital_code)
     status = 201 if created else 200
-    return jsonify(
-        {
-            "created": created,
-            "hospital_id": hospital_id,
-            "hospital": row_to_dict(hospital),
-        }
-    ), status
-
+    return (
+        jsonify(
+            {
+                "created": created,
+                "hospital_id": hospital_id,
+                "hospital": row_to_dict(hospital),
+            }
+        ),
+        status,
+    )
 
 
 @admin_bp.post("/api/platform/hospitals/<hospital_code>/disable")
@@ -77,7 +79,6 @@ def platform_hospital_disable(hospital_code):
     )
 
 
-
 @admin_bp.post("/api/platform/hospitals/<hospital_code>/enable")
 def platform_hospital_enable(hospital_code):
     admin_gate = require_platform_admin()
@@ -90,7 +91,6 @@ def platform_hospital_enable(hospital_code):
     return jsonify(
         {"success": True, "hospital": row_to_dict(get_hospital_by_code(code))}
     )
-
 
 
 @admin_bp.post("/api/platform/hospitals/<hospital_code>/admin/reset-password")
@@ -112,7 +112,6 @@ def platform_admin_reset_password(hospital_code):
     return jsonify(result), status
 
 
-
 @admin_bp.get("/api/admin/auth/session")
 def admin_route_auth_session():
     token = request.cookies.get(ADMIN_ROUTE_AUTH_COOKIE_NAME)
@@ -122,13 +121,13 @@ def admin_route_auth_session():
     )
 
 
-
 @admin_bp.post("/api/admin/auth/login")
 def admin_route_auth_login():
     if not is_admin_route_auth_configured():
-        return jsonify(
-            {"error": "ADMIN_ROUTE_PASSWORD is not configured on the server."}
-        ), 503
+        return (
+            jsonify({"error": "ADMIN_ROUTE_PASSWORD is not configured on the server."}),
+            503,
+        )
 
     payload = request.get_json(force=True)
     password = payload.get("password", "")
@@ -150,13 +149,11 @@ def admin_route_auth_login():
     return response
 
 
-
 @admin_bp.post("/api/admin/auth/logout")
 def admin_route_auth_logout():
     response = jsonify({"success": True})
     response.delete_cookie(ADMIN_ROUTE_AUTH_COOKIE_NAME, path="/")
     return response
-
 
 
 @admin_bp.post("/api/admin/create-account")
@@ -176,17 +173,17 @@ def admin_create_account():
             "symptom_ai",
         ],
     }
-    result = signup_employee(forced_payload, allow_admin_creation=True, hospital_id=request_hospital_id())
+    result = signup_employee(
+        forced_payload, allow_admin_creation=True, hospital_id=request_hospital_id()
+    )
     status = 201 if result.get("success") else 400
     return jsonify(result), status
-
 
 
 @admin_bp.get("/api/admin/users")
 @require_admin_route_auth
 def admin_users_list():
     return jsonify({"users": rows_to_dicts(get_all_employees())})
-
 
 
 @admin_bp.post("/api/admin/users")
@@ -206,10 +203,11 @@ def admin_users_create():
         "user_type": user_type,
         "module_access": module_access,
     }
-    result = signup_employee(created_payload, allow_admin_creation=True, hospital_id=request_hospital_id())
+    result = signup_employee(
+        created_payload, allow_admin_creation=True, hospital_id=request_hospital_id()
+    )
     status = 201 if result.get("success") else 400
     return jsonify(result), status
-
 
 
 @admin_bp.post("/api/admin/users/<employee_id>/promote")
@@ -231,5 +229,3 @@ def admin_promote_user(employee_id):
         return jsonify({"error": "Employee not found"}), 404
 
     return jsonify({"success": True, "employee_id": employee_id, "user_type": "admin"})
-
-

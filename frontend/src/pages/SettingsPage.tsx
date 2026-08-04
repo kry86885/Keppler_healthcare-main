@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { Button, Input, Table, TableCell, TableHead, TableRow } from "../components/ui";
+import {
+  Button,
+  Input,
+  Table,
+  TableCell,
+  TableHead,
+  TableRow,
+} from "../components/ui";
 import { apiFetch } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import type { AuditLog, Stats, User } from "../types";
@@ -15,9 +22,14 @@ export default function SettingsPage({ stats, user, canReadAudit }: Props) {
   const [auditModule, setAuditModule] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  
-  const [templates, setTemplates] = useState<{template_key: string, content: string}[]>([]);
-  const [editingTemplate, setEditingTemplate] = useState<{template_key: string, content: string} | null>(null);
+
+  const [templates, setTemplates] = useState<
+    { template_key: string; content: string }[]
+  >([]);
+  const [editingTemplate, setEditingTemplate] = useState<{
+    template_key: string;
+    content: string;
+  } | null>(null);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateNotice, setTemplateNotice] = useState("");
 
@@ -28,7 +40,9 @@ export default function SettingsPage({ stats, user, canReadAudit }: Props) {
     try {
       const params = new URLSearchParams({ limit: "50" });
       if (moduleName.trim()) params.set("module", moduleName.trim());
-      const data = await apiFetch<{ logs?: AuditLog[] }>(`/api/audit/logs?${params.toString()}`);
+      const data = await apiFetch<{ logs?: AuditLog[] }>(
+        `/api/audit/logs?${params.toString()}`,
+      );
       setLogs(data.logs || []);
     } catch (loadError) {
       const typedError = loadError as { message?: string; status?: number };
@@ -47,7 +61,9 @@ export default function SettingsPage({ stats, user, canReadAudit }: Props) {
 
   const loadTemplates = async () => {
     try {
-      const data = await apiFetch<{templates: any[]}>("/api/whatsapp/templates");
+      const data = await apiFetch<{ templates: any[] }>(
+        "/api/whatsapp/templates",
+      );
       setTemplates(data.templates || []);
     } catch (err) {
       console.error("Failed to load templates", err);
@@ -61,7 +77,7 @@ export default function SettingsPage({ stats, user, canReadAudit }: Props) {
     try {
       await apiFetch("/api/whatsapp/templates", {
         method: "PUT",
-        body: JSON.stringify(editingTemplate)
+        body: JSON.stringify(editingTemplate),
       });
       setTemplateNotice("Template saved.");
       setEditingTemplate(null);
@@ -90,11 +106,15 @@ export default function SettingsPage({ stats, user, canReadAudit }: Props) {
         <div className="module-panel-head">
           <div>
             <h3>Audit Trail</h3>
-            <p className="muted">Recent system actions, filtered by module when needed.</p>
+            <p className="muted">
+              Recent system actions, filtered by module when needed.
+            </p>
           </div>
         </div>
         {!canReadAudit ? (
-          <p className="muted">Audit log access is restricted to admins with audit permission.</p>
+          <p className="muted">
+            Audit log access is restricted to admins with audit permission.
+          </p>
         ) : (
           <>
             <div className="patient-toolbar">
@@ -103,7 +123,10 @@ export default function SettingsPage({ stats, user, canReadAudit }: Props) {
                 onChange={(event) => setAuditModule(event.target.value)}
                 placeholder="Filter by module name (e.g. billing_invoices)"
               />
-              <Button type="button" onClick={() => void loadAuditLogs(auditModule)}>
+              <Button
+                type="button"
+                onClick={() => void loadAuditLogs(auditModule)}
+              >
                 Apply
               </Button>
               <Button
@@ -116,10 +139,14 @@ export default function SettingsPage({ stats, user, canReadAudit }: Props) {
               >
                 Clear
               </Button>
-              <span className="muted">{loading ? "Loading..." : `${logs.length} rows`}</span>
+              <span className="muted">
+                {loading ? "Loading..." : `${logs.length} rows`}
+              </span>
             </div>
             {error ? <p className="notice error">{error}</p> : null}
-            {!loading && !error && logs.length === 0 ? <p className="muted">No audit log entries available.</p> : null}
+            {!loading && !error && logs.length === 0 ? (
+              <p className="muted">No audit log entries available.</p>
+            ) : null}
             {!loading && !error && logs.length > 0 ? (
               <>
                 <Table className="module-table" aria-label="Audit logs table">
@@ -142,15 +169,32 @@ export default function SettingsPage({ stats, user, canReadAudit }: Props) {
                     </TableRow>
                   ))}
                 </Table>
-                <div className="module-mobile-list" style={{ display: "grid" }} aria-label="Audit log cards">
+                <div
+                  className="module-mobile-list"
+                  style={{ display: "grid" }}
+                  aria-label="Audit log cards"
+                >
                   {logs.map((log) => (
-                    <article className="module-mobile-card" key={`audit-${log.id}`}>
+                    <article
+                      className="module-mobile-card"
+                      key={`audit-${log.id}`}
+                    >
                       <h4>{log.module_name || "Audit Event"}</h4>
-                      <p><strong>When:</strong> {formatDateTime(log.created_at)}</p>
-                      <p><strong>Actor:</strong> {log.actor_username || "-"}</p>
-                      <p><strong>Action:</strong> {log.action || "-"}</p>
-                      <p><strong>Record:</strong> {log.entity_key || "-"}</p>
-                      <p><strong>Details:</strong> {log.payload || "-"}</p>
+                      <p>
+                        <strong>When:</strong> {formatDateTime(log.created_at)}
+                      </p>
+                      <p>
+                        <strong>Actor:</strong> {log.actor_username || "-"}
+                      </p>
+                      <p>
+                        <strong>Action:</strong> {log.action || "-"}
+                      </p>
+                      <p>
+                        <strong>Record:</strong> {log.entity_key || "-"}
+                      </p>
+                      <p>
+                        <strong>Details:</strong> {log.payload || "-"}
+                      </p>
                     </article>
                   ))}
                 </div>
@@ -165,42 +209,113 @@ export default function SettingsPage({ stats, user, canReadAudit }: Props) {
           <div className="module-panel-head">
             <div>
               <h3>WhatsApp Templates</h3>
-              <p className="muted">Manage the automated feedback prompts sent via WhatsApp.</p>
+              <p className="muted">
+                Manage the automated feedback prompts sent via WhatsApp.
+              </p>
             </div>
           </div>
           {templateNotice && <p className="notice">{templateNotice}</p>}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {templates.map(t => (
-              <div key={t.template_key} style={{ border: '1px solid var(--border-color)', padding: '1rem', borderRadius: '4px' }}>
-                <h4 style={{ margin: '0 0 0.5rem 0', textTransform: 'capitalize' }}>{t.template_key.replace('_', ' ')}</h4>
-                <p style={{ whiteSpace: 'pre-wrap', color: 'var(--muted-color)' }}>{t.content}</p>
-                <Button variant="ghost" onClick={() => setEditingTemplate(t)} style={{ marginTop: '0.5rem' }}>Edit</Button>
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+          >
+            {templates.map((t) => (
+              <div
+                key={t.template_key}
+                style={{
+                  border: "1px solid var(--border-color)",
+                  padding: "1rem",
+                  borderRadius: "4px",
+                }}
+              >
+                <h4
+                  style={{
+                    margin: "0 0 0.5rem 0",
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {t.template_key.replace("_", " ")}
+                </h4>
+                <p
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    color: "var(--muted-color)",
+                  }}
+                >
+                  {t.content}
+                </p>
+                <Button
+                  variant="ghost"
+                  onClick={() => setEditingTemplate(t)}
+                  style={{ marginTop: "0.5rem" }}
+                >
+                  Edit
+                </Button>
               </div>
             ))}
             {templates.length === 0 && (
-              <Button onClick={() => setEditingTemplate({template_key: 'comment_prompt', content: ''})}>Add New Template</Button>
+              <Button
+                onClick={() =>
+                  setEditingTemplate({
+                    template_key: "comment_prompt",
+                    content: "",
+                  })
+                }
+              >
+                Add New Template
+              </Button>
             )}
           </div>
-          
+
           {editingTemplate && (
-            <div style={{ marginTop: '1rem', padding: '1rem', border: '1px solid var(--primary-color)', borderRadius: '4px' }}>
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "1rem",
+                border: "1px solid var(--primary-color)",
+                borderRadius: "4px",
+              }}
+            >
               <h4>Editing: {editingTemplate.template_key}</h4>
-              <Input 
-                value={editingTemplate.template_key} 
-                onChange={e => setEditingTemplate({...editingTemplate, template_key: e.target.value})}
+              <Input
+                value={editingTemplate.template_key}
+                onChange={(e) =>
+                  setEditingTemplate({
+                    ...editingTemplate,
+                    template_key: e.target.value,
+                  })
+                }
                 placeholder="Template Key"
-                style={{ marginBottom: '0.5rem' }}
-                disabled={templates.some(t => t.template_key === editingTemplate.template_key)}
+                style={{ marginBottom: "0.5rem" }}
+                disabled={templates.some(
+                  (t) => t.template_key === editingTemplate.template_key,
+                )}
               />
-              <textarea 
-                value={editingTemplate.content} 
-                onChange={e => setEditingTemplate({...editingTemplate, content: e.target.value})}
-                style={{ width: '100%', minHeight: '100px', padding: '0.5rem', marginBottom: '0.5rem' }}
+              <textarea
+                value={editingTemplate.content}
+                onChange={(e) =>
+                  setEditingTemplate({
+                    ...editingTemplate,
+                    content: e.target.value,
+                  })
+                }
+                style={{
+                  width: "100%",
+                  minHeight: "100px",
+                  padding: "0.5rem",
+                  marginBottom: "0.5rem",
+                }}
                 placeholder="Template Content"
               />
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <Button onClick={saveTemplate} disabled={templateLoading}>Save</Button>
-                <Button variant="ghost" onClick={() => setEditingTemplate(null)}>Cancel</Button>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <Button onClick={saveTemplate} disabled={templateLoading}>
+                  Save
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => setEditingTemplate(null)}
+                >
+                  Cancel
+                </Button>
               </div>
             </div>
           )}

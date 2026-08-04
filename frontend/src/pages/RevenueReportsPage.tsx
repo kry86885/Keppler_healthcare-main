@@ -64,7 +64,10 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
             patientName: inv.patient_id || "Unknown",
             category: "OP / Billing",
             amount: parseFloat(inv.total_amount) || 0,
-            date: (inv.created_at || "").split("T")[0] || (inv.created_at || "").split(" ")[0] || "",
+            date:
+              (inv.created_at || "").split("T")[0] ||
+              (inv.created_at || "").split(" ")[0] ||
+              "",
             status: inv.payment_status === "paid" ? "Paid" : "Pending",
           });
         });
@@ -79,7 +82,10 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
             patientName: sale.patient_name || sale.patient_id || "Walk-in",
             category: "Pharmacy",
             amount: parseFloat(sale.amount) || 0,
-            date: (sale.sold_at || "").split("T")[0] || (sale.sold_at || "").split(" ")[0] || "",
+            date:
+              (sale.sold_at || "").split("T")[0] ||
+              (sale.sold_at || "").split(" ")[0] ||
+              "",
             status: "Paid",
           });
         });
@@ -109,14 +115,19 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
   };
 
   const totalRevenue = records.reduce((s, r) => s + r.amount, 0);
-  const outstanding = records.filter((r) => r.status === "Pending").reduce((s, r) => s + r.amount, 0);
+  const outstanding = records
+    .filter((r) => r.status === "Pending")
+    .reduce((s, r) => s + r.amount, 0);
 
   const collectionBars = [
     { label: "OP / Billing", color: "#2563eb" },
     { label: "Pharmacy", color: "#3b82f6" },
   ];
 
-  const maxVal = Math.max(...collectionBars.map((b) => getTotalFor(b.label)), 1);
+  const maxVal = Math.max(
+    ...collectionBars.map((b) => getTotalFor(b.label)),
+    1,
+  );
 
   const filteredRecords = getRecordsFor(selectedCategory);
 
@@ -124,13 +135,22 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       {/* Page title/subtitle now render once, in the shared app topbar. */}
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <Button variant="secondary" onClick={() => onNavigate && onNavigate("dashboard")}>
+        <Button
+          variant="secondary"
+          onClick={() => onNavigate && onNavigate("dashboard")}
+        >
           ← Back to Dashboard
         </Button>
       </div>
 
       {/* Stats Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "1rem" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          gap: "1rem",
+        }}
+      >
         {[
           { label: "Total Billed", value: totalRevenue },
           { label: "Collected", value: totalRevenue - outstanding },
@@ -140,10 +160,26 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
         ].map((card) => (
           <Card key={card.label}>
             <CardContent style={{ padding: "1.25rem" }}>
-              <p style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", marginBottom: "0.5rem" }}>
+              <p
+                style={{
+                  fontSize: "0.7rem",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  color: "var(--muted-foreground)",
+                  marginBottom: "0.5rem",
+                }}
+              >
                 {card.label}
               </p>
-              <p style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--foreground)", margin: 0 }}>
+              <p
+                style={{
+                  fontSize: "1.5rem",
+                  fontWeight: 700,
+                  color: "var(--foreground)",
+                  margin: 0,
+                }}
+              >
                 {formatCurrency(card.value)}
               </p>
             </CardContent>
@@ -155,20 +191,77 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
       <Card>
         <CardHeader>
           <CardTitle>Collections by Module</CardTitle>
-          <p style={{ color: "var(--muted-foreground)", fontSize: "0.875rem", marginTop: "0.25rem" }}>
+          <p
+            style={{
+              color: "var(--muted-foreground)",
+              fontSize: "0.875rem",
+              marginTop: "0.25rem",
+            }}
+          >
             Click any row to view patient-level breakdown.
           </p>
         </CardHeader>
         <CardContent>
           <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
             {/* Header */}
-            <div style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.5rem 0.75rem", backgroundColor: "#f8fafc", borderRadius: "0.375rem 0.375rem 0 0", borderBottom: "2px solid #e2e8f0" }}>
-              <div style={{ width: "140px", fontSize: "0.7rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>Module</div>
-              <div style={{ flex: 1, fontSize: "0.7rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>Progress</div>
-              <div style={{ width: "80px", textAlign: "right", fontSize: "0.7rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>Collected</div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "1rem",
+                padding: "0.5rem 0.75rem",
+                backgroundColor: "#f8fafc",
+                borderRadius: "0.375rem 0.375rem 0 0",
+                borderBottom: "2px solid #e2e8f0",
+              }}
+            >
+              <div
+                style={{
+                  width: "140px",
+                  fontSize: "0.7rem",
+                  fontWeight: 700,
+                  color: "#475569",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                Module
+              </div>
+              <div
+                style={{
+                  flex: 1,
+                  fontSize: "0.7rem",
+                  fontWeight: 700,
+                  color: "#475569",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                Progress
+              </div>
+              <div
+                style={{
+                  width: "80px",
+                  textAlign: "right",
+                  fontSize: "0.7rem",
+                  fontWeight: 700,
+                  color: "#475569",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                Collected
+              </div>
             </div>
 
-            <div style={{ border: "1px solid #e2e8f0", borderTop: "none", borderRadius: "0 0 0.5rem 0.5rem", overflow: "hidden" }}>
+            <div
+              style={{
+                border: "1px solid #e2e8f0",
+                borderTop: "none",
+                borderRadius: "0 0 0.5rem 0.5rem",
+                overflow: "hidden",
+              }}
+            >
               {collectionBars.map((bar, idx) => {
                 const total = getTotalFor(bar.label);
                 const pct = Math.round((total / maxVal) * 100);
@@ -184,23 +277,66 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
                       alignItems: "center",
                       gap: "1rem",
                       padding: "0.875rem 0.75rem",
-                      borderBottom: idx < collectionBars.length - 1 ? "1px solid #e2e8f0" : "none",
+                      borderBottom:
+                        idx < collectionBars.length - 1
+                          ? "1px solid #e2e8f0"
+                          : "none",
                       cursor: "pointer",
                       backgroundColor: "#ffffff",
                       transition: "background-color 0.15s",
                       userSelect: "none",
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f8fafc")}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.backgroundColor = "#f8fafc")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.backgroundColor = "#ffffff")
+                    }
                   >
-                    <div style={{ width: "140px", fontSize: "0.875rem", fontWeight: 600, color: "#0f172a" }}>{bar.label}</div>
-                    <div style={{ flex: 1, backgroundColor: "#e2e8f0", height: "10px", borderRadius: "9999px", overflow: "hidden" }}>
-                      <div style={{ width: `${pct}%`, backgroundColor: bar.color, height: "100%", borderRadius: "9999px", background: `linear-gradient(90deg, #93c5fd 0%, ${bar.color} 100%)`, transition: "width 0.4s ease" }} />
+                    <div
+                      style={{
+                        width: "140px",
+                        fontSize: "0.875rem",
+                        fontWeight: 600,
+                        color: "#0f172a",
+                      }}
+                    >
+                      {bar.label}
                     </div>
-                    <div style={{ width: "80px", textAlign: "right", fontWeight: 700, fontSize: "0.875rem", color: "#0f172a" }}>
+                    <div
+                      style={{
+                        flex: 1,
+                        backgroundColor: "#e2e8f0",
+                        height: "10px",
+                        borderRadius: "9999px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${pct}%`,
+                          backgroundColor: bar.color,
+                          height: "100%",
+                          borderRadius: "9999px",
+                          background: `linear-gradient(90deg, #93c5fd 0%, ${bar.color} 100%)`,
+                          transition: "width 0.4s ease",
+                        }}
+                      />
+                    </div>
+                    <div
+                      style={{
+                        width: "80px",
+                        textAlign: "right",
+                        fontWeight: 700,
+                        fontSize: "0.875rem",
+                        color: "#0f172a",
+                      }}
+                    >
                       {formatCurrency(total)}
                     </div>
-                    <span style={{ color: "#94a3b8", fontSize: "1rem" }}>›</span>
+                    <span style={{ color: "#94a3b8", fontSize: "1rem" }}>
+                      ›
+                    </span>
                   </div>
                 );
               })}
@@ -213,19 +349,61 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
       <Card>
         <CardHeader>
           <CardTitle>Revenue Snapshot (Today)</CardTitle>
-          <p style={{ color: "var(--muted-foreground)", fontSize: "0.875rem", marginTop: "0.25rem" }}>
+          <p
+            style={{
+              color: "var(--muted-foreground)",
+              fontSize: "0.875rem",
+              marginTop: "0.25rem",
+            }}
+          >
             Click any category to see patients contributing to that revenue.
           </p>
         </CardHeader>
         <CardContent>
           <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
             {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "0.5rem 0.75rem", backgroundColor: "#f8fafc", borderRadius: "0.375rem 0.375rem 0 0", borderBottom: "2px solid #e2e8f0" }}>
-              <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>Category</span>
-              <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em" }}>Amount</span>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "0.5rem 0.75rem",
+                backgroundColor: "#f8fafc",
+                borderRadius: "0.375rem 0.375rem 0 0",
+                borderBottom: "2px solid #e2e8f0",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "0.7rem",
+                  fontWeight: 700,
+                  color: "#475569",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                Category
+              </span>
+              <span
+                style={{
+                  fontSize: "0.7rem",
+                  fontWeight: 700,
+                  color: "#475569",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                Amount
+              </span>
             </div>
 
-            <div style={{ border: "1px solid #e2e8f0", borderTop: "none", borderRadius: "0 0 0.5rem 0.5rem", overflow: "hidden" }}>
+            <div
+              style={{
+                border: "1px solid #e2e8f0",
+                borderTop: "none",
+                borderRadius: "0 0 0.5rem 0.5rem",
+                overflow: "hidden",
+              }}
+            >
               {CATEGORIES.map((cat, idx) => (
                 <div
                   key={cat.label}
@@ -238,39 +416,140 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
                     justifyContent: "space-between",
                     alignItems: "center",
                     padding: "0.875rem 0.75rem",
-                    borderBottom: idx < CATEGORIES.length - 1 ? "1px solid #e2e8f0" : "none",
+                    borderBottom:
+                      idx < CATEGORIES.length - 1
+                        ? "1px solid #e2e8f0"
+                        : "none",
                     cursor: "pointer",
                     backgroundColor: "#ffffff",
                     transition: "background-color 0.15s",
                     userSelect: "none",
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f8fafc")}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.backgroundColor = "#f8fafc")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.backgroundColor = "#ffffff")
+                  }
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                    <div style={{ width: "2rem", height: "2rem", borderRadius: "0.5rem", backgroundColor: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1rem" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.75rem",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "2rem",
+                        height: "2rem",
+                        borderRadius: "0.5rem",
+                        backgroundColor: "#f1f5f9",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "1rem",
+                      }}
+                    >
                       {cat.icon}
                     </div>
-                    <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#0f172a" }}>{cat.label}</span>
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        fontSize: "0.875rem",
+                        color: "#0f172a",
+                      }}
+                    >
+                      {cat.label}
+                    </span>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-                    <span style={{ fontWeight: 700, fontSize: "0.875rem", color: "#0f172a" }}>{formatCurrency(getTotalFor(cat.label))}</span>
-                    <span style={{ color: "#94a3b8", fontSize: "1rem" }}>›</span>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.625rem",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        fontSize: "0.875rem",
+                        color: "#0f172a",
+                      }}
+                    >
+                      {formatCurrency(getTotalFor(cat.label))}
+                    </span>
+                    <span style={{ color: "#94a3b8", fontSize: "1rem" }}>
+                      ›
+                    </span>
                   </div>
                 </div>
               ))}
             </div>
 
             {/* Totals */}
-            <div style={{ marginTop: "1.25rem", paddingTop: "1rem", borderTop: "2px solid #e2e8f0", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontWeight: 700, fontSize: "0.875rem", color: "#0f172a" }}>Total Revenue</span>
-                <span style={{ fontWeight: 800, fontSize: "1rem", color: "#0f172a" }}>{formatCurrency(totalRevenue)}</span>
+            <div
+              style={{
+                marginTop: "1.25rem",
+                paddingTop: "1rem",
+                borderTop: "2px solid #e2e8f0",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.75rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "0.875rem",
+                    color: "#0f172a",
+                  }}
+                >
+                  Total Revenue
+                </span>
+                <span
+                  style={{
+                    fontWeight: 800,
+                    fontSize: "1rem",
+                    color: "#0f172a",
+                  }}
+                >
+                  {formatCurrency(totalRevenue)}
+                </span>
               </div>
               <Separator />
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontWeight: 700, fontSize: "0.875rem", color: "#ef4444" }}>Outstanding Amount</span>
-                <span style={{ fontWeight: 800, fontSize: "1rem", color: "#ef4444" }}>{formatCurrency(outstanding)}</span>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "0.875rem",
+                    color: "#ef4444",
+                  }}
+                >
+                  Outstanding Amount
+                </span>
+                <span
+                  style={{
+                    fontWeight: 800,
+                    fontSize: "1rem",
+                    color: "#ef4444",
+                  }}
+                >
+                  {formatCurrency(outstanding)}
+                </span>
               </div>
             </div>
           </div>
@@ -284,12 +563,38 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
         title={`${selectedCategory} — Patient Records`}
       >
         {filteredRecords.length === 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "3rem 1rem", gap: "0.75rem" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "3rem 1rem",
+              gap: "0.75rem",
+            }}
+          >
             <span style={{ fontSize: "2.5rem" }}>📭</span>
-            <p style={{ fontWeight: 600, color: "#334155", fontSize: "1rem", margin: 0 }}>No records found</p>
-            <p style={{ color: "#94a3b8", fontSize: "0.875rem", margin: 0, textAlign: "center" }}>
-              No revenue has been recorded under <strong>{selectedCategory}</strong> yet.
-              Payments recorded in the Payment Collection module will appear here.
+            <p
+              style={{
+                fontWeight: 600,
+                color: "#334155",
+                fontSize: "1rem",
+                margin: 0,
+              }}
+            >
+              No records found
+            </p>
+            <p
+              style={{
+                color: "#94a3b8",
+                fontSize: "0.875rem",
+                margin: 0,
+                textAlign: "center",
+              }}
+            >
+              No revenue has been recorded under{" "}
+              <strong>{selectedCategory}</strong> yet. Payments recorded in the
+              Payment Collection module will appear here.
             </p>
           </div>
         ) : (
@@ -305,23 +610,44 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
               </TableRow>
             </thead>
             <tbody>
-              {Object.values(filteredRecords.reduce((acc, r) => {
-                const key = r.patientName;
-                if (!acc[key]) acc[key] = { ...r, amount: 0 };
-                acc[key].amount += Number(r.amount);
-                return acc;
-              }, {} as Record<string, typeof filteredRecords[0]>)).map((r, i) => (
+              {Object.values(
+                filteredRecords.reduce(
+                  (acc, r) => {
+                    const key = r.patientName;
+                    if (!acc[key]) acc[key] = { ...r, amount: 0 };
+                    acc[key].amount += Number(r.amount);
+                    return acc;
+                  },
+                  {} as Record<string, (typeof filteredRecords)[0]>,
+                ),
+              ).map((r, i) => (
                 <TableRow key={r.id}>
-                  <TableCell style={{ color: "#94a3b8", fontSize: "0.8rem" }}>{i + 1}</TableCell>
-                  <TableCell style={{ fontWeight: 600 }}>{r.patientName}</TableCell>
+                  <TableCell style={{ color: "#94a3b8", fontSize: "0.8rem" }}>
+                    {i + 1}
+                  </TableCell>
+                  <TableCell style={{ fontWeight: 600 }}>
+                    {r.patientName}
+                  </TableCell>
                   <TableCell>{r.category}</TableCell>
                   <TableCell style={{ color: "#64748b" }}>{r.date}</TableCell>
                   <TableCell>
-                    <span style={{ padding: "0.2rem 0.6rem", borderRadius: "9999px", fontSize: "0.75rem", fontWeight: 600, backgroundColor: r.status === "Paid" ? "#dcfce7" : "#fef3c7", color: r.status === "Paid" ? "#15803d" : "#92400e" }}>
+                    <span
+                      style={{
+                        padding: "0.2rem 0.6rem",
+                        borderRadius: "9999px",
+                        fontSize: "0.75rem",
+                        fontWeight: 600,
+                        backgroundColor:
+                          r.status === "Paid" ? "#dcfce7" : "#fef3c7",
+                        color: r.status === "Paid" ? "#15803d" : "#92400e",
+                      }}
+                    >
                       {r.status}
                     </span>
                   </TableCell>
-                  <TableCell style={{ fontWeight: 700, color: "#0f172a" }}>{formatCurrency(r.amount)}</TableCell>
+                  <TableCell style={{ fontWeight: 700, color: "#0f172a" }}>
+                    {formatCurrency(r.amount)}
+                  </TableCell>
                 </TableRow>
               ))}
             </tbody>

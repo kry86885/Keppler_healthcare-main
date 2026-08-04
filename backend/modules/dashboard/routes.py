@@ -9,12 +9,12 @@ from datetime import datetime
 from io import BytesIO
 
 from app import (
-    require_permissions, 
-    log_audit_event, 
+    require_permissions,
+    log_audit_event,
     validate_required_fields,
     current_hospital_id,
     row_to_dict,
-    rows_to_dicts
+    rows_to_dicts,
 )
 
 from core.auth import resolve_user_permissions
@@ -22,16 +22,16 @@ from core.auth import resolve_user_permissions
 from utils.database import (
     get_dashboard_analytics,
     get_hospital_dashboard_summary,
-    get_patient_stats
+    get_patient_stats,
 )
 
+dashboard_bp = Blueprint("dashboard", __name__)
 
-dashboard_bp = Blueprint('dashboard', __name__)
+
 @dashboard_bp.get("/api/stats")
 @require_permissions("patients.read")
 def stats():
     return jsonify(get_patient_stats(hospital_id=current_hospital_id()))
-
 
 
 @dashboard_bp.get("/api/dashboard/analytics")
@@ -58,10 +58,7 @@ def dashboard_analytics():
     return jsonify(payload)
 
 
-
 @dashboard_bp.get("/api/dashboard/hospital-summary")
 @require_permissions("patients.read")
 def dashboard_hospital_summary():
     return jsonify(get_hospital_dashboard_summary(hospital_id=current_hospital_id()))
-
-

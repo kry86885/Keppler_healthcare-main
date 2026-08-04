@@ -1,11 +1,18 @@
-import type { ModuleOption, ModuleId, NavItem, PatientForm, SignupForm, SubModuleOption, UserTypeOption } from "../types";
+import type {
+  ModuleOption,
+  ModuleId,
+  NavItem,
+  PatientForm,
+  SignupForm,
+  SubModuleOption,
+  UserTypeOption,
+} from "../types";
 
 // With Vite's dev server proxy, API requests use relative paths (/api/...).
 // The proxy transparently forwards them to the Flask backend on port 5001.
 // This eliminates all cross-origin cookie issues.
 export const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 export const SYMPTOM_API_BASE = import.meta.env.VITE_SYMPTOM_API_BASE ?? "";
-
 
 export const USER_TYPE_OPTIONS: UserTypeOption[] = [
   {
@@ -20,23 +27,69 @@ export const USER_TYPE_OPTIONS: UserTypeOption[] = [
   },
 ];
 
-export const USER_TYPE_LABELS = USER_TYPE_OPTIONS.reduce<Record<string, string>>((acc, role) => {
+export const USER_TYPE_LABELS = USER_TYPE_OPTIONS.reduce<
+  Record<string, string>
+>((acc, role) => {
   acc[role.value] = role.label;
   return acc;
 }, {});
 
 export const MODULE_OPTIONS: ModuleOption[] = [
-  { value: "dashboard", label: "Dashboard", description: "Hospital dashboard and analytics widgets." },
-  { value: "patients", label: "Patient Management", description: "Patient registration and treatment workflows." },
-  { value: "op", label: "Doctor Scheduling", description: "Doctor schedules and the doctor directory." },
-  { value: "billing", label: "Billing", description: "Invoices, collections, and payment workflows." },
-  { value: "pharmacy", label: "Pharmacy", description: "Inventory and pharmacy sales operations." },
-  { value: "hrms", label: "HRMS", description: "Attendance, payroll, and leave operations." },
-  { value: "accounts", label: "Accounts", description: "Ledger, vendor payments, and doctor payouts." },
-  { value: "reports", label: "Reports", description: "Cross-module operational and financial reporting." },
-  { value: "symptom_ai", label: "SymptoMap AI", description: "AI symptom and OCR tools." },
-  { value: "employees", label: "Employee Management", description: "View and manage staff accounts and their access." },
-  { value: "patient_experience", label: "Patient Experience", description: "View and respond to patient feedback." },
+  {
+    value: "dashboard",
+    label: "Dashboard",
+    description: "Hospital dashboard and analytics widgets.",
+  },
+  {
+    value: "patients",
+    label: "Patient Management",
+    description: "Patient registration and treatment workflows.",
+  },
+  {
+    value: "op",
+    label: "Doctor Scheduling",
+    description: "Doctor schedules and the doctor directory.",
+  },
+  {
+    value: "billing",
+    label: "Billing",
+    description: "Invoices, collections, and payment workflows.",
+  },
+  {
+    value: "pharmacy",
+    label: "Pharmacy",
+    description: "Inventory and pharmacy sales operations.",
+  },
+  {
+    value: "hrms",
+    label: "HRMS",
+    description: "Attendance, payroll, and leave operations.",
+  },
+  {
+    value: "accounts",
+    label: "Accounts",
+    description: "Ledger, vendor payments, and doctor payouts.",
+  },
+  {
+    value: "reports",
+    label: "Reports",
+    description: "Cross-module operational and financial reporting.",
+  },
+  {
+    value: "symptom_ai",
+    label: "SymptoMap AI",
+    description: "AI symptom and OCR tools.",
+  },
+  {
+    value: "employees",
+    label: "Employee Management",
+    description: "View and manage staff accounts and their access.",
+  },
+  {
+    value: "patient_experience",
+    label: "Patient Experience",
+    description: "View and respond to patient feedback.",
+  },
 ];
 
 // Mirrors backend/core/auth.py's SUB_MODULES. Selecting a module alone grants
@@ -52,7 +105,10 @@ export const SUB_MODULES: Partial<Record<ModuleId, SubModuleOption[]>> = {
     { value: "insurance_desk", label: "Insurance Desk" },
     { value: "appointments", label: "Appointments" },
     { value: "documents", label: "Documents & OCR" },
-    { value: "clinical_records", label: "Clinical Records (encounters/notes/certificates)" },
+    {
+      value: "clinical_records",
+      label: "Clinical Records (encounters/notes/certificates)",
+    },
     { value: "bulk_ai", label: "Bulk Patient AI" },
   ],
   op: [
@@ -81,22 +137,73 @@ export const SUB_MODULES: Partial<Record<ModuleId, SubModuleOption[]>> = {
     { value: "vendor_payments", label: "Vendor Payments" },
     { value: "doctor_payouts", label: "Doctor Payouts" },
   ],
-  symptom_ai: [
-    { value: "documents", label: "Knowledge Vault Documents" },
-  ],
+  symptom_ai: [{ value: "documents", label: "Knowledge Vault Documents" }],
   employees: [
     { value: "profile", label: "Edit Profile Fields" },
     { value: "access", label: "Manage Roles & Module Access" },
   ],
-  patient_experience: [
-    { value: "feedback", label: "Respond to Feedback" },
-  ],
+  patient_experience: [{ value: "feedback", label: "Respond to Feedback" }],
 };
 
-export const DEFAULT_MODULE_ACCESS: ModuleId[] = ["dashboard", "patients", "symptom_ai"];
-export const ALL_ASSIGNABLE_MODULES: ModuleId[] = MODULE_OPTIONS.map((module) => module.value);
+export const DEFAULT_MODULE_ACCESS: ModuleId[] = [
+  "dashboard",
+  "patients",
+  "symptom_ai",
+];
+export const ALL_ASSIGNABLE_MODULES: ModuleId[] = MODULE_OPTIONS.map(
+  (module) => module.value,
+);
 
 export const ADMIN_PERMISSIONS: string[] = [
+  "patients.read",
+  "patients.write",
+  "patients.delete",
+  "patients.registration.write",
+  "patients.consent.write",
+  "patients.insurance.write",
+  "patients.appointments.write",
+  "patients.documents.write",
+  "patients.clinical.write",
+  "patients.bulk_ai.write",
+  "op.read",
+  "op.schedules.write",
+  "op.doctors.write",
+  "symptom_ai.use",
+  "symptom_ai.documents.write",
+  "employees.read",
+  "employees.profile.write",
+  "employees.access.write",
+  "billing.read",
+  "billing.invoices.write",
+  "billing.claims.write",
+  "pharmacy.read",
+  "pharmacy.inventory.write",
+  "pharmacy.sales.write",
+  "pharmacy.suppliers.write",
+  "pharmacy.purchases.write",
+  "pharmacy.prescriptions.write",
+  "hr.read",
+  "hr.departments.write",
+  "hr.attendance.write",
+  "hr.payroll.write",
+  "hr.leaves.write",
+  "accounts.read",
+  "accounts.ledger.write",
+  "accounts.vendors.write",
+  "accounts.doctors.write",
+  "reports.read",
+  "patient_experience.read",
+  "patient_experience.write",
+  "audit.read",
+  "admin.use",
+];
+
+// Base ("select whole module") permission set -- matches backend
+// MODULE_PERMISSION_MAP: the module's read permission plus every sub-item's
+// write permission, i.e. full access to that module.
+export const MODULE_PERMISSIONS: Record<ModuleId, string[]> = {
+  dashboard: ["patients.read"],
+  patients: [
     "patients.read",
     "patients.write",
     "patients.delete",
@@ -107,67 +214,45 @@ export const ADMIN_PERMISSIONS: string[] = [
     "patients.documents.write",
     "patients.clinical.write",
     "patients.bulk_ai.write",
-    "op.read",
-    "op.schedules.write",
-    "op.doctors.write",
-    "symptom_ai.use",
-    "symptom_ai.documents.write",
-    "employees.read",
-    "employees.profile.write",
-    "employees.access.write",
-    "billing.read",
-    "billing.invoices.write",
-    "billing.claims.write",
+  ],
+  op: ["op.read", "op.schedules.write", "op.doctors.write"],
+  billing: ["billing.read", "billing.invoices.write", "billing.claims.write"],
+  pharmacy: [
     "pharmacy.read",
     "pharmacy.inventory.write",
     "pharmacy.sales.write",
     "pharmacy.suppliers.write",
     "pharmacy.purchases.write",
     "pharmacy.prescriptions.write",
+  ],
+  hrms: [
     "hr.read",
     "hr.departments.write",
     "hr.attendance.write",
     "hr.payroll.write",
     "hr.leaves.write",
+  ],
+  accounts: [
     "accounts.read",
     "accounts.ledger.write",
     "accounts.vendors.write",
     "accounts.doctors.write",
-    "reports.read",
-    "patient_experience.read",
-    "patient_experience.write",
-    "audit.read",
-    "admin.use",
-];
-
-// Base ("select whole module") permission set -- matches backend
-// MODULE_PERMISSION_MAP: the module's read permission plus every sub-item's
-// write permission, i.e. full access to that module.
-export const MODULE_PERMISSIONS: Record<ModuleId, string[]> = {
-  dashboard: ["patients.read"],
-  patients: [
-    "patients.read", "patients.write", "patients.delete",
-    "patients.registration.write", "patients.consent.write", "patients.insurance.write",
-    "patients.appointments.write", "patients.documents.write",
-    "patients.clinical.write", "patients.bulk_ai.write",
   ],
-  op: ["op.read", "op.schedules.write", "op.doctors.write"],
-  billing: ["billing.read", "billing.invoices.write", "billing.claims.write"],
-  pharmacy: [
-    "pharmacy.read", "pharmacy.inventory.write", "pharmacy.sales.write",
-    "pharmacy.suppliers.write", "pharmacy.purchases.write", "pharmacy.prescriptions.write",
-  ],
-  hrms: ["hr.read", "hr.departments.write", "hr.attendance.write", "hr.payroll.write", "hr.leaves.write"],
-  accounts: ["accounts.read", "accounts.ledger.write", "accounts.vendors.write", "accounts.doctors.write"],
   reports: ["reports.read"],
   symptom_ai: ["symptom_ai.use", "symptom_ai.documents.write"],
-  employees: ["employees.read", "employees.profile.write", "employees.access.write"],
+  employees: [
+    "employees.read",
+    "employees.profile.write",
+    "employees.access.write",
+  ],
   patient_experience: ["patient_experience.read", "patient_experience.write"],
 };
 
 // Maps a module + sub-item key to the specific permission(s) that sub-item
 // grants, for expanding a single "module.subitem" module_access entry.
-export const SUB_MODULE_PERMISSIONS: Partial<Record<ModuleId, Record<string, string[]>>> = {
+export const SUB_MODULE_PERMISSIONS: Partial<
+  Record<ModuleId, Record<string, string[]>>
+> = {
   patients: {
     directory: ["patients.write", "patients.delete"],
     registration: ["patients.registration.write"],
@@ -218,38 +303,202 @@ export const SUB_MODULE_PERMISSIONS: Partial<Record<ModuleId, Record<string, str
 
 export const NAV_ITEMS: NavItem[] = [
   // Overview: landing page, then the two most common patient lookups.
-  { id: "dashboard", label: "Dashboard", group: "overview", permission: "patients.read", deniedHint: "Requires patient access.", module: "dashboard" },
-  { id: "patients", label: "Patients", subtitle: "Search, review, and manage patient records.", group: "overview", permission: "patients.read", deniedHint: "Requires patient access.", module: "patients" },
-  { id: "readmit", label: "Re-admit", group: "overview", permission: "patients.clinical.write", deniedHint: "Requires patient clinical-records access.", module: "patients" },
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    group: "overview",
+    permission: "patients.read",
+    deniedHint: "Requires patient access.",
+    module: "dashboard",
+  },
+  {
+    id: "patients",
+    label: "Patients",
+    subtitle: "Search, review, and manage patient records.",
+    group: "overview",
+    permission: "patients.read",
+    deniedHint: "Requires patient access.",
+    module: "patients",
+  },
+  {
+    id: "readmit",
+    label: "Re-admit",
+    group: "overview",
+    permission: "patients.clinical.write",
+    deniedHint: "Requires patient clinical-records access.",
+    module: "patients",
+  },
 
   // OP Management: ordered to match the actual front-desk-to-discharge patient journey.
-  { id: "add", label: "Patient Registration", group: "registration", permission: "patients.registration.write", deniedHint: "Requires patient registration access.", module: "patients" },
-  { id: "consent-desk", label: "Consent Desk", group: "registration", permission: "patients.consent.write", deniedHint: "Requires consent desk access.", module: "patients" },
-  { id: "insurance-desk", label: "Insurance Desk", group: "registration", permission: "patients.insurance.write", deniedHint: "Requires insurance desk access.", module: "patients" },
-  { id: "appointment-in", label: "Appointment In", group: "registration", permission: "patients.read", deniedHint: "Requires patient access.", module: "patients" },
-  { id: "doctor-prescription", label: "Doctor Prescription", group: "registration", permission: "patients.read", deniedHint: "Requires patient access.", module: "patients" },
-  { id: "queue", label: "Queue Management", group: "registration", permission: "patients.read", deniedHint: "Requires patient access.", module: "patients" },
-  { id: "emr", label: "EMR", group: "registration", permission: "patients.read", deniedHint: "Requires patient access.", module: "patients" },
-  { id: "appointment-out", label: "Appointment Out", group: "registration", permission: "patients.appointments.write", deniedHint: "Requires appointments access.", module: "patients" },
+  {
+    id: "add",
+    label: "Patient Registration",
+    group: "registration",
+    permission: "patients.registration.write",
+    deniedHint: "Requires patient registration access.",
+    module: "patients",
+  },
+  {
+    id: "consent-desk",
+    label: "Consent Desk",
+    group: "registration",
+    permission: "patients.consent.write",
+    deniedHint: "Requires consent desk access.",
+    module: "patients",
+  },
+  {
+    id: "insurance-desk",
+    label: "Insurance Desk",
+    group: "registration",
+    permission: "patients.insurance.write",
+    deniedHint: "Requires insurance desk access.",
+    module: "patients",
+  },
+  {
+    id: "appointment-in",
+    label: "Appointment In",
+    group: "registration",
+    permission: "patients.read",
+    deniedHint: "Requires patient access.",
+    module: "patients",
+  },
+  {
+    id: "doctor-prescription",
+    label: "Doctor Prescription",
+    group: "registration",
+    permission: "patients.read",
+    deniedHint: "Requires patient access.",
+    module: "patients",
+  },
+  {
+    id: "queue",
+    label: "Queue Management",
+    group: "registration",
+    permission: "patients.read",
+    deniedHint: "Requires patient access.",
+    module: "patients",
+  },
+  {
+    id: "emr",
+    label: "EMR",
+    group: "registration",
+    permission: "patients.read",
+    deniedHint: "Requires patient access.",
+    module: "patients",
+  },
+  {
+    id: "appointment-out",
+    label: "Appointment Out",
+    group: "registration",
+    permission: "patients.appointments.write",
+    deniedHint: "Requires appointments access.",
+    module: "patients",
+  },
 
   // Operations: scheduling first, then the departments doctors refer patients to.
-  { id: "op-desk", label: "Doctor Scheduling", subtitle: "Manage doctors and outpatient schedules.", group: "operations", permission: "op.read", deniedHint: "Requires doctor scheduling access.", module: "op" },
-  { id: "pharmacy", label: "Pharmacy", subtitle: "Manage inventory, prescriptions, and sales intelligently.", group: "operations", permission: "pharmacy.read", deniedHint: "Requires pharmacy access.", module: "pharmacy" },
+  {
+    id: "op-desk",
+    label: "Doctor Scheduling",
+    subtitle: "Manage doctors and outpatient schedules.",
+    group: "operations",
+    permission: "op.read",
+    deniedHint: "Requires doctor scheduling access.",
+    module: "op",
+  },
+  {
+    id: "pharmacy",
+    label: "Pharmacy",
+    subtitle: "Manage inventory, prescriptions, and sales intelligently.",
+    group: "operations",
+    permission: "pharmacy.read",
+    deniedHint: "Requires pharmacy access.",
+    module: "pharmacy",
+  },
 
   // AI: the flagship assistant first, then supporting document/bulk tools.
-  { id: "symptom-ai", label: "SymptoMap AI", group: "ai", permission: "symptom_ai.use", deniedHint: "Requires SymptoMap AI access.", module: "symptom_ai" },
-  { id: "ocr", label: "OCR Scanner", subtitle: "Upload scanned medical records, prescriptions, and reports for AI-powered text extraction, then browse or chat with what you've scanned.", group: "ai", permission: "patients.documents.write", deniedHint: "Requires documents access.", module: "patients" },
-  { id: "bulk-ai", label: "AI Mode", subtitle: "Bulk-import patient lists and search them with plain-English prompts.", group: "ai", permission: "patients.bulk_ai.write", deniedHint: "Requires bulk patient AI access.", module: "patients" },
+  {
+    id: "symptom-ai",
+    label: "SymptoMap AI",
+    group: "ai",
+    permission: "symptom_ai.use",
+    deniedHint: "Requires SymptoMap AI access.",
+    module: "symptom_ai",
+  },
+  {
+    id: "ocr",
+    label: "OCR Scanner",
+    subtitle:
+      "Upload scanned medical records, prescriptions, and reports for AI-powered text extraction, then browse or chat with what you've scanned.",
+    group: "ai",
+    permission: "patients.documents.write",
+    deniedHint: "Requires documents access.",
+    module: "patients",
+  },
+  {
+    id: "bulk-ai",
+    label: "AI Mode",
+    subtitle:
+      "Bulk-import patient lists and search them with plain-English prompts.",
+    group: "ai",
+    permission: "patients.bulk_ai.write",
+    deniedHint: "Requires bulk patient AI access.",
+    module: "patients",
+  },
 
   // Finance: Simplified to 3 modules as per request.
-  { id: "billing-payment-collection", label: "Payment Collection", subtitle: "Record and track all patient payments in real-time.", group: "finance", permission: "billing.read", deniedHint: "Requires billing access.", module: "billing" },
-  { id: "billing-revenue-reports", label: "Revenue Reports", subtitle: "Monitor module-wise collections, dues, and doctor payouts.", group: "finance", permission: "billing.read", deniedHint: "Requires billing access.", module: "billing" },
-  { id: "billing-daily-monthly-reports", label: "Daily / Monthly Reports", subtitle: "Track day-wise and month-wise collections across all modules.", group: "finance", permission: "billing.read", deniedHint: "Requires billing access.", module: "billing" },
+  {
+    id: "billing-payment-collection",
+    label: "Payment Collection",
+    subtitle: "Record and track all patient payments in real-time.",
+    group: "finance",
+    permission: "billing.read",
+    deniedHint: "Requires billing access.",
+    module: "billing",
+  },
+  {
+    id: "billing-revenue-reports",
+    label: "Revenue Reports",
+    subtitle: "Monitor module-wise collections, dues, and doctor payouts.",
+    group: "finance",
+    permission: "billing.read",
+    deniedHint: "Requires billing access.",
+    module: "billing",
+  },
+  {
+    id: "billing-daily-monthly-reports",
+    label: "Daily / Monthly Reports",
+    subtitle: "Track day-wise and month-wise collections across all modules.",
+    group: "finance",
+    permission: "billing.read",
+    deniedHint: "Requires billing access.",
+    module: "billing",
+  },
 
   // Administration: manage employees before managing their HR operations (attendance/payroll/leave).
-  { id: "employees", label: "Employee Management", group: "admin", permission: "employees.read", deniedHint: "Requires employee management access.", module: "employees" },
-  { id: "patient-experience", label: "Patient Experience", group: "admin", permission: "patient_experience.read", deniedHint: "Requires patient experience access.", module: "patient_experience" },
-  { id: "hrms", label: "HRMS", group: "admin", permission: "hr.read", deniedHint: "Requires HRMS access.", module: "hrms" },
+  {
+    id: "employees",
+    label: "Employee Management",
+    group: "admin",
+    permission: "employees.read",
+    deniedHint: "Requires employee management access.",
+    module: "employees",
+  },
+  {
+    id: "patient-experience",
+    label: "Patient Experience",
+    group: "admin",
+    permission: "patient_experience.read",
+    deniedHint: "Requires patient experience access.",
+    module: "patient_experience",
+  },
+  {
+    id: "hrms",
+    label: "HRMS",
+    group: "admin",
+    permission: "hr.read",
+    deniedHint: "Requires HRMS access.",
+    module: "hrms",
+  },
 
   { id: "settings", label: "Settings" },
 ];
@@ -276,7 +525,9 @@ export const SUPPORTED_DOCUMENT_EXTENSIONS = [
 
 const SUPPORTED_DOCUMENT_EXTENSION_SET = new Set(SUPPORTED_DOCUMENT_EXTENSIONS);
 
-export const SUPPORTED_DOCUMENT_ACCEPT = SUPPORTED_DOCUMENT_EXTENSIONS.map((ext) => `.${ext}`).join(",");
+export const SUPPORTED_DOCUMENT_ACCEPT = SUPPORTED_DOCUMENT_EXTENSIONS.map(
+  (ext) => `.${ext}`,
+).join(",");
 
 export const isSupportedDocumentFile = (file: File) => {
   const parts = file.name.toLowerCase().split(".");
@@ -319,5 +570,10 @@ export const EMPTY_SIGNUP_FORM: SignupForm = {
   emergency_contact: "",
 };
 
-export const EMPTY_STATS = { total: 0, today: 0, active_admissions: 0, documents: 0, readmitted_patients: 0 };
-
+export const EMPTY_STATS = {
+  total: 0,
+  today: 0,
+  active_admissions: 0,
+  documents: 0,
+  readmitted_patients: 0,
+};

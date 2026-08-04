@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import sys
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
@@ -95,7 +96,16 @@ DURATION_OPTIONS = [
 
 BODY_REGIONS = {
     "Head & Face": {
-        "keywords": ["head", "headache", "face", "forehead", "temple", "scalp", "skull", "brain"],
+        "keywords": [
+            "head",
+            "headache",
+            "face",
+            "forehead",
+            "temple",
+            "scalp",
+            "skull",
+            "brain",
+        ],
         "color": "#6B8E9F",
         "icon": "🧠",
         "svg_id": "head",
@@ -119,7 +129,16 @@ BODY_REGIONS = {
         "svg_id": "nose",
     },
     "Mouth & Throat": {
-        "keywords": ["mouth", "throat", "tongue", "lips", "tonsil", "swallow", "voice", "jaw"],
+        "keywords": [
+            "mouth",
+            "throat",
+            "tongue",
+            "lips",
+            "tonsil",
+            "swallow",
+            "voice",
+            "jaw",
+        ],
         "color": "#6B9F8E",
         "icon": "👄",
         "svg_id": "mouth",
@@ -155,7 +174,15 @@ BODY_REGIONS = {
         "svg_id": "chest",
     },
     "Abdomen": {
-        "keywords": ["abdomen", "stomach", "belly", "gut", "abdominal", "tummy", "navel"],
+        "keywords": [
+            "abdomen",
+            "stomach",
+            "belly",
+            "gut",
+            "abdominal",
+            "tummy",
+            "navel",
+        ],
         "color": "#8BB8C8",
         "icon": "🤰",
         "svg_id": "abdomen",
@@ -203,7 +230,15 @@ BODY_REGIONS = {
         "svg_id": "feet",
     },
     "General / Full Body": {
-        "keywords": ["general", "whole body", "everywhere", "all over", "fatigue", "tired", "weak"],
+        "keywords": [
+            "general",
+            "whole body",
+            "everywhere",
+            "all over",
+            "fatigue",
+            "tired",
+            "weak",
+        ],
         "color": "#8BC8B8",
         "icon": "🧍",
         "svg_id": "full_body",
@@ -373,13 +408,16 @@ def _rate_limit():
 try:
     from google import genai
     from google.genai import types as genai_types
+
     _GENAI_IMPORT_ERROR = None
 except Exception as exc:  # pragma: no cover - import guard for local/dev env mismatch
     genai = None
     genai_types = None
     _GENAI_IMPORT_ERROR = exc
 
-GEMINI_MODEL = os.getenv("SYMPTOM_AI_MODEL") or os.getenv("GEMINI_MODEL") or "gemini-2.0-flash"
+GEMINI_MODEL = (
+    os.getenv("SYMPTOM_AI_MODEL") or os.getenv("GEMINI_MODEL") or "gemini-2.0-flash"
+)
 _gemini_client = None
 
 
@@ -411,7 +449,12 @@ def _gemini_available():
     return _get_gemini_client() is not None
 
 
-def _gemini_generate(prompt: str, json_mode: bool = False, temperature: float = 0.7, max_tokens: int = 1024):
+def _gemini_generate(
+    prompt: str,
+    json_mode: bool = False,
+    temperature: float = 0.7,
+    max_tokens: int = 1024,
+):
     client = _get_gemini_client()
     if client is None:
         return None, "GEMINI_API_KEY is not configured or google-genai is not installed"
@@ -421,7 +464,9 @@ def _gemini_generate(prompt: str, json_mode: bool = False, temperature: float = 
             max_output_tokens=max_tokens,
             response_mime_type="application/json" if json_mode else None,
         )
-        response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt, config=config)
+        response = client.models.generate_content(
+            model=GEMINI_MODEL, contents=prompt, config=config
+        )
         return (response.text or "").strip(), None
     except Exception as exc:
         return None, str(exc)
@@ -430,7 +475,12 @@ def _gemini_generate(prompt: str, json_mode: bool = False, temperature: float = 
 def _require_api_key():
     if _gemini_available():
         return None
-    return jsonify({"error": "GEMINI_API_KEY is not configured for the Symptom AI service"}), 503
+    return (
+        jsonify(
+            {"error": "GEMINI_API_KEY is not configured for the Symptom AI service"}
+        ),
+        503,
+    )
 
 
 def detect_region_from_text(text: str):
@@ -475,8 +525,14 @@ def _format_patient_info(patient_info):
         lines.append(f"- Gender: {gender}")
     if temperature is not None:
         lines.append(f"- Temperature: {temperature}{temp_unit}")
-    if isinstance(blood_pressure, dict) and blood_pressure.get("systolic") and blood_pressure.get("diastolic"):
-        lines.append(f"- Blood Pressure: {blood_pressure['systolic']}/{blood_pressure['diastolic']} mmHg")
+    if (
+        isinstance(blood_pressure, dict)
+        and blood_pressure.get("systolic")
+        and blood_pressure.get("diastolic")
+    ):
+        lines.append(
+            f"- Blood Pressure: {blood_pressure['systolic']}/{blood_pressure['diastolic']} mmHg"
+        )
     if heart_rate:
         lines.append(f"- Heart Rate: {heart_rate} BPM")
 
@@ -510,7 +566,10 @@ def _sanitize_response(text: str):
             removed.append(pattern_str)
             sanitized = pattern.sub("", sanitized)
 
-    if "educational purposes" not in sanitized.lower() or "not medical advice" not in sanitized.lower():
+    if (
+        "educational purposes" not in sanitized.lower()
+        or "not medical advice" not in sanitized.lower()
+    ):
         sanitized = sanitized.rstrip() + MANDATORY_DISCLAIMER
 
     sanitized = re.sub(r" {2,}", " ", sanitized)
@@ -632,13 +691,21 @@ def _generate_insight_pdf(payload):
     def heading(text):
         pdf.set_font(body_font, "B", 16)
         pdf.set_x(pdf.l_margin)
-        pdf.multi_cell(pdf.w - pdf.l_margin - pdf.r_margin, 8, sanitize_text(text, keep_unicode=unicode_ok))
+        pdf.multi_cell(
+            pdf.w - pdf.l_margin - pdf.r_margin,
+            8,
+            sanitize_text(text, keep_unicode=unicode_ok),
+        )
         pdf.ln(1)
 
     def subheading(text):
         pdf.set_font(body_font, "B", 11)
         pdf.set_x(pdf.l_margin)
-        pdf.multi_cell(pdf.w - pdf.l_margin - pdf.r_margin, 7, sanitize_text(text, keep_unicode=unicode_ok))
+        pdf.multi_cell(
+            pdf.w - pdf.l_margin - pdf.r_margin,
+            7,
+            sanitize_text(text, keep_unicode=unicode_ok),
+        )
 
     def body(text, markdown=False):
         pdf.set_font(body_font, "", 10)
@@ -719,7 +786,9 @@ def _generate_with_gemini(system_prompt: str, user_prompt: str):
 
     _rate_limit()
     text, error = _gemini_generate(
-        f"{system_prompt}\n\nUser input:\n{user_prompt}", temperature=0.7, max_tokens=1024
+        f"{system_prompt}\n\nUser input:\n{user_prompt}",
+        temperature=0.7,
+        max_tokens=1024,
     )
     if error:
         return None, error
@@ -761,8 +830,13 @@ def add_cors_headers(response):
     if is_allowed_origin(origin):
         response.headers.setdefault("Access-Control-Allow-Origin", origin)
         response.headers.setdefault("Access-Control-Allow-Credentials", "true")
-        response.headers.setdefault("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
-        response.headers.setdefault("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        response.headers.setdefault(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization, X-Requested-With",
+        )
+        response.headers.setdefault(
+            "Access-Control-Allow-Methods", "GET, POST, OPTIONS"
+        )
     return response
 
 
@@ -814,7 +888,9 @@ def symptom_meta():
 def detect_region():
     payload = request.get_json(force=True) or {}
     description = payload.get("description") or ""
-    region = detect_region_from_text(description) or _classify_region_with_gemini(description)
+    region = detect_region_from_text(description) or _classify_region_with_gemini(
+        description
+    )
     return jsonify({"region": region})
 
 
@@ -828,15 +904,36 @@ def analyze():
     description = (payload.get("description") or "").strip()
 
     if len(description) < 10:
-        return jsonify({"error": "Please provide at least 10 characters in the sensation description."}), 400
+        return (
+            jsonify(
+                {
+                    "error": "Please provide at least 10 characters in the sensation description."
+                }
+            ),
+            400,
+        )
     if len(description) > 2000:
-        return jsonify({"error": "Please keep the description under 2000 characters."}), 400
+        return (
+            jsonify({"error": "Please keep the description under 2000 characters."}),
+            400,
+        )
 
-    detected = detect_region_from_text(description) or _classify_region_with_gemini(description)
-    model_response, model_error = _generate_with_gemini(SYSTEM_PROMPT, _build_user_prompt(payload))
+    detected = detect_region_from_text(description) or _classify_region_with_gemini(
+        description
+    )
+    model_response, model_error = _generate_with_gemini(
+        SYSTEM_PROMPT, _build_user_prompt(payload)
+    )
 
     if not model_response:
-        return jsonify({"error": f"Unable to generate wellness insights: {model_error or 'unknown model error'}"}), 502
+        return (
+            jsonify(
+                {
+                    "error": f"Unable to generate wellness insights: {model_error or 'unknown model error'}"
+                }
+            ),
+            502,
+        )
 
     sanitized, removed_terms = _sanitize_response(model_response)
     used_fallback = False
@@ -852,6 +949,7 @@ def analyze():
         }
     )
 
+
 @app.post("/api/symptom-ai/triage")
 def triage():
     key_error = _require_api_key()
@@ -866,8 +964,14 @@ def triage():
     if len(symptoms) < 5:
         return jsonify({"error": "Please provide a valid symptom description."}), 400
 
-    departments_str = ", ".join(available_departments) if available_departments else "General Medicine, Cardiology, Neurology, Orthopedics, Pediatrics, Gynecology, Dermatology, Psychiatry, Oncology"
-    doctors_str = ", ".join(available_doctors) if available_doctors else "Any available doctor"
+    departments_str = (
+        ", ".join(available_departments)
+        if available_departments
+        else "General Medicine, Cardiology, Neurology, Orthopedics, Pediatrics, Gynecology, Dermatology, Psychiatry, Oncology"
+    )
+    doctors_str = (
+        ", ".join(available_doctors) if available_doctors else "Any available doctor"
+    )
 
     prompt = (
         "You are a medical triage assistant. A patient at the registration desk has the following symptoms or requests:\n"
@@ -891,24 +995,27 @@ def triage():
         if error or not text:
             raise RuntimeError(error or "Empty response from model")
         import json
+
         triage_result = json.loads(text)
-        
+
         # Enforce that the selected department is valid
         dept = triage_result.get("department")
         if available_departments and dept not in available_departments:
             triage_result["department"] = "General Medicine"
-            triage_result["reasoning"] += f" (Note: Directed to General Medicine as {dept} was not available.)"
-            
+            triage_result[
+                "reasoning"
+            ] += f" (Note: Directed to General Medicine as {dept} was not available.)"
+
         return jsonify(triage_result)
     except Exception as exc:
         fallback_dept = "General Medicine"
         if available_departments and fallback_dept not in available_departments:
             fallback_dept = available_departments[0]
-            
+
         fallback_triage = {
             "department": fallback_dept,
             "urgency": "Routine",
-            "reasoning": f"AI Triage fallback due to error. {str(exc)}"
+            "reasoning": f"AI Triage fallback due to error. {str(exc)}",
         }
         return jsonify(fallback_triage), 200
 

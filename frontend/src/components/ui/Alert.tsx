@@ -15,7 +15,13 @@ type AlertProps = React.HTMLAttributes<HTMLDivElement> & {
 };
 
 function Alert({ className, variant = "default", ...props }: AlertProps) {
-  return <div role="alert" className={cn("notice", variantClassMap[variant], className)} {...props} />;
+  return (
+    <div
+      role="alert"
+      className={cn("notice", variantClassMap[variant], className)}
+      {...props}
+    />
+  );
 }
 
 export default Alert;

@@ -1,4 +1,8 @@
-import { formatDateIST, resolvePermissions, stripUploadTimestampPrefix } from "./format";
+import {
+  formatDateIST,
+  resolvePermissions,
+  stripUploadTimestampPrefix,
+} from "./format";
 
 describe("resolvePermissions", () => {
   test("returns explicit user permissions when provided", () => {
@@ -66,7 +70,9 @@ describe("resolvePermissions", () => {
 
 describe("format helpers", () => {
   test("strips generated upload timestamp prefix", () => {
-    expect(stripUploadTimestampPrefix("20260218_101530_report.pdf")).toBe("report.pdf");
+    expect(stripUploadTimestampPrefix("20260218_101530_report.pdf")).toBe(
+      "report.pdf",
+    );
     expect(stripUploadTimestampPrefix("report.pdf")).toBe("report.pdf");
   });
 

@@ -18,7 +18,9 @@ from .vllm_provider import VLLMLLMProvider, VLLMOCRProvider
 
 
 def _has_gemini_api_key() -> bool:
-    return bool((os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip())
+    return bool(
+        (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
+    )
 
 
 def _provider_name() -> str:
@@ -40,13 +42,17 @@ def _try_generate(prompt: str, context: str = "", **kwargs):
         return None
 
 
-def extract_text_from_image(file_bytes, language="en", doc_type="document", filename=None):
+def extract_text_from_image(
+    file_bytes, language="en", doc_type="document", filename=None
+):
     """OCR pipeline entry point: preprocess (deskew/denoise/contrast) then delegate to the
     configured OCR provider. Errors from preprocessing never block OCR -- it falls back to
     the original bytes on any failure (see ai/preprocessing.py)."""
     mime_type = _detect_mime_type(file_bytes, filename)
     processed_bytes = preprocess_image_bytes(file_bytes, mime_type=mime_type)
-    return ocr_provider.extract_text(processed_bytes, language=language, doc_type=doc_type, filename=filename)
+    return ocr_provider.extract_text(
+        processed_bytes, language=language, doc_type=doc_type, filename=filename
+    )
 
 
 _ENTITY_EXTRACTION_PROMPT = """You are extracting structured data from a medical document's OCR text.
@@ -138,7 +144,9 @@ def translate_patient_filter_prompt(prompt: str, available_fields):
     as SQL themselves."""
     if not prompt or not llm_provider.is_configured():
         return None
-    rendered = _PATIENT_FILTER_PROMPT.format(fields=", ".join(available_fields), prompt=prompt)
+    rendered = _PATIENT_FILTER_PROMPT.format(
+        fields=", ".join(available_fields), prompt=prompt
+    )
     raw_response = _try_generate(rendered, json_mode=True)
     if not raw_response:
         return None
@@ -175,7 +183,9 @@ def answer_bulk_document_prompt(prompt: str, document_text: str):
     themselves."""
     if not prompt or not document_text or not llm_provider.is_configured():
         return None
-    rendered = _DOCUMENT_PROMPT_TEMPLATE.format(prompt=prompt, document_text=document_text)
+    rendered = _DOCUMENT_PROMPT_TEMPLATE.format(
+        prompt=prompt, document_text=document_text
+    )
     raw_response = _try_generate(rendered, json_mode=True)
     if not raw_response:
         return None
@@ -189,7 +199,9 @@ def patient_history_search(query: str, hospital_id, patient_id=None, k: int = 5)
     isn't configured or no relevant documents were found -- `sources` is still populated in
     that case so callers can show raw matches even without a synthesized answer.
     """
-    matches = search_similar_documents(query, hospital_id=hospital_id, patient_id=patient_id, k=k)
+    matches = search_similar_documents(
+        query, hospital_id=hospital_id, patient_id=patient_id, k=k
+    )
     if not matches:
         return {"answer": None, "sources": []}
 

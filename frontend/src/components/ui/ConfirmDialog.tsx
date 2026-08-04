@@ -23,12 +23,22 @@ export default function ConfirmDialog({
   loading = false,
 }: Props) {
   return (
-    <Modal open={open} onClose={loading ? () => {} : onClose} title={title} description={description} className="ui-modal-compact">
+    <Modal
+      open={open}
+      onClose={loading ? () => {} : onClose}
+      title={title}
+      description={description}
+      className="ui-modal-compact"
+    >
       <div className="ui-modal-actions">
         <Button variant="secondary" onClick={onClose} disabled={loading}>
           {cancelLabel}
         </Button>
-        <Button variant="destructive" onClick={() => void onConfirm()} disabled={loading}>
+        <Button
+          variant="destructive"
+          onClick={() => void onConfirm()}
+          disabled={loading}
+        >
           {loading ? "Please wait..." : confirmLabel}
         </Button>
       </div>

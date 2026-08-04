@@ -7,16 +7,22 @@ const DEFAULT_HOSPITAL_CODE = "hosp-default";
 
 export function getHospitalCode(): string {
   if (typeof window === "undefined") return DEFAULT_HOSPITAL_CODE;
-  const storage = window.localStorage as { getItem?: (key: string) => string | null } | undefined;
-  if (!storage || typeof storage.getItem !== "function") return DEFAULT_HOSPITAL_CODE;
-  const stored = (storage.getItem(HOSPITAL_CODE_KEY) || "").trim().toLowerCase();
+  const storage = window.localStorage as
+    { getItem?: (key: string) => string | null } | undefined;
+  if (!storage || typeof storage.getItem !== "function")
+    return DEFAULT_HOSPITAL_CODE;
+  const stored = (storage.getItem(HOSPITAL_CODE_KEY) || "")
+    .trim()
+    .toLowerCase();
   return stored || DEFAULT_HOSPITAL_CODE;
 }
 
 export function setHospitalCode(hospitalCode: string): void {
   if (typeof window === "undefined") return;
-  const normalized = (hospitalCode || "").trim().toLowerCase() || DEFAULT_HOSPITAL_CODE;
-  const storage = window.localStorage as { setItem?: (key: string, value: string) => void } | undefined;
+  const normalized =
+    (hospitalCode || "").trim().toLowerCase() || DEFAULT_HOSPITAL_CODE;
+  const storage = window.localStorage as
+    { setItem?: (key: string, value: string) => void } | undefined;
   if (!storage || typeof storage.setItem !== "function") return;
   storage.setItem(HOSPITAL_CODE_KEY, normalized);
 }
@@ -33,24 +39,34 @@ export function getCsrfToken(): string | undefined {
  * automatically, since the backend's CSRF middleware rejects any POST/PUT/DELETE from an
  * authenticated session that's missing a matching X-CSRF-Token header.
  */
-export function withAuthHeaders(headers: HeadersInit = {}, method = "POST"): HeadersInit {
+export function withAuthHeaders(
+  headers: HeadersInit = {},
+  method = "POST",
+): HeadersInit {
   const csrfToken = getCsrfToken();
   const upperMethod = method.toUpperCase();
   return {
     "X-Hospital-Code": getHospitalCode(),
-    ...(csrfToken && upperMethod !== "GET" && upperMethod !== "HEAD" ? { "X-CSRF-Token": csrfToken } : {}),
+    ...(csrfToken && upperMethod !== "GET" && upperMethod !== "HEAD"
+      ? { "X-CSRF-Token": csrfToken }
+      : {}),
     ...headers,
   };
 }
 
-export async function apiFetch<T = any>(path: string, options: RequestInit & { cache?: RequestCache } = {}): Promise<T> {
+export async function apiFetch<T = any>(
+  path: string,
+  options: RequestInit & { cache?: RequestCache } = {},
+): Promise<T> {
   const method = (options.method || "GET").toUpperCase();
   const csrfToken = getCsrfToken();
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     "X-Hospital-Code": getHospitalCode(),
-    ...(csrfToken && method !== "GET" && method !== "HEAD" ? { "X-CSRF-Token": csrfToken } : {}),
-    ...(options.headers || {})
+    ...(csrfToken && method !== "GET" && method !== "HEAD"
+      ? { "X-CSRF-Token": csrfToken }
+      : {}),
+    ...(options.headers || {}),
   };
 
   const response = await fetch(`${API_BASE}${path}`, {
@@ -62,11 +78,18 @@ export async function apiFetch<T = any>(path: string, options: RequestInit & { c
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
-    if (response.status === 401 && path !== "/api/auth/login" && path !== "/api/auth/session") {
+    if (
+      response.status === 401 &&
+      path !== "/api/auth/login" &&
+      path !== "/api/auth/session"
+    ) {
       window.dispatchEvent(new Event("app:unauthorized"));
     }
     const message = payload.error || payload.message || "Request failed";
-    const error = new Error(message) as Error & { payload?: any; status?: number };
+    const error = new Error(message) as Error & {
+      payload?: any;
+      status?: number;
+    };
     error.payload = payload;
     error.status = response.status;
     throw error;
@@ -78,7 +101,7 @@ export async function apiFetch<T = any>(path: string, options: RequestInit & { c
 export function reportError(
   setNotice?: Dispatch<SetStateAction<Notice | null>>,
   error?: { status?: number; message?: string },
-  fallbackMessage = "Request failed."
+  fallbackMessage = "Request failed.",
 ): void {
   if (error?.status === 401) return;
   setNotice?.({ type: "error", message: error?.message || fallbackMessage });

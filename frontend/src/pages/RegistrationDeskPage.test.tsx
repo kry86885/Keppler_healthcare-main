@@ -34,10 +34,14 @@ describe("RegistrationDeskPage", () => {
         });
       }
       if (requestUrl.includes("/api/registration/departments")) {
-        return jsonResponse({ departments: [{ id: 1, department_name: "Cardiology" }] });
+        return jsonResponse({
+          departments: [{ id: 1, department_name: "Cardiology" }],
+        });
       }
       if (requestUrl.includes("/api/op/doctor-schedules")) {
-        return jsonResponse({ schedules: [{ id: 1, doctor_name: "Dr. Mehta" }] });
+        return jsonResponse({
+          schedules: [{ id: 1, doctor_name: "Dr. Mehta" }],
+        });
       }
       if (requestUrl.includes("/api/registration/consents")) {
         return jsonResponse({ consents: [] });
@@ -53,7 +57,13 @@ describe("RegistrationDeskPage", () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(<RegistrationDeskPage mode="appointment-in" selectedPatient={null} setNotice={vi.fn()} />);
+      root.render(
+        <RegistrationDeskPage
+          mode="appointment-in"
+          selectedPatient={null}
+          setNotice={vi.fn()}
+        />,
+      );
       await flush();
       await flush();
       await flush();
@@ -61,7 +71,9 @@ describe("RegistrationDeskPage", () => {
 
     expect(container.textContent).toContain("Appointment In Desk");
     expect(container.textContent).toContain("Schedule & Assign Token");
-    const tokenEl7 = container.querySelector('[data-testid="appointment-token"]') as HTMLElement;
+    const tokenEl7 = container.querySelector(
+      '[data-testid="appointment-token"]',
+    ) as HTMLElement;
     expect(tokenEl7).toBeTruthy();
     expect(tokenEl7.textContent).toBe("Token #7");
 
@@ -91,10 +103,14 @@ describe("RegistrationDeskPage", () => {
         });
       }
       if (requestUrl.includes("/api/registration/departments")) {
-        return jsonResponse({ departments: [{ id: 2, department_name: "Neurology" }] });
+        return jsonResponse({
+          departments: [{ id: 2, department_name: "Neurology" }],
+        });
       }
       if (requestUrl.includes("/api/op/doctor-schedules")) {
-        return jsonResponse({ schedules: [{ id: 2, doctor_name: "Dr. Sharma" }] });
+        return jsonResponse({
+          schedules: [{ id: 2, doctor_name: "Dr. Sharma" }],
+        });
       }
       if (requestUrl.includes("/api/registration/consents")) {
         return jsonResponse({ consents: [] });
@@ -110,14 +126,22 @@ describe("RegistrationDeskPage", () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(<RegistrationDeskPage mode="appointment-out" selectedPatient={null} setNotice={vi.fn()} />);
+      root.render(
+        <RegistrationDeskPage
+          mode="appointment-out"
+          selectedPatient={null}
+          setNotice={vi.fn()}
+        />,
+      );
       await flush();
       await flush();
       await flush();
     });
 
     expect(container.textContent).toContain("Completed Consultations Today");
-    const tokenEl8 = container.querySelector('[data-testid="appointment-token"]') as HTMLElement;
+    const tokenEl8 = container.querySelector(
+      '[data-testid="appointment-token"]',
+    ) as HTMLElement;
     expect(tokenEl8).toBeTruthy();
     expect(tokenEl8.textContent).toBe("Token #8");
     expect(container.textContent).toContain("Complete");
@@ -129,32 +153,43 @@ describe("RegistrationDeskPage", () => {
   });
 
   test("editing an existing consent record populates the form and issues a PUT", async () => {
-    const fetchMock = vi.fn((url: string, options?: { method?: string; body?: string }) => {
-      const requestUrl = String(url);
-      if (requestUrl.includes("/api/appointments")) {
-        return jsonResponse({ appointments: [] });
-      }
-      if (requestUrl.includes("/api/registration/departments")) {
-        return jsonResponse({ departments: [] });
-      }
-      if (requestUrl.includes("/api/op/doctor-schedules")) {
-        return jsonResponse({ schedules: [] });
-      }
-      if (requestUrl.match(/\/api\/registration\/consents\/\d+$/) && options?.method === "PUT") {
-        return jsonResponse({ status: "ok" });
-      }
-      if (requestUrl.includes("/api/registration/consents")) {
-        return jsonResponse({
-          consents: [
-            { id: 5, patient_name: "Ravi Kumar", consent_type: "general", signed_by: "Ravi Kumar", relation_to_patient: "self" },
-          ],
-        });
-      }
-      if (requestUrl.includes("/api/registration/insurance")) {
-        return jsonResponse({ verifications: [] });
-      }
-      return jsonResponse({});
-    }) as any;
+    const fetchMock = vi.fn(
+      (url: string, options?: { method?: string; body?: string }) => {
+        const requestUrl = String(url);
+        if (requestUrl.includes("/api/appointments")) {
+          return jsonResponse({ appointments: [] });
+        }
+        if (requestUrl.includes("/api/registration/departments")) {
+          return jsonResponse({ departments: [] });
+        }
+        if (requestUrl.includes("/api/op/doctor-schedules")) {
+          return jsonResponse({ schedules: [] });
+        }
+        if (
+          requestUrl.match(/\/api\/registration\/consents\/\d+$/) &&
+          options?.method === "PUT"
+        ) {
+          return jsonResponse({ status: "ok" });
+        }
+        if (requestUrl.includes("/api/registration/consents")) {
+          return jsonResponse({
+            consents: [
+              {
+                id: 5,
+                patient_name: "Ravi Kumar",
+                consent_type: "general",
+                signed_by: "Ravi Kumar",
+                relation_to_patient: "self",
+              },
+            ],
+          });
+        }
+        if (requestUrl.includes("/api/registration/insurance")) {
+          return jsonResponse({ verifications: [] });
+        }
+        return jsonResponse({});
+      },
+    ) as any;
     global.fetch = fetchMock;
 
     const container = document.createElement("div");
@@ -162,15 +197,25 @@ describe("RegistrationDeskPage", () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(<RegistrationDeskPage mode="consent" selectedPatient={null} setNotice={vi.fn()} />);
+      root.render(
+        <RegistrationDeskPage
+          mode="consent"
+          selectedPatient={null}
+          setNotice={vi.fn()}
+        />,
+      );
       await flush();
       await flush();
       await flush();
     });
 
-    expect(container.textContent).toContain("Ravi Kumar · general · Ravi Kumar");
+    expect(container.textContent).toContain(
+      "Ravi Kumar · general · Ravi Kumar",
+    );
 
-    const editButton = Array.from(container.querySelectorAll("button")).find((btn) => btn.textContent === "Edit");
+    const editButton = Array.from(container.querySelectorAll("button")).find(
+      (btn) => btn.textContent === "Edit",
+    );
     expect(editButton).toBeTruthy();
 
     await act(async () => {
@@ -179,11 +224,13 @@ describe("RegistrationDeskPage", () => {
     });
 
     const signedByInput = Array.from(container.querySelectorAll("input")).find(
-      (input) => input.placeholder === "Patient / Guardian"
+      (input) => input.placeholder === "Patient / Guardian",
     ) as HTMLInputElement;
     expect(signedByInput.value).toBe("Ravi Kumar");
 
-    const saveButton = Array.from(container.querySelectorAll("button")).find((btn) => btn.textContent === "Update Consent");
+    const saveButton = Array.from(container.querySelectorAll("button")).find(
+      (btn) => btn.textContent === "Update Consent",
+    );
     expect(saveButton).toBeTruthy();
 
     await act(async () => {
@@ -193,7 +240,9 @@ describe("RegistrationDeskPage", () => {
     });
 
     const putCall = fetchMock.mock.calls.find(
-      ([url, options]: [string, { method?: string }]) => String(url).includes("/api/registration/consents/5") && options?.method === "PUT"
+      ([url, options]: [string, { method?: string }]) =>
+        String(url).includes("/api/registration/consents/5") &&
+        options?.method === "PUT",
     );
     expect(putCall).toBeTruthy();
 

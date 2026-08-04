@@ -24,6 +24,7 @@ def _identity():
 
 # ---- OCR: upload / job status / result / export ----------------------------
 
+
 @ocr_portal_bp.get("/api/ocr-portal/blueprints")
 @require_permissions("patients.documents.write")
 def ocr_portal_blueprints():
@@ -49,7 +50,9 @@ def ocr_portal_upload():
     result = ocr.upload_ocr_document(
         hospital_id, username, filename, file_bytes, uploaded_file.mimetype, blueprint
     )
-    log_audit_event("create", "ocr_portal_jobs", result.get("job_id"), {"filename": filename})
+    log_audit_event(
+        "create", "ocr_portal_jobs", result.get("job_id"), {"filename": filename}
+    )
     return jsonify(result)
 
 
@@ -82,6 +85,7 @@ def ocr_portal_job_export(job_id):
 
 # ---- Vault -------------------------------------------------------------------
 
+
 @ocr_portal_bp.get("/api/ocr-portal/vault")
 @require_permissions("patients.documents.write")
 def ocr_portal_vault_list():
@@ -109,15 +113,20 @@ def ocr_portal_vault_delete(doc_id):
 @require_permissions("patients.documents.write")
 def ocr_portal_vault_export(doc_id, fmt):
     hospital_id, username = _identity()
-    content, content_type = ocr.export_vault_document(hospital_id, username, doc_id, fmt)
+    content, content_type = ocr.export_vault_document(
+        hospital_id, username, doc_id, fmt
+    )
     return Response(
         content,
         mimetype=content_type,
-        headers={"Content-Disposition": f'attachment; filename="document-{doc_id}.{fmt}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="document-{doc_id}.{fmt}"'
+        },
     )
 
 
 # ---- Assistant (RAG chat) -----------------------------------------------------
+
 
 @ocr_portal_bp.post("/api/ocr-portal/assistant/ingest")
 @require_permissions("patients.documents.write")
@@ -152,7 +161,9 @@ def ocr_portal_assistant_chat():
     session_id = payload.get("session_id", "default")
     doc_ids = payload.get("doc_ids")
     hospital_id, username = _identity()
-    return jsonify(ocr.send_chat_message(hospital_id, username, message, session_id, doc_ids))
+    return jsonify(
+        ocr.send_chat_message(hospital_id, username, message, session_id, doc_ids)
+    )
 
 
 @ocr_portal_bp.get("/api/ocr-portal/assistant/history")
@@ -197,9 +208,11 @@ def parse_prescription():
         return jsonify({"error": "No text provided"}), 400
 
     try:
-        response_text = ocr.llm_provider.generate(_PRESCRIPTION_PARSE_PROMPT.format(text=text), json_mode=True)
+        response_text = ocr.llm_provider.generate(
+            _PRESCRIPTION_PARSE_PROMPT.format(text=text), json_mode=True
+        )
         parsed = json.loads((response_text or "").strip())
-        
+
         medicines_list = []
         if isinstance(parsed, list):
             medicines_list = parsed
@@ -211,7 +224,7 @@ def parse_prescription():
                     break
             if not medicines_list and "medicines" in parsed:
                 medicines_list = parsed["medicines"]
-        
+
         return jsonify({"medicines": medicines_list})
     except Exception as exc:
         return jsonify({"error": str(exc), "medicines": []}), 500
