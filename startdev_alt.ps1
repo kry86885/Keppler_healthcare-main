@@ -50,7 +50,6 @@ $backendEnv = @{
     "DB_PATH" = "$Root\healthcare.db"
     "FLASK_ENV" = "development"
     "SESSION_COOKIE_SECURE" = "false"
-    "OCR_BACKEND_URL" = "http://localhost:7621"
 }
 Start-ServiceIfDown -name "Main Backend" -port 6001 -workDir "$Root\backend" -envVars $backendEnv -exe $PyExe -args "app.py" -logFile "$LogDir\backend-6001.log"
 
