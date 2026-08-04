@@ -349,7 +349,12 @@ import sys
 
 if "pytest" not in sys.modules:
     init_database()
-    create_default_users()
+    # Re-seeds (and re-activates, resetting the password) these 4 well-known
+    # demo accounts on EVERY startup, not just first-run -- fine for local/
+    # demo use, but a real credential-exposure risk left on for a public
+    # deployment. Set SEED_DEMO_USERS=false in .env to disable.
+    if os.getenv("SEED_DEMO_USERS", "true").strip().lower() != "false":
+        create_default_users()
 
 
 def row_to_dict(row):
@@ -785,4 +790,4 @@ if __name__ == "__main__":
     app.logger.info(f"Database: PostgreSQL (URL: {DATABASE_URL})")
     print(f"=== STARTING BACKEND ===")
     port = int(os.getenv("PORT", "5001"))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=os.getenv("FLASK_DEBUG", "").lower() == "true")

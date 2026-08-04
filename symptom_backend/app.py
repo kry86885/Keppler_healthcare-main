@@ -11,6 +11,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 import io
 
+import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
@@ -405,79 +406,66 @@ def _rate_limit():
     _last_request = time.time()
 
 
-try:
-    from google import genai
-    from google.genai import types as genai_types
-
-    _GENAI_IMPORT_ERROR = None
-except Exception as exc:  # pragma: no cover - import guard for local/dev env mismatch
-    genai = None
-    genai_types = None
-    _GENAI_IMPORT_ERROR = exc
-
-GEMINI_MODEL = (
-    os.getenv("SYMPTOM_AI_MODEL") or os.getenv("GEMINI_MODEL") or "gemini-2.0-flash"
-)
-_gemini_client = None
+VLLM_BASE_URL = os.getenv(
+    "VLLM_BASE_URL", "http://host.docker.internal:8700/v1"
+).rstrip("/")
+VLLM_MODEL = os.getenv("VLLM_MODEL", "qwen2.5-vl-7b")
+VLLM_API_KEY = os.getenv("VLLM_API_KEY", "local")
 
 
-def _resolve_gemini_api_key():
-    # Dedicated symptom_backend key first (see SYMPTOM_AI_GEMINI_API_KEY in
-    # the root .env) so this service can use its own key/quota independent
-    # of the main backend's GEMINI_API_KEY (OCR, /api/symptom-ai/* RAG chat).
-    return (
-        os.getenv("SYMPTOM_AI_GEMINI_API_KEY")
-        or os.getenv("GEMINI_API_KEY")
-        or os.getenv("GOOGLE_API_KEY")
-        or ""
-    ).strip()
+def _vllm_available():
+    try:
+        resp = requests.get(
+            f"{VLLM_BASE_URL}/models",
+            headers={"Authorization": f"Bearer {VLLM_API_KEY}"},
+            timeout=2,
+        )
+        return resp.status_code == 200
+    except Exception:
+        return False
 
 
-def _get_gemini_client():
-    global _gemini_client
-    if genai is None:
-        return None
-    if _gemini_client is None:
-        api_key = _resolve_gemini_api_key()
-        if not api_key:
-            return None
-        _gemini_client = genai.Client(api_key=api_key)
-    return _gemini_client
-
-
-def _gemini_available():
-    return _get_gemini_client() is not None
-
-
-def _gemini_generate(
+def _vllm_generate(
     prompt: str,
     json_mode: bool = False,
     temperature: float = 0.7,
     max_tokens: int = 1024,
 ):
-    client = _get_gemini_client()
-    if client is None:
-        return None, "GEMINI_API_KEY is not configured or google-genai is not installed"
+    payload = {
+        "model": VLLM_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
     try:
-        config = genai_types.GenerateContentConfig(
-            temperature=temperature,
-            max_output_tokens=max_tokens,
-            response_mime_type="application/json" if json_mode else None,
+        resp = requests.post(
+            f"{VLLM_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {VLLM_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=180,
         )
-        response = client.models.generate_content(
-            model=GEMINI_MODEL, contents=prompt, config=config
-        )
-        return (response.text or "").strip(), None
+        resp.raise_for_status()
+        choices = resp.json().get("choices", [])
+        if not choices:
+            return None, "Empty choices returned from vLLM"
+        content = choices[0].get("message", {}).get("content", "")
+        return content.strip(), None
     except Exception as exc:
         return None, str(exc)
 
 
 def _require_api_key():
-    if _gemini_available():
+    if _vllm_available():
         return None
     return (
         jsonify(
-            {"error": "GEMINI_API_KEY is not configured for the Symptom AI service"}
+            {"error": f"Local AI model (vLLM) is not reachable at {VLLM_BASE_URL}"}
         ),
         503,
     )
@@ -780,12 +768,12 @@ def _generate_insight_pdf(payload):
     return binary
 
 
-def _generate_with_gemini(system_prompt: str, user_prompt: str):
-    if not _gemini_available():
-        return None, "GEMINI_API_KEY is not configured for the Symptom AI service"
+def _generate_with_vllm(system_prompt: str, user_prompt: str):
+    if not _vllm_available():
+        return None, f"Local AI model (vLLM) is not reachable at {VLLM_BASE_URL}"
 
     _rate_limit()
-    text, error = _gemini_generate(
+    text, error = _vllm_generate(
         f"{system_prompt}\n\nUser input:\n{user_prompt}",
         temperature=0.7,
         max_tokens=1024,
@@ -797,13 +785,13 @@ def _generate_with_gemini(system_prompt: str, user_prompt: str):
     return text, None
 
 
-def _classify_region_with_gemini(description: str):
+def _classify_region_with_vllm(description: str):
     # The static keyword list in BODY_REGIONS only catches descriptions that happen to
     # contain one of its exact substrings, so it misses most real phrasing. This is the
     # fallback for when that quick match comes up empty: ask the model to pick the closest
     # region from the same fixed list, constrained to an exact-match response so it can't
     # hallucinate a region name the frontend won't recognize.
-    if not _gemini_available():
+    if not _vllm_available():
         return None
 
     region_names = list(BODY_REGIONS.keys())
@@ -815,7 +803,7 @@ def _classify_region_with_gemini(description: str):
     )
     try:
         _rate_limit()
-        text, error = _gemini_generate(prompt, temperature=0, max_tokens=20)
+        text, error = _vllm_generate(prompt, temperature=0, max_tokens=20)
         if error or not text:
             return None
         candidate = text.strip()
@@ -879,7 +867,7 @@ def symptom_meta():
                 "disclaimer": "Educational tool only. Not medical advice.",
                 "emergency": "For severe or urgent concerns, contact emergency services immediately.",
             },
-            "api_key_configured": _gemini_available(),
+            "api_key_configured": _vllm_available(),
         }
     )
 
@@ -888,7 +876,7 @@ def symptom_meta():
 def detect_region():
     payload = request.get_json(force=True) or {}
     description = payload.get("description") or ""
-    region = detect_region_from_text(description) or _classify_region_with_gemini(
+    region = detect_region_from_text(description) or _classify_region_with_vllm(
         description
     )
     return jsonify({"region": region})
@@ -918,10 +906,10 @@ def analyze():
             400,
         )
 
-    detected = detect_region_from_text(description) or _classify_region_with_gemini(
+    detected = detect_region_from_text(description) or _classify_region_with_vllm(
         description
     )
-    model_response, model_error = _generate_with_gemini(
+    model_response, model_error = _generate_with_vllm(
         SYSTEM_PROMPT, _build_user_prompt(payload)
     )
 
@@ -970,7 +958,9 @@ def triage():
         else "General Medicine, Cardiology, Neurology, Orthopedics, Pediatrics, Gynecology, Dermatology, Psychiatry, Oncology"
     )
     doctors_str = (
-        ", ".join(available_doctors) if available_doctors else "Any available doctor"
+        ", ".join(available_doctors)
+        if available_doctors
+        else "Any available doctor"
     )
 
     prompt = (
@@ -979,19 +969,20 @@ def triage():
         "Based on this, determine the most appropriate hospital department, the urgency, a brief reasoning, and the specific doctor if mentioned or clearly applicable.\n\n"
         f"Available departments: [{departments_str}]\n"
         f"Available doctors: [{doctors_str}]\n\n"
-        "Important Rule for 'doctor': If you select a doctor, ONLY return their exact name. Strip out any department in parentheses (e.g. return 'Dr Srinu' instead of 'Dr Srinu (Cardiology)').\n\n"
         "Respond ONLY with a valid JSON object in this exact format:\n"
         "{\n"
         '  "department": "Must EXACTLY match one of the Available departments",\n'
         '  "urgency": "Routine | Urgent | Emergency",\n'
-        '  "reasoning": "Brief explanation",\n'
-        '  "doctor": "Doctor name or empty string"\n'
+        '  "reasoning": "Brief explanation (1-2 sentences)",\n'
+        '  "doctor": "Specific doctor name if requested or highly relevant, else empty string"\n'
         "}"
     )
 
     try:
         _rate_limit()
-        text, error = _gemini_generate(prompt, json_mode=True, temperature=0)
+        text, error = _vllm_generate(
+            prompt, json_mode=True, temperature=0, max_tokens=300
+        )
         if error or not text:
             raise RuntimeError(error or "Empty response from model")
         import json
@@ -1015,7 +1006,7 @@ def triage():
         fallback_triage = {
             "department": fallback_dept,
             "urgency": "Routine",
-            "reasoning": f"AI Triage fallback due to error. {str(exc)}",
+            "reasoning": f"AI Triage fallback due to error. Defaulting to {fallback_dept}.",
         }
         return jsonify(fallback_triage), 200
 
@@ -1038,4 +1029,4 @@ def export_pdf():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "5002"))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=os.getenv("FLASK_DEBUG", "").lower() == "true")

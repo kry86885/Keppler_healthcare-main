@@ -27,6 +27,7 @@ services:
       PG_POOL_MAX: ${PG_POOL_MAX:-4}
       DATABASE_URL: ${DATABASE_URL:-postgresql://hospai:hospai_secure_password@postgres:5432/hospai}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://app.yourdomain.com}
+      SEED_DEMO_USERS: ${SEED_DEMO_USERS:-true}
       SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-hospai_session}
       SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
       SESSION_PEPPER: ${SESSION_PEPPER:?Set SESSION_PEPPER in .env}
@@ -58,8 +59,8 @@ services:
       - "5011:5001"
     volumes:
       - ./volumes/app_data:/data
-      - ./backend:/app/backend
       - ./volumes/uploads:/app/uploads
+      - ./volumes/rag_workspaces:/app/backend/rag_workspaces
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -133,6 +134,8 @@ services:
       SYMPTOM_AI_GEMINI_API_KEY: ${SYMPTOM_AI_GEMINI_API_KEY:-}
     ports:
       - "5002:5002"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5002/api/health', timeout=3)"]
       interval: 30s

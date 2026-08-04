@@ -33,12 +33,14 @@ The entire system is thoroughly containerized and ready for production environme
    - API: http://localhost:5011
 
 ### Essential Environment Variables
-For deployment on a remote server, ensure the following are properly set in `.env`:
+For deployment on a remote server, ensure the following are properly set in `.env` (see `.env.example` for the full list):
 - `POSTGRES_PASSWORD`: A secure password for PostgreSQL.
-- `SESSION_PEPPER`: A random cryptographic string for securing sessions.
-- `GEMINI_API_KEY`: Your LLM API key.
-- `VITE_API_BASE` / `VITE_APP_URL`: Must reflect the domain names where your frontend and API are hosted if placed behind a reverse proxy (like Nginx or Traefik).
+- `SESSION_PEPPER`, `ADMIN_ROUTE_AUTH_SECRET`, `ADMIN_ROUTE_PASSWORD`: Random cryptographic secrets -- rotate the defaults before going live.
+- `GEMINI_API_KEY` / `GOOGLE_API_KEY`: Your LLM API key for the main backend's OCR and Symptom AI RAG-chat features.
+- `SYMPTOM_AI_GEMINI_API_KEY`: A dedicated Gemini key for the separate `symptom_backend` service (falls back to `GEMINI_API_KEY` if unset).
+- `VITE_API_BASE` / `VITE_SYMPTOM_API_BASE`: Must reflect the domain names where your API and Symptom AI service are hosted if placed behind a reverse proxy (like Nginx or Traefik); leave blank for same-origin relative API calls.
 
 ## Maintenance & Development
-- All code is strictly formatted (Black for Python, Prettier for TypeScript).
 - PostgreSQL database backups should target the bound `volumes/pg_data` directory.
+- Per-user Symptom AI document knowledge graphs live in `volumes/rag_workspaces` -- back this up alongside `pg_data` if that feature is in use.
+- Uploaded files (prescriptions, bulk-import sources) live in `volumes/uploads`.

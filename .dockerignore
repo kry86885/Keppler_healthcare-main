@@ -1,8 +1,5 @@
 .git
 .gitignore
-.github
-.devrun
-.opencode
 
 **/__pycache__
 **/.pytest_cache
@@ -11,18 +8,15 @@
 **/node_modules
 **/dist
 
-frontend/tests
-backend/tests
-
 .venv
 .venv-backend
 
 healthcare.db
 uploads
+backend/rag_workspaces
 
 .env
 backend/.env
 frontend/.env
-site/.env
 
 *.log
