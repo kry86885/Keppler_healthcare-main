@@ -1103,10 +1103,13 @@ def ensure_hospai_module_tables(conn):
         CREATE TABLE IF NOT EXISTS pharmacy_sales (
             id {id_column},
             invoice_id INTEGER,
+            patient_id TEXT,
+            prescription_ref TEXT,
             medicine_name TEXT NOT NULL,
             quantity INTEGER NOT NULL,
             unit_price REAL NOT NULL,
             amount REAL NOT NULL,
+            hospital_id TEXT,
             sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -1124,6 +1127,8 @@ def ensure_hospai_module_tables(conn):
         cursor.execute("ALTER TABLE pharmacy_sales ADD COLUMN patient_id TEXT")
     if "prescription_ref" not in pharmacy_sales_columns:
         cursor.execute("ALTER TABLE pharmacy_sales ADD COLUMN prescription_ref TEXT")
+    if "hospital_id" not in pharmacy_sales_columns:
+        cursor.execute("ALTER TABLE pharmacy_sales ADD COLUMN hospital_id TEXT")
 
     cursor.execute(
         f"""

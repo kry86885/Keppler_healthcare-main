@@ -268,14 +268,38 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
                 }
               }}
             >
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--accent))" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: "1rem" }}>
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="17 8 12 3 7 8"></polyline>
-                <line x1="12" y1="3" x2="12" y2="15"></line>
-              </svg>
-              <h3 style={{ margin: "0 0 0.5rem 0", color: "hsl(var(--foreground))" }}>Click or drag and drop to upload</h3>
-              <p style={{ margin: 0, color: "hsl(var(--muted-foreground))", fontSize: "0.9rem" }}>SVG, PNG, JPG or PDF</p>
-              <p style={{ margin: "0.5rem 0 0 0", color: "hsl(var(--accent))", fontWeight: 500 }}>{file ? file.name : ""}</p>
+              <div style={{ 
+                width: "64px", height: "64px", borderRadius: "50%", 
+                background: "hsl(var(--background))", 
+                display: "flex", alignItems: "center", justifyContent: "center", 
+                margin: "0 auto 1.5rem auto",
+                boxShadow: "0 4px 12px -4px rgba(0,0,0,0.1)"
+              }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--primary))" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+              </div>
+              <h3 style={{ margin: "0 0 0.75rem 0", color: "hsl(var(--foreground))", fontSize: "1.25rem", fontWeight: 600 }}>
+                Click or drag and drop to upload
+              </h3>
+              <p style={{ margin: 0, color: "hsl(var(--muted-foreground))", fontSize: "0.95rem" }}>SVG, PNG, JPG or PDF</p>
+              
+              {file && (
+                <div style={{ 
+                  marginTop: "2rem", padding: "1rem", 
+                  background: "hsl(var(--background))", borderRadius: "8px",
+                  display: "inline-flex", alignItems: "center", gap: "0.75rem",
+                  boxShadow: "0 2px 8px -2px rgba(0,0,0,0.05)"
+                }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--primary))" strokeWidth="2">
+                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                    <polyline points="13 2 13 9 20 9"></polyline>
+                  </svg>
+                  <span style={{ color: "hsl(var(--foreground))", fontWeight: 500 }}>{file.name}</span>
+                </div>
+              )}
               <input
                 type="file"
                 accept="image/*,.pdf"
@@ -284,10 +308,15 @@ export default function PrescriptionUploadModal({ patientId, patientName, doctor
                 style={{ opacity: 0, width: 0, height: 0, position: "absolute", overflow: "hidden" }}
               />
             </div>
-            <div style={{ display: "flex", gap: "1rem", justifyContent: "flex-end", width: "100%" }}>
-              <Button variant="secondary" onClick={onClose}>Cancel</Button>
-              <Button onClick={handleUpload} disabled={!file || uploading}>
-                {uploading ? "Extracting..." : "Upload & Extract Text"}
+            <div style={{ display: "flex", gap: "1rem", justifyContent: "flex-end", width: "100%", marginTop: "0.5rem" }}>
+              <Button variant="secondary" onClick={onClose} style={{ padding: "0.75rem 1.5rem" }}>Cancel</Button>
+              <Button onClick={handleUpload} disabled={!file || uploading} style={{ padding: "0.75rem 1.5rem", minWidth: "200px" }}>
+                {uploading ? (
+                  <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <span className="spinner" style={{ width: "16px", height: "16px", border: "2px solid currentColor", borderRightColor: "transparent", borderRadius: "50%", animation: "spin 0.75s linear infinite" }}></span>
+                    Extracting...
+                  </span>
+                ) : "Upload & Extract Text"}
               </Button>
             </div>
           </div>
