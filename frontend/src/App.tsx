@@ -18,25 +18,15 @@ const DoctorSchedulingPage = lazy(() => import("./pages/DoctorSchedulingPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const EmployeesPage = lazy(() => import("./pages/EmployeesPage"));
 const PatientExperiencePage = lazy(() => import("./pages/PatientExperiencePage"));
-const BillingAgingPage = lazy(() => import("./pages/BillingAgingPage"));
-const BillingReconciliationPage = lazy(() => import("./pages/BillingReconciliationPage"));
-const BillingCreateInvoicePage = lazy(() => import("./pages/BillingCreateInvoicePage"));
-const BillingRecordPaymentPage = lazy(() => import("./pages/BillingRecordPaymentPage"));
-const BillingClaimsPage = lazy(() => import("./pages/BillingClaimsPage"));
-const BillingInvoicesPage = lazy(() => import("./pages/BillingInvoicesPage"));
-const BillingPaymentModesPage = lazy(() => import("./pages/BillingPaymentModesPage"));
-const BillingCollectionsPage = lazy(() => import("./pages/BillingCollectionsPage"));
+const PaymentCollectionPage = lazy(() => import("./pages/PaymentCollectionPage"));
+const RevenueReportsPage = lazy(() => import("./pages/RevenueReportsPage"));
+const DailyMonthlyReportsPage = lazy(() => import("./pages/DailyMonthlyReportsPage"));
 const PharmacyPage = lazy(() => import("./pages/PharmacyPage"));
 const LabPage = lazy(() => import("./pages/LabPage"));
 const HrmsPage = lazy(() => import("./pages/HrmsPage"));
 const OtPage = lazy(() => import("./pages/OtPage"));
-const AccountsOverviewPage = lazy(() => import("./pages/AccountsOverviewPage"));
-const AccountsLedgerPage = lazy(() => import("./pages/AccountsLedgerPage"));
-const AccountsVendorPaymentsPage = lazy(() => import("./pages/AccountsVendorPaymentsPage"));
-const AccountsDoctorPayoutsPage = lazy(() => import("./pages/AccountsDoctorPayoutsPage"));
 const PatientsPage = lazy(() => import("./pages/PatientsPage"));
 const ReadmitPage = lazy(() => import("./pages/ReadmitPage"));
-const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const SymptomAiPage = lazy(() => import("./pages/SymptomAiPage"));
 const PlatformAdminPage = lazy(() => import("./pages/PlatformAdminPage"));
@@ -1232,14 +1222,9 @@ function App() {
         {page === "symptom-ai" && <SymptomAiPage setNotice={setNotice} onNavigate={navigateToPage} />}
         {page === "bulk-ai" && hasPermission("patients.bulk_ai.write") && <BulkPatientAiPage setNotice={setNotice} />}
 
-        {page === "billing-aging" && hasPermission("billing.read") && <BillingAgingPage setNotice={setNotice} />}
-        {page === "billing-reconciliation" && hasPermission("billing.read") && <BillingReconciliationPage setNotice={setNotice} />}
-        {page === "billing-create-invoice" && hasPermission("billing.invoices.write") && <BillingCreateInvoicePage setNotice={setNotice} />}
-        {page === "billing-record-payment" && hasPermission("billing.invoices.write") && <BillingRecordPaymentPage setNotice={setNotice} />}
-        {page === "billing-insurance-claims" && hasPermission("billing.claims.write") && <BillingClaimsPage setNotice={setNotice} />}
-        {page === "billing-invoices" && hasPermission("billing.read") && <BillingInvoicesPage setNotice={setNotice} />}
-        {page === "billing-mode-breakdown" && hasPermission("billing.read") && <BillingPaymentModesPage setNotice={setNotice} />}
-        {page === "billing-module-collections" && hasPermission("billing.read") && <BillingCollectionsPage setNotice={setNotice} />}
+        {page === "billing-payment-collection" && hasPermission("billing.read") && <PaymentCollectionPage setNotice={setNotice} onNavigate={navigateToPage} />}
+        {page === "billing-revenue-reports" && hasPermission("billing.read") && <RevenueReportsPage setNotice={setNotice} onNavigate={navigateToPage} />}
+        {page === "billing-daily-monthly-reports" && hasPermission("billing.read") && <DailyMonthlyReportsPage setNotice={setNotice} onNavigate={navigateToPage} />}
 
           {page === "pharmacy" && hasPermission("pharmacy.read") && <PharmacyPage setNotice={setNotice} />}
 
@@ -1248,14 +1233,6 @@ function App() {
           {page === "hrms" && hasPermission("hr.read") && <HrmsPage setNotice={setNotice} />}
 
           {page === "ot" && hasPermission("ot.read") && <OtPage setNotice={setNotice} />}
-
-          {page === "accounts" && hasPermission("accounts.read") && <AccountsOverviewPage setNotice={setNotice} />}
-          {page === "accounts-overview" && hasPermission("accounts.read") && <AccountsOverviewPage setNotice={setNotice} />}
-          {page === "accounts-ledger" && hasPermission("accounts.read") && <AccountsLedgerPage setNotice={setNotice} />}
-          {page === "accounts-vendor-payments" && hasPermission("accounts.read") && <AccountsVendorPaymentsPage setNotice={setNotice} />}
-          {page === "accounts-doctor-payouts" && hasPermission("accounts.read") && <AccountsDoctorPayoutsPage setNotice={setNotice} />}
-
-          {page === "reports" && hasPermission("reports.read") && <ReportsPage setNotice={setNotice} />}
 
         {page === "employees" && hasPermission("employees.read") && (
           <EmployeesPage

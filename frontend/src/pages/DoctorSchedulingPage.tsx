@@ -22,6 +22,7 @@ type Doctor = {
   consultation_fee: number;
   review_fee: number;
   status: string;
+  source?: string;
 };
 
 type DoctorForm = {
@@ -331,7 +332,7 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
                 📋 Doctors Roster ({doctors.length})
               </h4>
               <p className="muted" style={{ margin: "0.25rem 0 0 0", fontSize: "0.875rem" }}>
-                Active doctors added by the Administrative department.
+                All active doctors — from Roster and Staff directory.
               </p>
             </div>
           </div>
@@ -356,21 +357,30 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
                       {doc.department || "General"}
                     </span>
                   </TableCell>
-                  <TableCell style={{ fontWeight: 500, color: "#059669" }}>${doc.consultation_fee}</TableCell>
-                  <TableCell style={{ color: "#64748B" }}>${doc.review_fee}</TableCell>
+                  <TableCell style={{ fontWeight: 500, color: "#059669" }}>₹{doc.consultation_fee.toFixed(0)}</TableCell>
+                  <TableCell style={{ color: "#64748B" }}>₹{doc.review_fee.toFixed(0)}</TableCell>
                   <TableCell>
-                    <span
-                      style={{
-                        padding: "0.2rem 0.5rem",
-                        borderRadius: "12px",
-                        fontSize: "0.8rem",
-                        fontWeight: 600,
-                        backgroundColor: doc.status === "available" ? "#DEF7EC" : "#FDE8E8",
-                        color: doc.status === "available" ? "#03543F" : "#9B1C1C",
-                      }}
-                    >
-                      {doc.status === "available" ? "● Available" : "○ On Leave"}
-                    </span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                      <span
+                        style={{
+                          padding: "0.2rem 0.5rem",
+                          borderRadius: "12px",
+                          fontSize: "0.8rem",
+                          fontWeight: 600,
+                          backgroundColor: doc.status === "available" || doc.status === "active" ? "#DEF7EC" : "#FDE8E8",
+                          color: doc.status === "available" || doc.status === "active" ? "#03543F" : "#9B1C1C",
+                          display: "inline-block",
+                        }}
+                      >
+                        {doc.status === "available" || doc.status === "active" ? "● Available" : "○ On Leave"}
+                      </span>
+                      {doc.source === "users" && (
+                        <span style={{ fontSize: "0.7rem", color: "#94a3b8", fontWeight: 500 }}>Staff</span>
+                      )}
+                      {doc.source === "roster" && (
+                        <span style={{ fontSize: "0.7rem", color: "#3b82f6", fontWeight: 500 }}>Roster</span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell style={{ textAlign: "right" }}>
                     <div className="module-inline-actions" style={{ justifyContent: "flex-end", gap: "0.5rem" }}>

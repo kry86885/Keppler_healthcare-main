@@ -3805,21 +3805,39 @@ def list_doctors(department=None, hospital_id=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
+        # UNION: doctors added via the Doctors Roster form + users with job_role=Doctor
         query = """
-            SELECT 
+            SELECT
+                d.id as id,
+                d.doctor_name as doctor_name,
+                d.department as department,
+                d.consultation_fee as consultation_fee,
+                d.review_fee as review_fee,
+                d.status as status,
+                'roster' as source
+            FROM doctors d
+            UNION
+            SELECT
                 u.id as id,
                 u.full_name as doctor_name,
                 u.department as department,
                 0.0 as consultation_fee,
                 0.0 as review_fee,
-                u.status as status
+                u.status as status,
+                'users' as source
             FROM users u
             WHERE u.job_role = 'Doctor' AND u.hospital_id = ?
         """
         if department:
-            cursor.execute(_to_sql_params(f"SELECT * FROM ({query}) AS combined WHERE department = ? ORDER BY doctor_name"), (scoped_hospital_id, department))
+            cursor.execute(
+                _to_sql_params(f"SELECT * FROM ({query}) AS combined WHERE department = ? ORDER BY doctor_name"),
+                (scoped_hospital_id, department)
+            )
         else:
-            cursor.execute(_to_sql_params(f"SELECT * FROM ({query}) AS combined ORDER BY doctor_name"), (scoped_hospital_id,))
+            cursor.execute(
+                _to_sql_params(f"SELECT * FROM ({query}) AS combined ORDER BY doctor_name"),
+                (scoped_hospital_id,)
+            )
         return [dict(row) for row in cursor.fetchall()]
 
 def update_doctor(doctor_id, data):
@@ -5210,6 +5228,28 @@ def list_invoice_payments_for_patient(patient_id, hospital_id=None):
             """,
             tuple(params),
         )
+        return cursor.fetchall()
+
+
+def list_all_invoice_payments(hospital_id=None):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        query = """
+            SELECT p.id, i.patient_id,
+                   COALESCE(pt.name || ' ' || COALESCE(pt.last_name, ''), i.patient_id, 'Unknown') AS patient_name,
+                   i.module AS payment_for, 
+                   p.amount, p.payment_mode AS mode, p.created_at AS date, p.gateway_ref
+            FROM invoice_payments p
+            JOIN invoices i ON p.invoice_id = i.id
+            LEFT JOIN patients pt ON pt.patient_id = i.patient_id
+            WHERE p.deleted_at IS NULL
+        """
+        params = []
+        if hospital_id:
+            query += " AND p.hospital_id = ?"
+            params.append(hospital_id)
+        query += " ORDER BY p.created_at DESC"
+        cursor.execute(query, tuple(params))
         return cursor.fetchall()
 
 
