@@ -8,6 +8,10 @@ healthcare.db
 backend/test.db
 uploads/
 
+# Docker bind-mount data for local compose (postgres/redis/app data/uploads) --
+# real runtime state, never belongs in version control.
+volumes/
+
 **/__pycache__/
 **/.pytest_cache/
 **/*.pyc

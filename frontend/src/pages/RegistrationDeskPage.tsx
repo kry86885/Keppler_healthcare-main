@@ -668,9 +668,6 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
   if (mode === "consent") {
     return (
       <section className="module-page">
-        <div className="module-panel-head">
-          <h3>Consent Desk</h3>
-        </div>
         <div className="panel registration-desk-panel">
           <div className="grid-form">
             <Label>
@@ -738,9 +735,6 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
   if (mode === "insurance") {
     return (
       <section className="module-page">
-        <div className="module-panel-head">
-          <h3>Insurance Desk</h3>
-        </div>
         <div className="panel registration-desk-panel">
           <div className="grid-form">
             <Label>
@@ -825,11 +819,6 @@ export default function RegistrationDeskPage({ mode, selectedPatient, setNotice,
   return (
     <section className="module-page">
       
-      {mode === "appointment-in" && (
-        <div className="module-panel-head">
-          <h3>Appointment In Desk</h3>
-        </div>
-      )}
 
       {mode === "appointment-out" && (
         <div style={{ marginBottom: "1.5rem" }}>

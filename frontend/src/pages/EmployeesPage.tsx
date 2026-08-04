@@ -229,8 +229,6 @@ export default function EmployeesPage({ setNotice, canEditProfile, canManageAcce
 
   return (
     <section className="panel">
-      <h3>Employee Management</h3>
-
       <Tabs>
         <TabsTrigger active={tab === "list"} onClick={() => setTab("list")}>Directory</TabsTrigger>
         <TabsTrigger

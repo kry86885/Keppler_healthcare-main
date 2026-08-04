@@ -166,7 +166,6 @@ export default function AdminPage({ setNotice }: Props) {
   if (authLoading) {
     return (
       <section className="panel admin-auth-panel">
-        <h3>Admin Route</h3>
         <p className="muted">Checking admin access...</p>
       </section>
     );
@@ -175,7 +174,6 @@ export default function AdminPage({ setNotice }: Props) {
   if (!configured) {
     return (
       <section className="panel admin-auth-panel">
-        <h3>Admin Route</h3>
         <p className="muted">Admin route password is not configured on the server.</p>
         <p className="muted">
           Set <code>ADMIN_ROUTE_PASSWORD</code> in your <code>.env</code> and restart the backend.
@@ -187,7 +185,6 @@ export default function AdminPage({ setNotice }: Props) {
   if (!authorized) {
     return (
       <section className="panel admin-auth-panel">
-        <h3>Admin Route Login</h3>
         <p className="muted">Enter the route password to access admin management.</p>
         <form className="grid-form" onSubmit={handleAdminAuthLogin}>
           <Label className="span-2">
@@ -208,7 +205,6 @@ export default function AdminPage({ setNotice }: Props) {
     <section className="panel admin-page">
       <div className="admin-page-header">
         <div>
-          <h3>Admin Management</h3>
           <p className="muted">Create users and promote existing users to admin.</p>
         </div>
         <div className="form-actions">

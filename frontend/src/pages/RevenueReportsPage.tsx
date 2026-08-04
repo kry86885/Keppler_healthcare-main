@@ -31,7 +31,6 @@ type RevenueRecord = {
 
 const CATEGORIES = [
   { label: "OP / Billing", icon: "🧮", color: "#2563eb" },
-  { label: "Lab / Diagnostics", icon: "🧪", color: "#0ea5e9" },
   { label: "Pharmacy", icon: "💊", color: "#3b82f6" },
   { label: "Monthly Revenue", icon: "📅", color: "#8b5cf6" },
   { label: "Pending Payments", icon: "⚠️", color: "#ef4444" },
@@ -45,28 +44,48 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
 
   const fetchRecords = async () => {
     try {
-      const res = await fetch("/api/billing/invoices");
-      if (res.ok) {
-        const data = await res.json();
-        setRecords(
-          (data.invoices || []).map((inv: any) => {
-            const mod = inv.module || "";
-            let category = "General";
-            if (mod === "OP") category = "OP / Billing";
-            else if (mod === "LAB") category = "Lab / Diagnostics";
-            else if (mod === "PHARMACY") category = "Pharmacy";
-            else if (mod === "IP") category = "OP / Billing";
-            return {
-              id: inv.invoice_no,
-              patientName: inv.patient_id || "Unknown",
-              category,
-              amount: parseFloat(inv.total_amount) || 0,
-              date: (inv.created_at || "").split("T")[0] || (inv.created_at || "").split(" ")[0] || "",
-              status: inv.payment_status === "paid" ? "Paid" : "Pending"
-            };
-          })
-        );
+      const [invoicesRes, pharmacySalesRes] = await Promise.all([
+        fetch("/api/billing/invoices"),
+        fetch("/api/pharmacy/sales"),
+      ]);
+
+      const invoiceRecords: RevenueRecord[] = [];
+      if (invoicesRes.ok) {
+        const data = await invoicesRes.json();
+        (data.invoices || []).forEach((inv: any) => {
+          const mod = inv.module || "";
+          // Only OP/IP invoices exist here -- pharmacy revenue is tracked
+          // entirely in pharmacy_sales (merged in below), never as an
+          // invoice, so it's excluded to avoid a dead "PHARMACY" branch that
+          // would never match anything.
+          if (mod !== "OP" && mod !== "IP") return;
+          invoiceRecords.push({
+            id: inv.invoice_no,
+            patientName: inv.patient_id || "Unknown",
+            category: "OP / Billing",
+            amount: parseFloat(inv.total_amount) || 0,
+            date: (inv.created_at || "").split("T")[0] || (inv.created_at || "").split(" ")[0] || "",
+            status: inv.payment_status === "paid" ? "Paid" : "Pending",
+          });
+        });
       }
+
+      const pharmacyRecords: RevenueRecord[] = [];
+      if (pharmacySalesRes.ok) {
+        const data = await pharmacySalesRes.json();
+        (data.sales || []).forEach((sale: any) => {
+          pharmacyRecords.push({
+            id: `pharmacy-${sale.id}`,
+            patientName: sale.patient_name || sale.patient_id || "Walk-in",
+            category: "Pharmacy",
+            amount: parseFloat(sale.amount) || 0,
+            date: (sale.sold_at || "").split("T")[0] || (sale.sold_at || "").split(" ")[0] || "",
+            status: "Paid",
+          });
+        });
+      }
+
+      setRecords([...invoiceRecords, ...pharmacyRecords]);
     } catch (err) {
       console.error(err);
     }
@@ -94,7 +113,6 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
 
   const collectionBars = [
     { label: "OP / Billing", color: "#2563eb" },
-    { label: "Lab / Diagnostics", color: "#0ea5e9" },
     { label: "Pharmacy", color: "#3b82f6" },
   ];
 
@@ -104,16 +122,8 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      {/* Page Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--foreground)", marginBottom: "0.25rem" }}>
-            Revenue Reports
-          </h1>
-          <p style={{ color: "var(--muted-foreground)", fontSize: "0.875rem" }}>
-            Monitor module-wise collections, dues, and doctor payouts.
-          </p>
-        </div>
+      {/* Page title/subtitle now render once, in the shared app topbar. */}
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <Button variant="secondary" onClick={() => onNavigate && onNavigate("dashboard")}>
           ← Back to Dashboard
         </Button>

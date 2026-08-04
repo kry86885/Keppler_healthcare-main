@@ -171,14 +171,7 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
 
   return (
     <section className="module-page">
-      <div className="module-panel-head">
-        <div>
-          <h3>Doctor Scheduling</h3>
-          <p className="muted">Manage doctors and outpatient schedules.</p>
-        </div>
-      </div>
-
-      <div className="module-panel-head" style={{ marginTop: '1rem', borderBottom: 'none' }}>
+      <div className="module-panel-head" style={{ borderBottom: 'none' }}>
         <div>
           <h3>OP Desk</h3>
         </div>
@@ -357,8 +350,8 @@ export default function DoctorSchedulingPage({ setNotice, canEdit }: Props) {
                       {doc.department || "General"}
                     </span>
                   </TableCell>
-                  <TableCell style={{ fontWeight: 500, color: "#059669" }}>₹{doc.consultation_fee.toFixed(0)}</TableCell>
-                  <TableCell style={{ color: "#64748B" }}>₹{doc.review_fee.toFixed(0)}</TableCell>
+                  <TableCell style={{ fontWeight: 500, color: "#059669" }}>₹{Number(doc.consultation_fee || 0).toFixed(0)}</TableCell>
+                  <TableCell style={{ color: "#64748B" }}>₹{Number(doc.review_fee || 0).toFixed(0)}</TableCell>
                   <TableCell>
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
                       <span

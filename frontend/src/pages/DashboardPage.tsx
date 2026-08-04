@@ -117,11 +117,6 @@ export default function DashboardPage({ stats, recentPatients, analytics, hospit
 
   return (
     <section className="fade-in page-container">
-      <div className="dashboard-header" style={{ marginBottom: "24px" }}>
-        <h2 style={{ fontSize: "24px", fontWeight: 700, color: "var(--foreground)" }}>Dashboard</h2>
-        <p className="muted">Stay ahead with real-time care intelligence.</p>
-      </div>
-
       <div className="stat-grid">
         <StatCard label="Total Patients" value={stats.total} />
         <StatCard label="New Today" value={stats.today} />

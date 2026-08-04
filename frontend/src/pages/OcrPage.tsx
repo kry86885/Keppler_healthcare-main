@@ -410,21 +410,6 @@ export default function OcrPage({ setNotice }: Props) {
 
   return (
     <section className="page-section ocr-scanner-page">
-      <div className="section-header">
-        <div className="ocr-page-title">
-          <span className="ocr-page-icon">
-            <Icon name="file" size={22} />
-          </span>
-          <div>
-            <h2>OCR</h2>
-            <p className="muted">
-              Upload scanned medical records, prescriptions, and reports for AI-powered text extraction, then browse
-              or chat with what you've scanned.
-            </p>
-          </div>
-        </div>
-      </div>
-
       <Tabs>
         <TabsTrigger active={tab === "upload"} onClick={() => setTab("upload")}>
           <span className="ocr-tab-label"><Icon name="upload" size={15} /> Upload &amp; Scan</span>

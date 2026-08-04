@@ -146,16 +146,8 @@ export default function PaymentCollectionPage({ setNotice, onNavigate }: Props) 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      {/* Page Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--foreground)", marginBottom: "0.25rem" }}>
-            Payment Collection
-          </h1>
-          <p style={{ color: "var(--muted-foreground)", fontSize: "0.875rem" }}>
-            Record and track all patient payments in real-time.
-          </p>
-        </div>
+      {/* Page title/subtitle now render once, in the shared app topbar. */}
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <Button variant="secondary" onClick={() => onNavigate && onNavigate("dashboard")}>
           ← Back to Dashboard
         </Button>

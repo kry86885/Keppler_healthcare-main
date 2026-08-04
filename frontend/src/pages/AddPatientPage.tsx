@@ -152,7 +152,6 @@ export default function AddPatientPage({ onCreate, setNotice, onNavigate }: Prop
     <section className="form-layout">
       
       <div className="panel">
-        <h3>Patient Registration</h3>
         <p className="muted">Patient ID: {patientId || "Will be generated on save"}</p>
         {duplicateInfo && (
           <Alert variant="warning">

@@ -250,7 +250,6 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
     <section className="module-page">
       <div className="module-panel-head">
         <div>
-          <h3>AI Mode: Bulk Patient Search</h3>
           <p className="muted">
             Upload a large patient list (.xlsx or .csv, up to 200MB) -- the AI automatically detects
             which column is phone/name/age/etc. and imports it, no manual setup needed -- then search it

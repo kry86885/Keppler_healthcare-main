@@ -424,12 +424,9 @@ export default function DoctorPrescriptionPage({ setNotice, onNavigate, isAdmin,
       {/* ── HEADER ── */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.35rem", flexWrap: "wrap", gap: "0.75rem" }}>
         <div>
-          <div style={{ fontSize: "0.75rem", fontWeight: 600, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: "0.2rem" }}>
+          <div style={{ fontSize: "0.9rem", fontWeight: 700, color: C.text, marginBottom: "0.2rem" }}>
             {greeting}, Dr. {doctorName}
           </div>
-          <h3 style={{ margin: 0, fontWeight: 700, color: C.text }}>
-            Doctor Workspace
-          </h3>
           <p style={{ margin: "0.2rem 0 0", fontSize: "0.85rem", color: C.textMuted }}>
             {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           </p>

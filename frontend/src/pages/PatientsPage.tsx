@@ -198,10 +198,6 @@ export default function PatientsPage({
   return (
     <section className="patient-page">
       <div className="patient-header panel">
-        <div>
-          <h3>Patients</h3>
-          <p className="muted">Search, review, and manage patient records.</p>
-        </div>
         <div className="patient-toolbar">
           <Input
             value={query}

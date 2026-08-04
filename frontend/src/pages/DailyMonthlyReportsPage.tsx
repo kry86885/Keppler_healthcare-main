@@ -59,21 +59,55 @@ export default function DailyMonthlyReportsPage({ setNotice, onNavigate }: Props
 
   const fetchRecords = async () => {
     try {
-      const res = await fetch("/api/billing/payments");
-      if (res.ok) {
-        const data = await res.json();
-        setRecords(
-          (data.payments || []).map((p: any) => ({
+      const [paymentsRes, pharmacySalesRes] = await Promise.all([
+        fetch("/api/billing/payments"),
+        fetch("/api/pharmacy/sales"),
+      ]);
+
+      const paymentRecords: DailyRecord[] = [];
+      if (paymentsRes.ok) {
+        const data = await paymentsRes.json();
+        (data.payments || []).forEach((p: any) => {
+          const paymentFor = p.payment_for || p.paymentFor || "";
+          // Only OP/IP payments exist here -- pharmacy revenue is tracked
+          // entirely in pharmacy_sales (merged in below), never as a billed
+          // invoice payment, and lab/diagnostics is no longer a module in
+          // this app, so both are excluded here rather than silently
+          // counted under an unlabeled bucket.
+          if (paymentFor !== "OP" && paymentFor !== "IP") return;
+          paymentRecords.push({
             id: String(p.id),
             patientName: p.patient_name || p.patientName || "Unknown",
             patientId: p.patient_id || p.patientId || "",
             paymentMethod: normalizeModeDisplay(p.mode),
-            module: p.payment_for === "OP" ? "OP / Billing" : (p.payment_for || p.paymentFor || "General"),
+            module: "OP / Billing",
             amount: parseFloat(p.amount) || 0,
-            date: p.date || ""
-          }))
-        );
+            date: p.date || "",
+          });
+        });
       }
+
+      const pharmacyRecords: DailyRecord[] = [];
+      if (pharmacySalesRes.ok) {
+        const data = await pharmacySalesRes.json();
+        (data.sales || []).forEach((sale: any) => {
+          pharmacyRecords.push({
+            id: `pharmacy-${sale.id}`,
+            patientName: sale.patient_name || sale.patient_id || "Walk-in",
+            patientId: sale.patient_id || "",
+            // Pharmacy sales don't capture a payment mode, so this
+            // deliberately doesn't match any label in PAYMENT_METHODS --
+            // it still counts toward totals and the module breakdown below,
+            // just isn't fabricated into a specific payment method bucket.
+            paymentMethod: "Pharmacy Sale",
+            module: "Pharmacy",
+            amount: parseFloat(sale.amount) || 0,
+            date: (sale.sold_at || "").split("T")[0] || (sale.sold_at || "").split(" ")[0] || "",
+          });
+        });
+      }
+
+      setRecords([...paymentRecords, ...pharmacyRecords]);
     } catch (err) {
       console.error("Failed to fetch payments:", err);
     }
@@ -121,16 +155,8 @@ export default function DailyMonthlyReportsPage({ setNotice, onNavigate }: Props
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      {/* Page Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--foreground)", marginBottom: "0.25rem" }}>
-            Daily / Monthly Reports
-          </h1>
-          <p style={{ color: "var(--muted-foreground)", fontSize: "0.875rem" }}>
-            Track day-wise and month-wise collections across all modules.
-          </p>
-        </div>
+      {/* Page title/subtitle now render once, in the shared app topbar. */}
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <Button variant="secondary" onClick={() => onNavigate && onNavigate("dashboard")}>
           ← Back to Dashboard
         </Button>

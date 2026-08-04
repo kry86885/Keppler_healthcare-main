@@ -13,6 +13,7 @@ import {
   FiEyeOff,
   FiLoader,
   FiActivity,
+  FiPlusSquare,
 } from "react-icons/fi";
 
 type Props = {
@@ -20,7 +21,7 @@ type Props = {
   initialHospitalCode: string;
 };
 
-type LoginType = "staff" | "doctor" | "admin";
+type LoginType = "staff" | "doctor" | "pharmacist" | "admin";
 
 const FEATURES = [
   { icon: FiUsers, label: "Patient Management" },
@@ -32,6 +33,7 @@ const FEATURES = [
 const LOGIN_TABS: { type: LoginType; label: string; icon: typeof FiUser }[] = [
   { type: "staff", label: "Staff", icon: FiUser },
   { type: "doctor", label: "Doctor", icon: FiActivity },
+  { type: "pharmacist", label: "Pharmacy", icon: FiPlusSquare },
   { type: "admin", label: "Admin", icon: FiShield },
 ];
 
@@ -47,6 +49,12 @@ const LOGIN_COPY: Record<LoginType, { heading: string; subtext: string; placehol
     subtext: "Sign in to manage your consultations and queue.",
     placeholder: "dr.smith",
     submitLabel: "Login as Doctor",
+  },
+  pharmacist: {
+    heading: "Pharmacy Portal",
+    subtext: "Sign in to manage inventory, prescriptions, and dispensing.",
+    placeholder: "pharmacy.desk",
+    submitLabel: "Login to Pharmacy",
   },
   admin: {
     heading: "Admin Portal",

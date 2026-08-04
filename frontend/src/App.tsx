@@ -43,6 +43,12 @@ import { apiFetch, getHospitalCode, reportError, setHospitalCode } from "./lib/a
 import { resolvePermissions } from "./lib/format";
 import type { DashboardAnalytics, HospitalSummary, Notice, Patient, Stats, User } from "./types";
 
+function greetingForHour(hour: number) {
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 type SidebarIconName = "dashboard" | "add" | "patients" | "readmit" | "billing" | "pharmacy" | "hrms" | "symptom" | "employees" | "settings" | "logout" | "profile" | "appointment";
 
 const NAV_ICON_MAP: Record<string, SidebarIconName> = {
@@ -268,6 +274,12 @@ function App() {
   const hasPermission = (permission?: string) => !permission || permissions.includes(permission);
   const isAdmin = hasPermission("admin.use");
   const isClinicianUser = user?.access_role === "clinician" || (user?.job_role || "").toLowerCase() === "doctor";
+  // Identity-only flag (personalized greeting + default landing page in
+  // getDefaultPage below) -- deliberately does NOT narrow nav visibility the
+  // way isClinicianUser does, since a pharmacist's module_access already
+  // governs what they can see and there's no equivalent need to hide other
+  // granted modules from them.
+  const isPharmacistUser = user?.access_role === "pharmacist" || (user?.job_role || "").toLowerCase() === "pharmacist";
   const canAccessNavItem = (item: typeof NAV_ITEMS[0], permission?: string) => {
     if (item.id === "employees") return isAdmin;
 
@@ -355,6 +367,9 @@ function App() {
   const getDefaultPage = (currentUser: User | null) => {
     if (currentUser?.access_role === "clinician" || (currentUser?.job_role || "").toLowerCase() === "doctor") {
       return "queue";
+    }
+    if (currentUser?.access_role === "pharmacist" || (currentUser?.job_role || "").toLowerCase() === "pharmacist") {
+      return "pharmacy";
     }
     const candidatePages = [
       "dashboard",
@@ -1147,8 +1162,16 @@ function App() {
                 <FiMenu size={24} />
               </button>
               <div>
-                <h2>{page === "admin" ? "Admin" : NAV_ITEMS.find((item) => item.id === page)?.label || "Dashboard"}</h2>
-                <p className="muted">Stay ahead with real-time care intelligence.</p>
+                <h2>
+                  {page === "admin"
+                    ? "Admin"
+                    : page === "pharmacy" && isPharmacistUser && user?.full_name
+                    ? `${greetingForHour(new Date().getHours())}, ${user.full_name.split(" ")[0]}`
+                    : NAV_ITEMS.find((item) => item.id === page)?.label || "Dashboard"}
+                </h2>
+                <p className="muted">
+                  {NAV_ITEMS.find((item) => item.id === page)?.subtitle || "Stay ahead with real-time care intelligence."}
+                </p>
               </div>
             </div>
           </header>
@@ -1228,7 +1251,9 @@ function App() {
         {page === "billing-revenue-reports" && hasPermission("billing.read") && <RevenueReportsPage setNotice={setNotice} onNavigate={navigateToPage} />}
         {page === "billing-daily-monthly-reports" && hasPermission("billing.read") && <DailyMonthlyReportsPage setNotice={setNotice} onNavigate={navigateToPage} />}
 
-          {page === "pharmacy" && hasPermission("pharmacy.read") && <PharmacyPage setNotice={setNotice} />}
+          {page === "pharmacy" && hasPermission("pharmacy.read") && (
+            <PharmacyPage setNotice={setNotice} />
+          )}
 
           {page === "hrms" && hasPermission("hr.read") && <HrmsPage setNotice={setNotice} />}
 

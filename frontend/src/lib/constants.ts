@@ -219,7 +219,7 @@ export const SUB_MODULE_PERMISSIONS: Partial<Record<ModuleId, Record<string, str
 export const NAV_ITEMS: NavItem[] = [
   // Overview: landing page, then the two most common patient lookups.
   { id: "dashboard", label: "Dashboard", group: "overview", permission: "patients.read", deniedHint: "Requires patient access.", module: "dashboard" },
-  { id: "patients", label: "Patients", group: "overview", permission: "patients.read", deniedHint: "Requires patient access.", module: "patients" },
+  { id: "patients", label: "Patients", subtitle: "Search, review, and manage patient records.", group: "overview", permission: "patients.read", deniedHint: "Requires patient access.", module: "patients" },
   { id: "readmit", label: "Re-admit", group: "overview", permission: "patients.clinical.write", deniedHint: "Requires patient clinical-records access.", module: "patients" },
 
   // OP Management: ordered to match the actual front-desk-to-discharge patient journey.
@@ -233,18 +233,18 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "appointment-out", label: "Appointment Out", group: "registration", permission: "patients.appointments.write", deniedHint: "Requires appointments access.", module: "patients" },
 
   // Operations: scheduling first, then the departments doctors refer patients to.
-  { id: "op-desk", label: "Doctor Scheduling", group: "operations", permission: "op.read", deniedHint: "Requires doctor scheduling access.", module: "op" },
-  { id: "pharmacy", label: "Pharmacy", group: "operations", permission: "pharmacy.read", deniedHint: "Requires pharmacy access.", module: "pharmacy" },
+  { id: "op-desk", label: "Doctor Scheduling", subtitle: "Manage doctors and outpatient schedules.", group: "operations", permission: "op.read", deniedHint: "Requires doctor scheduling access.", module: "op" },
+  { id: "pharmacy", label: "Pharmacy", subtitle: "Manage inventory, prescriptions, and sales intelligently.", group: "operations", permission: "pharmacy.read", deniedHint: "Requires pharmacy access.", module: "pharmacy" },
 
   // AI: the flagship assistant first, then supporting document/bulk tools.
   { id: "symptom-ai", label: "SymptoMap AI", group: "ai", permission: "symptom_ai.use", deniedHint: "Requires SymptoMap AI access.", module: "symptom_ai" },
-  { id: "ocr", label: "OCR Scanner", group: "ai", permission: "patients.documents.write", deniedHint: "Requires documents access.", module: "patients" },
-  { id: "bulk-ai", label: "AI Mode", group: "ai", permission: "patients.bulk_ai.write", deniedHint: "Requires bulk patient AI access.", module: "patients" },
+  { id: "ocr", label: "OCR Scanner", subtitle: "Upload scanned medical records, prescriptions, and reports for AI-powered text extraction, then browse or chat with what you've scanned.", group: "ai", permission: "patients.documents.write", deniedHint: "Requires documents access.", module: "patients" },
+  { id: "bulk-ai", label: "AI Mode", subtitle: "Bulk-import patient lists and search them with plain-English prompts.", group: "ai", permission: "patients.bulk_ai.write", deniedHint: "Requires bulk patient AI access.", module: "patients" },
 
   // Finance: Simplified to 3 modules as per request.
-  { id: "billing-payment-collection", label: "Payment Collection", group: "finance", permission: "billing.read", deniedHint: "Requires billing access.", module: "billing" },
-  { id: "billing-revenue-reports", label: "Revenue Reports", group: "finance", permission: "billing.read", deniedHint: "Requires billing access.", module: "billing" },
-  { id: "billing-daily-monthly-reports", label: "Daily / Monthly Reports", group: "finance", permission: "billing.read", deniedHint: "Requires billing access.", module: "billing" },
+  { id: "billing-payment-collection", label: "Payment Collection", subtitle: "Record and track all patient payments in real-time.", group: "finance", permission: "billing.read", deniedHint: "Requires billing access.", module: "billing" },
+  { id: "billing-revenue-reports", label: "Revenue Reports", subtitle: "Monitor module-wise collections, dues, and doctor payouts.", group: "finance", permission: "billing.read", deniedHint: "Requires billing access.", module: "billing" },
+  { id: "billing-daily-monthly-reports", label: "Daily / Monthly Reports", subtitle: "Track day-wise and month-wise collections across all modules.", group: "finance", permission: "billing.read", deniedHint: "Requires billing access.", module: "billing" },
 
   // Administration: manage employees before managing their HR operations (attendance/payroll/leave).
   { id: "employees", label: "Employee Management", group: "admin", permission: "employees.read", deniedHint: "Requires employee management access.", module: "employees" },

@@ -153,7 +153,6 @@ export default function QueuePage({ setNotice, onNavigate, canManageConsultation
       
 
       <div className="module-panel-head">
-        <h3>Queue Management</h3>
         <p className="muted">{waitingCount} token(s) waiting or in progress today.</p>
       </div>
 

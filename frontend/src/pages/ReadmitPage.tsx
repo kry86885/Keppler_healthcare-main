@@ -314,7 +314,6 @@ export default function ReadmitPage({ onSelect, setNotice, onReadmitComplete, oc
 
   return (
     <section className="panel">
-      <h3>Re-admit Patient</h3>
       <div className="search-bar">
         <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name, phone, or DOB" />
       </div>

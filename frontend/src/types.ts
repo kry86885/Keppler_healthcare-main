@@ -429,6 +429,7 @@ export interface PatientForm {
 export interface NavItem {
   id: string;
   label: string;
+  subtitle?: string;
   permission?: string;
   deniedHint?: string;
   group?: "overview" | "ai" | "registration" | "operations" | "finance" | "admin";
