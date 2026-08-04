@@ -12,8 +12,11 @@ import AppointmentQueueCard from "../components/AppointmentQueueCard";
 type Props = {
   setNotice: Dispatch<SetStateAction<Notice | null>>;
   onNavigate?: (page: string) => void;
-  /** Receptionists only check patients in; the doctor/consultation actions are handled downstream. */
-  isReceptionist?: boolean;
+  /** Completing/cancelling a consultation is a clinical hand-off action --
+   * restricted to the clinician running it (or an admin), not just hidden
+   * from receptionists. Front-desk check-in/start-consultation stays open
+   * to everyone regardless of this flag. */
+  canManageConsultation?: boolean;
 };
 
 const ACTIVE_STATUSES = ["scheduled", "checked_in", "in_consultation"];
@@ -26,7 +29,7 @@ const STAT_CARDS: { status: string; label: string; icon: ReactNode }[] = [
   { status: "cancelled", label: "Cancelled", icon: <FiXCircle aria-hidden /> },
 ];
 
-export default function QueuePage({ setNotice, onNavigate, isReceptionist }: Props) {
+export default function QueuePage({ setNotice, onNavigate, canManageConsultation }: Props) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(false);
   const [doctorFilter, setDoctorFilter] = useState("");
@@ -250,7 +253,7 @@ export default function QueuePage({ setNotice, onNavigate, isReceptionist }: Pro
                         Start Consultation
                       </Button>
                     ) : null}
-                    {!isReceptionist && (appointment.status === "in_consultation" || appointment.status === "completed") ? (
+                    {canManageConsultation && (appointment.status === "in_consultation" || appointment.status === "completed") ? (
                       <div style={{ display: "flex", gap: "0.5rem" }}>
                         {appointment.status === "in_consultation" && (
                           <Button type="button" size="sm" variant="secondary" onClick={() => void handleStatusChange(appointment, "completed")}>
@@ -264,7 +267,7 @@ export default function QueuePage({ setNotice, onNavigate, isReceptionist }: Pro
                         )}
                       </div>
                     ) : null}
-                    {!isReceptionist && appointment.status !== "completed" && appointment.status !== "cancelled" ? (
+                    {canManageConsultation && appointment.status !== "completed" && appointment.status !== "cancelled" ? (
                       <Button type="button" size="sm" variant="ghost" onClick={() => void handleStatusChange(appointment, "cancelled")}>
                         Cancel
                       </Button>

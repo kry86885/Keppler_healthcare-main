@@ -278,16 +278,28 @@ function App() {
   const permissions = useMemo(() => resolvePermissions(user), [user]);
   const hasPermission = (permission?: string) => !permission || permissions.includes(permission);
   const isAdmin = hasPermission("admin.use");
+  const isClinicianUser = user?.access_role === "clinician" || (user?.job_role || "").toLowerCase() === "doctor";
   const canAccessNavItem = (item: typeof NAV_ITEMS[0], permission?: string) => {
     if (item.id === "employees") return isAdmin;
 
     // Clinicians should only see a restricted set of pages WITHIN the patients and symptom_ai modules.
     // If the admin gives them access to other modules (like pharmacy or lab), they will see those pages.
-    if (user?.access_role === "clinician" || (user?.job_role || "").toLowerCase() === "doctor") {
+    if (isClinicianUser) {
       if (item.module === "patients" || item.module === "dashboard" || item.module === "symptom_ai") {
         const allowedForClinician = ["queue", "emr", "dashboard", "patients", "symptom-ai", "doctor-prescription"];
         if (!allowedForClinician.includes(item.id)) return false;
       }
+    }
+
+    // "Doctor Prescription" is the doctor's own consultation workspace (queue
+    // call-in, clinical notes, prescription capture) -- it shares its module
+    // (patients) and permission (patients.read) with pages every default
+    // staff account also needs (Queue Management, Registration Desk), so it
+    // can't be gated by permission alone. Restrict it to clinicians/doctors
+    // and admins; everyone else with "patients" module access still correctly
+    // sees the other patients-module pages.
+    if (item.id === "doctor-prescription" && !isClinicianUser && !isAdmin) {
+      return false;
     }
 
     // Normal users must explicitly have the module in their module_access array (if the nav item belongs to a module).
@@ -1175,9 +1187,9 @@ function App() {
           <RegistrationDeskPage mode="appointment-out" selectedPatient={selectedPatient} setNotice={setNotice} onNavigate={navigateToPage} prefillData={appointmentPrefill} />
         )}
         {page === "queue" && hasPermission("patients.read") && (
-          <QueuePage setNotice={setNotice} onNavigate={navigateToPage} isReceptionist={user?.access_role === "receptionist"} />
+          <QueuePage setNotice={setNotice} onNavigate={navigateToPage} canManageConsultation={isClinicianUser || isAdmin} />
         )}
-        {page === "doctor-prescription" && hasPermission("patients.read") && <DoctorPrescriptionPage setNotice={setNotice} onNavigate={navigateToPage} isAdmin={isAdmin} user={user} />}
+        {page === "doctor-prescription" && hasPermission("patients.read") && (isClinicianUser || isAdmin) && <DoctorPrescriptionPage setNotice={setNotice} onNavigate={navigateToPage} isAdmin={isAdmin} user={user} />}
         {page === "emr" && hasPermission("patients.read") && <EmrPage setNotice={setNotice} />}
 
         {page === "consent-desk" && hasPermission("patients.consent.write") && (
