@@ -1,9 +1,9 @@
 """Text extraction for the Symptom AI document-chat upload flow.
 
 Reuses dependencies already present in the main backend (pypdf, python-docx, the
-Gemini-vision OCR pipeline) rather than adding PyMuPDF/fitz -- pypdf's text extraction
+vLLM vision OCR pipeline) rather than adding PyMuPDF/fitz -- pypdf's text extraction
 already covers standard PDFs, and any scanned/image-only PDF or photo still goes through
-the same Gemini OCR path used elsewhere in the app.
+the same vLLM OCR path used elsewhere in the app.
 """
 
 import io
@@ -47,7 +47,7 @@ def extract_document_text(file_bytes: bytes, filename: str) -> str:
     if extension == ".pdf":
         text = _extract_text_from_pdf_bytes(file_bytes)
         if not text.strip():
-            # Scanned/image-only PDF: fall back to Gemini vision OCR on the raw bytes.
+            # Scanned/image-only PDF: fall back to vLLM vision OCR on the raw bytes.
             text = extract_text_from_image(
                 file_bytes, doc_type="document", filename=filename
             )

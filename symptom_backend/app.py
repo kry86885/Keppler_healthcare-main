@@ -451,10 +451,16 @@ def _vllm_generate(
     max_tokens: int = 1024,
     frequency_penalty: float = 0.0,
     presence_penalty: float = 0.0,
+    system_prompt: str = None,
 ):
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
     payload = {
         "model": VLLM_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": messages,
         "stream": False,
         "temperature": temperature,
         "max_tokens": max_tokens,
@@ -849,7 +855,8 @@ def _generate_with_vllm(system_prompt: str, user_prompt: str):
 
     _rate_limit()
     text, error = _vllm_generate(
-        f"{system_prompt}\n\nUser input:\n{user_prompt}",
+        prompt=user_prompt,
+        system_prompt=system_prompt,
         temperature=0.7,
         max_tokens=1024,
         frequency_penalty=0.4,

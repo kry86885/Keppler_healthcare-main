@@ -1896,7 +1896,8 @@ def ensure_ocr_portal_tables(conn):
     # Local OCR Portal vault + chat -- the separate ocr_portal/ microservice this
     # module used to proxy to (Docker + Postgres + Qdrant + a GPU vLLM model) isn't
     # available in this deployment, so upload/vault/knowledge-base/chat are all
-    # served locally instead (EasyOCR + Ollama, see ai/local_ocr_portal.py).
+    # served locally instead via the same vLLM model as the rest of the app
+    # (see ai/local_ocr_portal.py, ai/service.py).
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS ocr_portal_documents (
             id {id_column},

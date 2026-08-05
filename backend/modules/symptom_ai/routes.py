@@ -88,7 +88,7 @@ def symptom_ai_documents_upload():
         graph_error = None
     except Exception as exc:
         # The document is still saved and visible in the vault even if the knowledge-graph
-        # insert fails (e.g. transient Gemini error) -- the user can see what happened and
+        # insert fails (e.g. transient vLLM error) -- the user can see what happened and
         # doesn't lose the extracted text.
         graph_updated = False
         graph_error = str(exc)

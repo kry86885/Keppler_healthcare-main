@@ -1,7 +1,7 @@
 """Embedding generation and vector similarity search for clinical documents.
 
-Embeddings are generated via a local Ollama embedding model (no API key, no cloud
-dependency) rather than a cloud embedding API or a heavy in-process PyTorch model.
+Embeddings are generated via the local vLLM server's embedding endpoint (no API key,
+no cloud dependency) rather than a cloud embedding API or a heavy in-process PyTorch model.
 
 Vectors are stored as JSON-encoded float arrays (portable across SQLite and Postgres)
 and compared via cosine similarity in Python. This works identically on both database

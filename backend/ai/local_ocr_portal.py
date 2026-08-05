@@ -2,8 +2,8 @@
 Qdrant + a GPU vLLM model) that modules/ocr_portal/routes.py used to proxy to. That
 service isn't available in this deployment (no Docker, no GPU) -- upload/OCR, the
 document vault, the knowledge base, and RAG chat are all served locally instead,
-using the same EasyOCR + Ollama pipeline as the rest of the app (ai/service.py,
-ai/ollama_provider.py) and this app's own Postgres/SQLite DB for storage.
+using the same vLLM pipeline as the rest of the app (ai/service.py) and this app's
+own Postgres DB for storage.
 
 Business routes (modules/ocr_portal/routes.py) import from here only.
 """

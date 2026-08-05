@@ -41,8 +41,6 @@ services:
       VLLM_BASE_URL: ${VLLM_BASE_URL:-http://host.docker.internal:8700/v1}
       VLLM_MODEL: ${VLLM_MODEL:-qwen2.5-vl-7b}
       VLLM_API_KEY: ${VLLM_API_KEY:-local}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-bge-m3:latest}
       BUCKET_URL: ${BUCKET_URL:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
@@ -92,8 +90,6 @@ services:
       VLLM_BASE_URL: ${VLLM_BASE_URL:-http://host.docker.internal:8700/v1}
       VLLM_MODEL: ${VLLM_MODEL:-qwen2.5-vl-7b}
       VLLM_API_KEY: ${VLLM_API_KEY:-local}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-bge-m3:latest}
       BUCKET_URL: ${BUCKET_URL:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
