@@ -2396,8 +2396,14 @@ def upsert_bulk_import_patients_batch(hospital_id, rows):
         "source",
     ] + BULK_IMPORT_PATIENT_FIELDS
     placeholders = ", ".join(["?"] * len(columns))
+    # patient_id must be reassigned on conflict too, not just the data fields:
+    # patient_id encodes which job a row belongs to ("BULK-{job_id}-{row}"),
+    # and job-scoped search (_job_scope_clause) filters on that prefix. If a
+    # later import re-uploads a phone number seen in an earlier job, leaving
+    # the old patient_id in place would make that row invisible to every
+    # search scoped to the job that actually just imported it.
     update_assignments = ", ".join(
-        f"{col} = EXCLUDED.{col}" for col in BULK_IMPORT_PATIENT_FIELDS
+        f"{col} = EXCLUDED.{col}" for col in ["patient_id"] + BULK_IMPORT_PATIENT_FIELDS
     )
     param_rows = [
         (
