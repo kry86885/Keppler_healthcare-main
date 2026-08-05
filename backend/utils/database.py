@@ -1013,23 +1013,32 @@ def ensure_hospai_module_tables(conn):
             quantity INTEGER NOT NULL,
             unit_price REAL NOT NULL,
             amount REAL NOT NULL,
-            hospital_id TEXT,
+            hospital_id INTEGER,
             sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
 
     cursor.execute("""
-        SELECT column_name
+        SELECT column_name, data_type
         FROM information_schema.columns
         WHERE table_name = 'pharmacy_sales'
         """)
-    pharmacy_sales_columns = {row[0] for row in cursor.fetchall()}
+    pharmacy_sales_column_types = {row[0]: row[1] for row in cursor.fetchall()}
+    pharmacy_sales_columns = set(pharmacy_sales_column_types)
     if "patient_id" not in pharmacy_sales_columns:
         cursor.execute("ALTER TABLE pharmacy_sales ADD COLUMN patient_id TEXT")
     if "prescription_ref" not in pharmacy_sales_columns:
         cursor.execute("ALTER TABLE pharmacy_sales ADD COLUMN prescription_ref TEXT")
     if "hospital_id" not in pharmacy_sales_columns:
-        cursor.execute("ALTER TABLE pharmacy_sales ADD COLUMN hospital_id TEXT")
+        cursor.execute("ALTER TABLE pharmacy_sales ADD COLUMN hospital_id INTEGER")
+    elif pharmacy_sales_column_types.get("hospital_id") != "integer":
+        # Repairs databases created before this column's type was fixed from the
+        # original (incorrect) TEXT to match hospitals.id/every other table's
+        # INTEGER hospital_id -- without this, hospital-scoped queries against
+        # pharmacy_sales fail with "operator does not exist: text = integer".
+        cursor.execute(
+            "ALTER TABLE pharmacy_sales ALTER COLUMN hospital_id TYPE INTEGER USING hospital_id::integer"
+        )
 
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS pharmacy_suppliers (
