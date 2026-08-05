@@ -2166,9 +2166,10 @@ def store_document_embedding(
 ):
     """Embed and store a clinical document/certificate chunk for later semantic search.
 
-    Returns the new row id, or None if embeddings are unavailable (no GEMINI_API_KEY
-    configured) -- callers should treat this as a soft failure, not an error, since
-    OCR/document upload must keep working even when the embedding provider is unset.
+    Returns the new row id, or None if embeddings are unavailable (local vLLM
+    embedding model unreachable) -- callers should treat this as a soft failure, not
+    an error, since OCR/document upload must keep working even when the embedding
+    provider is unset.
     """
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     vector = generate_embedding(content_text)

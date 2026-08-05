@@ -1,38 +1,21 @@
 """Public AI service API. Business routes (app.py) import from here only -- never from
-utils/ocr.py or google-genai directly, and never instantiate a provider themselves.
+utils/ocr.py directly, and never instantiate a provider themselves.
 
-Swapping providers (e.g. a future self-hosted vLLM/PaddleOCR stack) means changing the
-two module-level singletons below; nothing else in the codebase needs to change.
+Swapping providers (e.g. a future self-hosted PaddleOCR stack) means changing the two
+module-level singletons below; nothing else in the codebase needs to change.
 """
 
 import json
-import os
 import re
 
 from utils.ocr import _detect_mime_type
 from utils.database import search_similar_documents
 
-from .gemini_provider import GeminiLLMProvider, GeminiOCRProvider
 from .preprocessing import preprocess_image_bytes
 from .vllm_provider import VLLMLLMProvider, VLLMOCRProvider
 
-
-def _has_gemini_api_key() -> bool:
-    return bool(
-        (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
-    )
-
-
-def _provider_name() -> str:
-    return (os.getenv("AI_PROVIDER") or os.getenv("LLM_PROVIDER") or "").strip().lower()
-
-
-if _has_gemini_api_key() and _provider_name() != "vllm":
-    ocr_provider = GeminiOCRProvider()
-    llm_provider = GeminiLLMProvider()
-else:
-    ocr_provider = VLLMOCRProvider()
-    llm_provider = VLLMLLMProvider()
+ocr_provider = VLLMOCRProvider()
+llm_provider = VLLMLLMProvider()
 
 
 def _try_generate(prompt: str, context: str = "", **kwargs):

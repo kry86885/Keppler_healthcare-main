@@ -1,9 +1,9 @@
 """LightRAG-backed knowledge-graph chat for the Symptom AI "Ask About Your Documents" tab.
 
-Wires LightRAG directly to the existing Gemini call paths (ai/gemini_provider.py,
-utils/embeddings.py) via asyncio.to_thread -- deliberately skips litellm, which would
-otherwise be pulled in purely to re-route calls to a provider (Gemini) this codebase
-already calls directly. One LightRAG instance per (hospital, user), each with its own
+Wires LightRAG directly to the existing ai/service.py llm_provider and
+utils/embeddings.py via asyncio.to_thread -- deliberately skips litellm, which would
+otherwise be pulled in purely to re-route calls to a provider this codebase already
+calls directly. One LightRAG instance per (hospital, user), each with its own
 persistent on-disk workspace, so knowledge graphs never cross tenant or user boundaries.
 """
 
@@ -21,7 +21,7 @@ from lightrag.utils import EmbeddingFunc
 from utils.embeddings import generate_embedding
 from .service import llm_provider
 
-EMBEDDING_DIM = int(os.getenv("GEMINI_EMBEDDING_DIM", "768"))
+EMBEDDING_DIM = int(os.getenv("RAG_EMBEDDING_DIM", "768"))
 WORKSPACE_ROOT = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "rag_workspaces"
 )
@@ -37,7 +37,7 @@ def workspace_key(hospital_id, username: str) -> str:
     return f"hospital_{_safe_workspace_segment(hospital_id)}_user_{_safe_workspace_segment(username)}"
 
 
-async def gemini_llm_func(prompt, system_prompt=None, history_messages=None, **_kwargs):
+async def _rag_llm_func(prompt, system_prompt=None, history_messages=None, **_kwargs):
     """Async LLM callable LightRAG uses for entity extraction, summarization, and querying."""
     parts = []
     if system_prompt:
@@ -53,13 +53,11 @@ async def gemini_llm_func(prompt, system_prompt=None, history_messages=None, **_
 
     result = await asyncio.to_thread(_call)
     if not result:
-        raise RuntimeError(
-            "Gemini LLM call returned no content (check GEMINI_API_KEY)."
-        )
+        raise RuntimeError("RAG LLM call returned no content.")
     return result
 
 
-async def gemini_embedding_func(texts):
+async def _rag_embedding_func(texts):
     """Async embedding callable LightRAG uses for chunk/entity/relation vectors."""
 
     def _call():
@@ -118,11 +116,11 @@ async def get_rag_instance(key: str) -> LightRAG:
         os.makedirs(working_dir, exist_ok=True)
         rag = LightRAG(
             working_dir=working_dir,
-            llm_model_func=gemini_llm_func,
+            llm_model_func=_rag_llm_func,
             embedding_func=EmbeddingFunc(
                 embedding_dim=EMBEDDING_DIM,
                 max_token_size=8192,
-                func=gemini_embedding_func,
+                func=_rag_embedding_func,
             ),
         )
         await rag.initialize_storages()

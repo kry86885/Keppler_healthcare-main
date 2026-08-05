@@ -43,9 +43,6 @@ services:
       VLLM_API_KEY: ${VLLM_API_KEY:-local}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-bge-m3:latest}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
       BUCKET_URL: ${BUCKET_URL:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
@@ -97,9 +94,6 @@ services:
       VLLM_API_KEY: ${VLLM_API_KEY:-local}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-bge-m3:latest}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
       BUCKET_URL: ${BUCKET_URL:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
@@ -125,13 +119,11 @@ services:
     environment:
       PORT: 5002
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://app.yourdomain.com}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
-      SYMPTOM_AI_MODEL: ${SYMPTOM_AI_MODEL:-}
-      # Dedicated key for this service only -- see symptom_backend/app.py's
-      # _resolve_gemini_api_key(), falls back to GEMINI_API_KEY if unset.
-      SYMPTOM_AI_GEMINI_API_KEY: ${SYMPTOM_AI_GEMINI_API_KEY:-}
+      # Runs on the same local vLLM model as the main backend -- this
+      # service has no Gemini/cloud-LLM path anymore.
+      VLLM_BASE_URL: ${VLLM_BASE_URL:-http://host.docker.internal:8700/v1}
+      VLLM_MODEL: ${VLLM_MODEL:-qwen2.5-vl-7b}
+      VLLM_API_KEY: ${VLLM_API_KEY:-local}
     ports:
       - "5002:5002"
     extra_hosts:

@@ -1,67 +1,16 @@
 import io
-from dotenv import load_dotenv, dotenv_values
 import mimetypes
-import os
-from pathlib import Path
 import json
 import re
 
-try:
-    from google import genai
-    from google.genai import types
-
-    _GENAI_IMPORT_ERROR = None
-except Exception as exc:  # pragma: no cover - import guard for local/dev env mismatch
-    genai = None
-    types = None
-    _GENAI_IMPORT_ERROR = exc
 try:
     from pypdf import PdfReader
 except Exception:  # pragma: no cover - dependency guard
     PdfReader = None
 
 
-_CURRENT_FILE = Path(__file__).resolve()
-_BACKEND_DIR = _CURRENT_FILE.parents[1]
-_PROJECT_ROOT = _CURRENT_FILE.parents[2]
-
-
-def _load_environment():
-    load_dotenv(_BACKEND_DIR / ".env", override=False)
-    load_dotenv(_PROJECT_ROOT / ".env", override=False)
-
-
-def _resolve_api_key():
-    key = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
-    if key:
-        return key
-
-    backend_env = dotenv_values(_BACKEND_DIR / ".env")
-    root_env = dotenv_values(_PROJECT_ROOT / ".env")
-    key = (
-        backend_env.get("GEMINI_API_KEY") or root_env.get("GEMINI_API_KEY") or ""
-    ).strip()
-    if key:
-        return key
-
-    key = (
-        backend_env.get("GOOGLE_API_KEY") or root_env.get("GOOGLE_API_KEY") or ""
-    ).strip()
-    return key or None
-
-
-_load_environment()
-
-LANGUAGE_PROMPTS = {
-    "en": "English",
-    "es": "Spanish",
-    "fr": "French",
-    "de": "German",
-}
-
 LANGUAGE_NAMES = {"en": "English", "es": "Spanish", "fr": "French", "de": "German"}
 
-_client = None
 SUPPORTED_IMAGE_MIME_TYPES = {
     "image/bmp",
     "image/gif",
@@ -72,38 +21,6 @@ SUPPORTED_IMAGE_MIME_TYPES = {
     "image/tiff",
     "image/webp",
 }
-
-
-def get_genai_model():
-    global _client
-    if genai is None:
-        raise RuntimeError(
-            "google-genai is not installed or failed to import. "
-            f"Original import error: {_GENAI_IMPORT_ERROR}"
-        )
-    if _client is None:
-        api_key = _resolve_api_key()
-        if not api_key:
-            return None
-        _client = genai.Client(api_key=api_key)
-    return _client
-
-
-def _generate_content(client, prompt, mime_type=None, file_bytes=None):
-    model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-    if mime_type and file_bytes is not None:
-        contents = [
-            types.UserContent(
-                parts=[
-                    types.Part.from_text(text=prompt),
-                    types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
-                ]
-            )
-        ]
-        response = client.models.generate_content(model=model_name, contents=contents)
-    else:
-        response = client.models.generate_content(model=model_name, contents=prompt)
-    return (response.text or "").strip()
 
 
 def _detect_mime_type(file_bytes, filename=None):
@@ -240,53 +157,3 @@ def _extract_markdown_from_llm_response(raw_text):
         if pos >= 0:
             return text[pos:].strip()
     return text
-
-
-def extract_text_from_image(
-    file_bytes, language="en", doc_type="document", filename=None
-):
-    client = get_genai_model()
-    if client is None:
-        return (
-            "OCR Error: GEMINI_API_KEY not configured. "
-            "Set GEMINI_API_KEY in your environment to enable OCR."
-        )
-
-    try:
-        target_language = LANGUAGE_PROMPTS.get(language, "English")
-        mime_type = _detect_mime_type(file_bytes, filename)
-
-        if mime_type == "application/pdf":
-            raw_text = _extract_text_from_pdf_bytes(file_bytes)
-            if raw_text:
-                result_text = _generate_content(
-                    client,
-                    _pdf_formatting_prompt(raw_text, target_language, doc_type),
-                )
-                cleaned = _extract_markdown_from_llm_response(result_text)
-                return cleaned or raw_text
-
-            result_text = _generate_content(
-                client,
-                _vision_prompt(target_language, doc_type),
-                mime_type="application/pdf",
-                file_bytes=file_bytes,
-            )
-            return _extract_markdown_from_llm_response(result_text)
-
-        if mime_type and mime_type not in SUPPORTED_IMAGE_MIME_TYPES:
-            return (
-                f"OCR Error: Unsupported file type ({mime_type}). "
-                "Upload an image (JPG, PNG, WEBP, TIFF, BMP, GIF, HEIC/HEIF) or PDF."
-            )
-
-        content_mime = mime_type or "image/jpeg"
-        result_text = _generate_content(
-            client,
-            _vision_prompt(target_language, doc_type),
-            mime_type=content_mime,
-            file_bytes=file_bytes,
-        )
-        return _extract_markdown_from_llm_response(result_text)
-    except Exception as exc:
-        return f"OCR Error: {exc}\n\nPlease ensure you have a valid Gemini API key configured."
