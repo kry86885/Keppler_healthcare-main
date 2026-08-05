@@ -49,7 +49,13 @@ _LIST_FILLER_WORDS = {
     "list", "show", "display", "get", "all", "every", "everyone", "patient",
     "patients", "full", "the", "me", "of", "a", "an", "please", "with", "in",
     "who", "that", "are", "is", "having", "for", "and", "or", "find", "search",
-    "data", "record", "records", "row", "rows", "table", "details", "info", "information"
+    "data", "record", "records", "row", "rows", "table", "details", "info", "information",
+    "filter", "by", "limit", "people", "person", "from", "living", "residing",
+    "located", "where", "whose", "which", "give", "want", "need", "those", "them",
+    "only", "just", "has", "have", "had", "suffering", "diagnosed",
+    "disease", "condition", "issue", "problem", "age", "aged", "years", "old",
+    "older", "younger", "above", "below", "over", "under", "greater", "less", "than",
+    "area", "city", "location", "place", "gender", "sex", "male", "female"
 }
 OP_SQL = {
     "eq": "= ?",
@@ -375,6 +381,7 @@ def bulk_import_query():
             where_clause, params = _keyword_fallback_clause(prompt)
         where_clause = scope_clause + where_clause
         params = scope_params + params
+    print(f"[DEBUG bulk_query] prompt={prompt!r} filter_result={filter_result!r} where_clause={where_clause!r} params={params!r}", flush=True)
 
     rows, total = query_bulk_patients(
         hospital_id, where_clause, params, page=page, page_size=page_size
