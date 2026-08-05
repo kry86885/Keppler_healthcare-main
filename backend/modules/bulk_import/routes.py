@@ -36,6 +36,10 @@ ALLOWED_EXTENSIONS = (".xlsx", ".csv") + DOCUMENT_EXTENSIONS
 # a parameterized WHERE clause. See translate_patient_filter_prompt() in ai/service.py.
 ALLOWED_FIELDS = set(BULK_IMPORT_PATIENT_FIELDS) | {"phone"}
 FALLBACK_SEARCH_FIELDS = ["name", "last_name", "phone", "medical_condition", "area"]
+# "age" is the only numeric field among ALLOWED_FIELDS -- every other field is
+# free text, where case and word-form (diabetic/diabetes, cough/coughing) vary
+# between what a user types and what's actually stored.
+_TEXT_FIELDS = ALLOWED_FIELDS - {"age"}
 
 # Words that carry no filtering intent by themselves -- used to detect a bare
 # "list everyone" prompt (see _deterministic_filter_clause) and to break a
@@ -55,6 +59,20 @@ OP_SQL = {
     "gte": ">= ?",
     "lte": "<= ?",
 }
+
+
+def _stem_term(word):
+    """Strip common English suffixes so related word forms match each other in
+    LIKE searches -- e.g. a prompt saying "diabetic" and a record storing
+    "diabetes" both stem to "diabet", so either one finds the other. Without
+    this, "contains" filters only ever match the exact word form the LLM (or
+    user) happened to phrase the prompt with, which real medical records
+    rarely match verbatim."""
+    w = (word or "").strip().lower()
+    for suffix in ("ically", "ication", "ical", "ation", "itis", "osis", "emia", "tic", "ic", "ing", "es", "ed", "s"):
+        if len(w) - len(suffix) >= 3 and w.endswith(suffix):
+            return w[: -len(suffix)]
+    return w
 
 
 def _job_scope_clause(job_id):
@@ -174,33 +192,72 @@ def bulk_import_confirm_mapping(job_id):
 
 
 def _build_filter_clause(conditions, logic):
-    clauses = []
-    params = []
+    # Grouped by field: the local LLM sometimes hedges a single concept as
+    # multiple conditions on the *same* field (e.g. medical_condition contains
+    # "fever" AND medical_condition contains "feverish"). Combined with AND
+    # logic, that can never match a real row since one text value can't
+    # contain both substrings unless one implies the other -- what the model
+    # actually means is "matches any of these phrasings", i.e. OR within a
+    # field, even when the overall logic across *different* fields is AND.
+    by_field = {}
+    field_order = []
     for condition in conditions:
         field = condition.get("field")
         op = condition.get("op")
         value = condition.get("value")
         if field not in ALLOWED_FIELDS or field == "phone":
             continue  # phone is excluded from prompt-filterable fields (contact key, not a search facet)
+        is_text = field in _TEXT_FIELDS
+        clause = None
+        param_values = []
         if op == "in":
             values = value if isinstance(value, list) else [value]
             values = [v for v in values if v is not None]
             if not values:
                 continue
             placeholders = ", ".join(["?"] * len(values))
-            clauses.append(f"{field} IN ({placeholders})")
-            params.extend(values)
-        elif op in OP_SQL:
-            if op == "contains":
-                params.append(f"%{value}%")
+            if is_text:
+                clause = f"LOWER({field}) IN ({placeholders})"
+                param_values = [str(v).lower() for v in values]
             else:
-                params.append(value)
-            clauses.append(f"{field} {OP_SQL[op]}")
+                clause = f"{field} IN ({placeholders})"
+                param_values = list(values)
+        elif op == "contains" and is_text:
+            # ILIKE (case-insensitive) plus stemming so "diabetic" in the prompt
+            # matches a record stored as "diabetes" and vice versa.
+            clause = f"{field} ILIKE ?"
+            param_values = [f"%{_stem_term(value)}%"]
+        elif op == "eq" and is_text:
+            clause = f"LOWER({field}) = LOWER(?)"
+            param_values = [value]
+        elif op in OP_SQL:
+            clause = f"{field} {OP_SQL[op]}"
+            param_values = [f"%{value}%"] if op == "contains" else [value]
         # Unknown ops are silently dropped rather than raising -- an LLM producing
         # an unexpected op shouldn't 500 the whole search, just skip that condition.
+        if clause is None:
+            continue
+        if field not in by_field:
+            by_field[field] = []
+            field_order.append(field)
+        by_field[field].append((clause, param_values))
 
-    if not clauses:
+    if not by_field:
         return "", []
+
+    clauses = []
+    params = []
+    for field in field_order:
+        entries = by_field[field]
+        if len(entries) == 1:
+            clause, param_values = entries[0]
+            clauses.append(clause)
+            params.extend(param_values)
+        else:
+            clauses.append("(" + " OR ".join(clause for clause, _ in entries) + ")")
+            for _, param_values in entries:
+                params.extend(param_values)
+
     joiner = " OR " if (logic or "AND").upper() == "OR" else " AND "
     return f" AND ({joiner.join(clauses)})", params
 
@@ -222,9 +279,9 @@ def _keyword_fallback_clause(prompt):
     clauses = []
     params = []
     for word in significant_words:
-        field_clauses = [f"{field} LIKE ?" for field in FALLBACK_SEARCH_FIELDS]
+        field_clauses = [f"{field} ILIKE ?" for field in FALLBACK_SEARCH_FIELDS]
         clauses.append(f"({' OR '.join(field_clauses)})")
-        params.extend([f"%{word}%"] * len(FALLBACK_SEARCH_FIELDS))
+        params.extend([f"%{_stem_term(word)}%"] * len(FALLBACK_SEARCH_FIELDS))
     return f" AND ({' AND '.join(clauses)})", params
 
 
