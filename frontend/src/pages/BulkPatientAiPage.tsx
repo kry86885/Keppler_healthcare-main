@@ -39,6 +39,8 @@ type JobStatus = {
   processed_rows?: number;
   imported_count?: number;
   skipped_count?: number;
+  original_filename?: string;
+  created_at?: string;
   error?: string;
 };
 
@@ -69,6 +71,17 @@ const DOCUMENT_STEPS: { key: StepKey; label: string; hint: string }[] = [
   { key: "query", label: "Ask AI", hint: "Prompt & review" },
 ];
 
+const SPREADSHEET_SEARCH_SUGGESTIONS = [
+  "Age above 60",
+  "Age below 18",
+  "Missing area",
+];
+
+const DOCUMENT_SEARCH_SUGGESTIONS = [
+  "List everyone mentioned with their phone number",
+  "What conditions are discussed in this document?",
+];
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -94,7 +107,13 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
     null,
   );
   const [whatsappMessage, setWhatsappMessage] = useState("");
+  const [lastSearchedPrompt, setLastSearchedPrompt] = useState("");
   const pollingRef = useRef(false);
+  // startPolling's async loop and its callbacks are captured as closures at
+  // the render they were created in, so reading `jobId` state there can be
+  // stale (e.g. right after setJobId, before the next render commits).
+  // A ref stays current across renders without needing to recreate the closure.
+  const jobIdRef = useRef<number | null>(null);
 
   const STEPS = jobKind === "document" ? DOCUMENT_STEPS : SPREADSHEET_STEPS;
   const stepIndex = STEPS.findIndex((s) => s.key === step);
@@ -116,6 +135,9 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
           if (data.status === "DONE") {
             setStep("query");
             pollingRef.current = false;
+            // Show the imported list immediately instead of making the user
+            // click Search once just to see what came in.
+            void runSearch(1, false, "");
             return;
           }
           if (data.status === "FAILED") {
@@ -147,6 +169,7 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
     const stored = localStorage.getItem(JOB_ID_STORAGE_KEY);
     if (stored) {
       const id = Number(stored);
+      jobIdRef.current = id;
       setJobId(id);
       startPolling(id);
     }
@@ -181,6 +204,7 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
       if (xhr.status >= 200 && xhr.status < 300) {
         const data = JSON.parse(xhr.responseText);
         localStorage.setItem(JOB_ID_STORAGE_KEY, String(data.job_id));
+        jobIdRef.current = data.job_id;
         setJobId(data.job_id);
         startPolling(data.job_id);
       } else {
@@ -202,15 +226,20 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
     xhr.send(formData);
   };
 
-  const runSearch = async (targetPage: number, append: boolean) => {
+  const runSearch = async (
+    targetPage: number,
+    append: boolean,
+    promptOverride?: string,
+  ) => {
+    const effectivePrompt = promptOverride ?? prompt;
     try {
       const data = await apiFetch<{ results: BulkPatientRow[]; total: number }>(
         "/api/bulk-import/query",
         {
           method: "POST",
           body: JSON.stringify({
-            prompt,
-            job_id: jobId,
+            prompt: effectivePrompt,
+            job_id: jobIdRef.current,
             page: targetPage,
             page_size: PAGE_SIZE,
           }),
@@ -221,6 +250,7 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
       );
       setTotal(data.total || 0);
       setPage(targetPage);
+      if (!append) setLastSearchedPrompt(effectivePrompt.trim());
     } catch (error) {
       reportError(
         setNotice,
@@ -230,21 +260,24 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
     }
   };
 
-  const handleAskDocument = async () => {
-    if (!jobId || !prompt.trim()) return;
+  const handleAskDocument = async (promptOverride?: string) => {
+    const effectivePrompt = promptOverride ?? prompt;
+    const currentJobId = jobIdRef.current;
+    if (!currentJobId || !effectivePrompt.trim()) return;
     setSearching(true);
     try {
       const data = await apiFetch<{
         results: BulkPatientRow[];
         total: number;
         answer?: string;
-      }>(`/api/bulk-import/jobs/${jobId}/ask`, {
+      }>(`/api/bulk-import/jobs/${currentJobId}/ask`, {
         method: "POST",
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt: effectivePrompt }),
       });
       setResults(data.results || []);
       setTotal(data.total || 0);
       setAnswer(data.answer || "");
+      setLastSearchedPrompt(effectivePrompt.trim());
     } catch (error) {
       reportError(
         setNotice,
@@ -256,14 +289,26 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
     }
   };
 
-  const handleSearch = async () => {
+  const handleSearch = async (promptOverride?: string) => {
     if (jobKind === "document") {
-      await handleAskDocument();
+      await handleAskDocument(promptOverride);
       return;
     }
     setSearching(true);
-    await runSearch(1, false);
+    await runSearch(1, false, promptOverride);
     setSearching(false);
+  };
+
+  const handleSuggestionClick = (suggestion: string) => {
+    setPrompt(suggestion);
+    void handleSearch(suggestion);
+  };
+
+  const handleClearSearch = () => {
+    setPrompt("");
+    setAnswer("");
+    setSearching(true);
+    void runSearch(1, false, "").finally(() => setSearching(false));
   };
 
   const handleLoadMore = async () => {
@@ -275,11 +320,13 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
   const handleStartOver = () => {
     localStorage.removeItem(JOB_ID_STORAGE_KEY);
     pollingRef.current = false;
+    jobIdRef.current = null;
     setJobId(null);
     setJob(null);
     setJobKind("spreadsheet");
     setFile(null);
     setPrompt("");
+    setLastSearchedPrompt("");
     setResults([]);
     setAnswer("");
     setTotal(0);
@@ -451,6 +498,25 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
                 <FiUploadCloud aria-hidden /> Reupload
               </Button>
             </div>
+
+            {jobKind === "spreadsheet" && job && (
+              <div className="ai-dataset-summary">
+                {job.original_filename && (
+                  <span className="ai-dataset-summary-file">
+                    {job.original_filename}
+                  </span>
+                )}
+                <span>
+                  <strong>{job.imported_count ?? 0}</strong> contactable
+                </span>
+                {(job.skipped_count ?? 0) > 0 && (
+                  <span>
+                    <strong>{job.skipped_count}</strong> skipped (no phone)
+                  </span>
+                )}
+              </div>
+            )}
+
             <div className="ai-search-bar">
               <FiSearch className="ai-search-icon" aria-hidden />
               <Textarea
@@ -471,7 +537,7 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
                 }}
               />
               <Button
-                onClick={handleSearch}
+                onClick={() => void handleSearch()}
                 disabled={
                   searching || (jobKind === "document" && !prompt.trim())
                 }
@@ -484,6 +550,23 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
                     ? "Ask"
                     : "Search"}
               </Button>
+            </div>
+
+            <div className="ai-suggestion-chips">
+              {(jobKind === "document"
+                ? DOCUMENT_SEARCH_SUGGESTIONS
+                : SPREADSHEET_SEARCH_SUGGESTIONS
+              ).map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  className="ai-suggestion-chip"
+                  disabled={searching}
+                  onClick={() => handleSuggestionClick(suggestion)}
+                >
+                  {suggestion}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -504,20 +587,51 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
                 <span className="module-empty-state-icon">
                   <FiUsers aria-hidden />
                 </span>
-                <p className="module-empty-state-title">No results yet</p>
+                <p className="module-empty-state-title">
+                  {jobKind === "spreadsheet" && lastSearchedPrompt
+                    ? "No matches"
+                    : "No results yet"}
+                </p>
                 <p className="module-empty-state-hint">
                   {jobKind === "document"
                     ? "Ask a question above about the people or details in this document."
-                    : "Try a search prompt above, or leave it blank to browse the full uploaded list."}
+                    : lastSearchedPrompt
+                      ? `Nobody matched "${lastSearchedPrompt}". Try a different search, or clear it to browse everyone.`
+                      : "Try a search prompt above, or leave it blank to browse the full uploaded list."}
                 </p>
+                {jobKind === "spreadsheet" && lastSearchedPrompt && (
+                  <Button variant="secondary" onClick={handleClearSearch}>
+                    Clear search
+                  </Button>
+                )}
               </div>
             ) : (
               <>
                 <div className="module-panel-head">
+                  {jobKind === "spreadsheet" && lastSearchedPrompt ? (
+                    <div className="ai-active-filter">
+                      <span>
+                        Results for <strong>"{lastSearchedPrompt}"</strong>
+                      </span>
+                      <button
+                        type="button"
+                        className="ai-active-filter-clear"
+                        onClick={handleClearSearch}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="muted">
+                      {jobKind === "document"
+                        ? ""
+                        : "Showing everyone in this list"}
+                    </p>
+                  )}
                   <p className="muted">
                     {jobKind === "document"
                       ? `Found ${results.length} matching patient${results.length === 1 ? "" : "s"} in this document`
-                      : `Showing ${results.length} of ${total} matching patient${total === 1 ? "" : "s"}`}
+                      : `${results.length} of ${total} patient${total === 1 ? "" : "s"}`}
                   </p>
                 </div>
                 <Table
@@ -542,7 +656,15 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
                       </TableCell>
                       <TableCell>{row.phone || "-"}</TableCell>
                       <TableCell>{row.area || "-"}</TableCell>
-                      <TableCell>{row.medical_condition || "-"}</TableCell>
+                      <TableCell>
+                        {row.medical_condition ? (
+                          <span className="ai-condition-pill">
+                            {row.medical_condition}
+                          </span>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
                       <TableCell>{row.age ?? "-"}</TableCell>
                       <TableCell>{row.gender || "-"}</TableCell>
                       <TableCell>

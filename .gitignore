@@ -32,3 +32,5 @@ frontend/tests/e2e/artifacts/
 backend/rag_workspaces/
 "latest suvarna.zip"
 *.zip
+seed.sql
+generate_seed.py

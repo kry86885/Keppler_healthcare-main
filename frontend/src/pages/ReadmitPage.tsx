@@ -7,11 +7,14 @@ import {
   Checkbox,
   Input,
   Label,
+  Modal,
   Select,
   Table,
   TableCell,
   TableHead,
   TableRow,
+  Tabs,
+  TabsTrigger,
   Textarea,
 } from "../components/ui";
 import {
@@ -125,6 +128,18 @@ export default function ReadmitPage({
     useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // -- UI-only state for the redesigned layout; none of the data/handler logic
+  // below this line changed. --
+  const [activeTab, setActiveTab] = useState<"details" | "documents">(
+    "details",
+  );
+  const [viewingDocument, setViewingDocument] = useState<DocumentItem | null>(
+    null,
+  );
+  const [previewingOcrType, setPreviewingOcrType] = useState<string | null>(
+    null,
+  );
+
   const normalizeProfile = (patient: Patient): ProfileUpdates => ({
     age: patient?.age ?? "",
     weight: patient?.weight ?? "",
@@ -188,6 +203,16 @@ export default function ReadmitPage({
     }));
   }, [previousDocuments]);
 
+  const lastVisitLabel = useMemo(() => {
+    if (previousDocuments.length === 0) return null;
+    const mostRecent = previousDocuments.reduce((latest, doc) =>
+      getTimestamp(doc.created_at) > getTimestamp(latest.created_at)
+        ? doc
+        : latest,
+    );
+    return formatDateTimeIST(mostRecent.created_at);
+  }, [previousDocuments]);
+
   const loadPreviousDocuments = async (patientId: string) => {
     setPreviousDocumentsLoading(true);
     try {
@@ -213,6 +238,9 @@ export default function ReadmitPage({
     setOcrResults({});
     setOcrStatus({});
     setPreviousDocuments([]);
+    setActiveTab("details");
+    setViewingDocument(null);
+    setPreviewingOcrType(null);
     onSelect(patient);
     void loadPreviousDocuments(patient.patient_id);
     try {
@@ -395,6 +423,7 @@ export default function ReadmitPage({
       setDocFiles({});
       setOcrResults({});
       setOcrStatus({});
+      setPreviewingOcrType(null);
       await loadPreviousDocuments(activePatient.patient_id);
       onSelect({
         ...activePatient,
@@ -470,223 +499,263 @@ export default function ReadmitPage({
                 {expanded && activePatient && (
                   <div className="table-row-expand">
                     <div className="readmit-form">
-                      <h4>
-                        Re-admitting: {activePatient.name}{" "}
-                        {activePatient.last_name}
-                      </h4>
-                      <Label>
-                        Admission Notes
-                        <Textarea
-                          className="readmit-notes"
-                          value={notes}
-                          onChange={(event) => setNotes(event.target.value)}
-                          rows={3}
-                        />
-                      </Label>
-                      <h5>Update Patient Details</h5>
-                      <div className="readmit-profile-grid">
-                        <Label>
-                          Age
-                          <Input
-                            type="number"
-                            value={profileUpdates.age}
-                            onChange={handleProfileChange("age")}
-                          />
-                        </Label>
-                        <Label>
-                          Weight (kg)
-                          <Input
-                            type="number"
-                            value={profileUpdates.weight}
-                            onChange={handleProfileChange("weight")}
-                          />
-                        </Label>
-                        <Label>
-                          Height (cm)
-                          <Input
-                            type="number"
-                            value={profileUpdates.height}
-                            onChange={handleProfileChange("height")}
-                          />
-                        </Label>
-                        <Label>
-                          Phone
-                          <Input
-                            value={profileUpdates.phone}
-                            onChange={handleProfileChange("phone")}
-                          />
-                        </Label>
-                        <Label>
-                          Gender
-                          <Select
-                            value={profileUpdates.gender}
-                            onChange={handleProfileChange("gender")}
-                          >
-                            <option>Male</option>
-                            <option>Female</option>
-                            <option>Other</option>
-                          </Select>
-                        </Label>
-                        <Label className="checkbox">
-                          <Checkbox
-                            checked={profileUpdates.pregnant}
-                            onChange={handleProfileChange("pregnant")}
-                          />
-                          Pregnant
-                        </Label>
-                        <Label className="span-2">
-                          Allergies
-                          <Textarea
-                            value={profileUpdates.allergies}
-                            onChange={handleProfileChange("allergies")}
-                            rows={2}
-                          />
-                        </Label>
-                        <Label className="span-2">
-                          Current Symptoms
-                          <Textarea
-                            value={profileUpdates.symptoms}
-                            onChange={handleProfileChange("symptoms")}
-                            rows={3}
-                          />
-                        </Label>
+                      <div className="readmit-patient-summary">
+                        <div>
+                          <h4>
+                            {activePatient.name} {activePatient.last_name}
+                          </h4>
+                          <p className="muted">
+                            ID {activePatient.patient_id} ·{" "}
+                            {activePatient.age
+                              ? `${activePatient.age} yrs`
+                              : "Age n/a"}{" "}
+                            · {activePatient.gender || "-"}
+                            {activePatient.blood_group
+                              ? ` · ${activePatient.blood_group}`
+                              : ""}
+                          </p>
+                        </div>
+                        <div className="readmit-patient-summary-meta">
+                          <span>
+                            {activePatient.phone || "No phone on file"}
+                          </span>
+                          <span>
+                            {previousDocumentsLoading
+                              ? "Checking previous visits..."
+                              : lastVisitLabel
+                                ? `Last visit: ${lastVisitLabel}`
+                                : "No previous visits on record"}
+                          </span>
+                        </div>
                       </div>
 
-                      <h4>Upload Documents</h4>
-                      <p className="muted">
-                        Same workflow as admission: choose per type, run OCR,
-                        edit text, then confirm re-admission.
-                      </p>
+                      {profileUpdates.allergies && (
+                        <p className="readmit-allergy-flag">
+                          ⚠ Allergies on file: {profileUpdates.allergies}
+                        </p>
+                      )}
 
-                      <div className="documents">
-                        <h4>Previous Documents</h4>
-                        {previousDocumentsLoading ? (
-                          <p className="muted">Loading previous documents...</p>
-                        ) : previousDocuments.length === 0 ? (
-                          <p className="muted">No previous documents found.</p>
-                        ) : (
-                          previousDocumentGroups.map((group) => (
-                            <details
-                              key={group.key}
-                              className="doc-date-section"
-                              open
-                            >
-                              <summary>
-                                {group.label} ({group.items.length})
-                              </summary>
-                              <div className="doc-date-content">
-                                {group.items.map((doc) => {
-                                  const label =
-                                    DOC_TYPES.find(
-                                      (item) => item.value === doc.doc_type,
-                                    )?.label || doc.doc_type;
-                                  return (
-                                    <details key={doc.id} className="doc-item">
-                                      <summary>{label.toLowerCase()}</summary>
-                                      {doc.file_name && (
-                                        <p className="muted">
-                                          File:{" "}
-                                          {stripUploadTimestampPrefix(
-                                            doc.file_name,
-                                          )}
-                                        </p>
-                                      )}
-                                      {doc.ocr_language && (
-                                        <p className="muted">
-                                          OCR Language: {doc.ocr_language}
-                                        </p>
-                                      )}
-                                      <div className="form-actions">
-                                        <a
-                                          className="link"
-                                          href={`${API_BASE}/api/documents/${doc.id}/file`}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                        >
-                                          Open file
-                                        </a>
-                                      </div>
-                                      {doc.ocr_text && (
-                                        <details>
-                                          <summary>View OCR Text</summary>
-                                          <div className="ocr-text-display">
-                                            <MarkdownReport
-                                              text={doc.ocr_text}
-                                            />
-                                          </div>
-                                        </details>
-                                      )}
-                                    </details>
-                                  );
-                                })}
-                              </div>
-                            </details>
-                          ))
-                        )}
-                      </div>
+                      <Tabs role="tablist" aria-label="Re-admission sections">
+                        <TabsTrigger
+                          type="button"
+                          active={activeTab === "details"}
+                          onClick={() => setActiveTab("details")}
+                        >
+                          Details & Notes
+                        </TabsTrigger>
+                        <TabsTrigger
+                          type="button"
+                          active={activeTab === "documents"}
+                          onClick={() => setActiveTab("documents")}
+                        >
+                          Documents
+                          {previousDocuments.length > 0
+                            ? ` (${previousDocuments.length})`
+                            : ""}
+                        </TabsTrigger>
+                      </Tabs>
 
-                      <div className="doc-grid">
-                        {DOC_TYPES.map((doc) => (
-                          <div key={doc.value} className="doc-card">
-                            <h4>{doc.label}</h4>
-                            <DocumentUploadDropzone
-                              accept={SUPPORTED_DOCUMENT_ACCEPT}
-                              file={docFiles[doc.value]}
-                              helperText={`Supported: ${SUPPORTED_DOCUMENT_EXTENSIONS.map((ext) => ext.toUpperCase()).join(", ")}`}
-                              onFileSelect={handleFileSelect(doc.value)}
+                      {activeTab === "details" && (
+                        <>
+                          <Label>
+                            Admission Notes
+                            <Textarea
+                              className="readmit-notes"
+                              value={notes}
+                              onChange={(event) =>
+                                setNotes(event.target.value)
+                              }
+                              rows={3}
                             />
-                            <Button
-                              variant="secondary"
-                              type="button"
-                              onClick={() => void handleOCR(doc.value)}
-                            >
-                              Process OCR
-                            </Button>
-                            {ocrStatus[doc.value] && (
-                              <p className="muted">{ocrStatus[doc.value]}</p>
+                          </Label>
+                          <h5>Update Patient Details</h5>
+                          <div className="readmit-profile-grid">
+                            <Label>
+                              Age
+                              <Input
+                                type="number"
+                                value={profileUpdates.age}
+                                onChange={handleProfileChange("age")}
+                              />
+                            </Label>
+                            <Label>
+                              Weight (kg)
+                              <Input
+                                type="number"
+                                value={profileUpdates.weight}
+                                onChange={handleProfileChange("weight")}
+                              />
+                            </Label>
+                            <Label>
+                              Height (cm)
+                              <Input
+                                type="number"
+                                value={profileUpdates.height}
+                                onChange={handleProfileChange("height")}
+                              />
+                            </Label>
+                            <Label>
+                              Phone
+                              <Input
+                                value={profileUpdates.phone}
+                                onChange={handleProfileChange("phone")}
+                              />
+                            </Label>
+                            <Label>
+                              Gender
+                              <Select
+                                value={profileUpdates.gender}
+                                onChange={handleProfileChange("gender")}
+                              >
+                                <option>Male</option>
+                                <option>Female</option>
+                                <option>Other</option>
+                              </Select>
+                            </Label>
+                            <Label className="checkbox">
+                              <Checkbox
+                                checked={profileUpdates.pregnant}
+                                onChange={handleProfileChange("pregnant")}
+                              />
+                              Pregnant
+                            </Label>
+                            <Label className="span-2">
+                              Allergies
+                              <Textarea
+                                value={profileUpdates.allergies}
+                                onChange={handleProfileChange("allergies")}
+                                rows={2}
+                              />
+                            </Label>
+                            <Label className="span-2">
+                              Current Symptoms
+                              <Textarea
+                                value={profileUpdates.symptoms}
+                                onChange={handleProfileChange("symptoms")}
+                                rows={3}
+                              />
+                            </Label>
+                          </div>
+                        </>
+                      )}
+
+                      {activeTab === "documents" && (
+                        <>
+                          <div className="documents">
+                            <h4>Previous Documents</h4>
+                            {previousDocumentsLoading ? (
+                              <p className="muted">
+                                Loading previous documents...
+                              </p>
+                            ) : previousDocuments.length === 0 ? (
+                              <p className="muted">
+                                No previous documents found.
+                              </p>
+                            ) : (
+                              previousDocumentGroups.map((group) => (
+                                <details
+                                  key={group.key}
+                                  className="doc-date-section"
+                                  open
+                                >
+                                  <summary>
+                                    {group.label} ({group.items.length})
+                                  </summary>
+                                  <div className="doc-date-content">
+                                    {group.items.map((doc) => {
+                                      const label =
+                                        DOC_TYPES.find(
+                                          (item) =>
+                                            item.value === doc.doc_type,
+                                        )?.label || doc.doc_type;
+                                      return (
+                                        <div
+                                          key={doc.id}
+                                          className="doc-row-card"
+                                        >
+                                          <div>
+                                            <strong>{label}</strong>
+                                            {doc.file_name && (
+                                              <p className="muted">
+                                                {stripUploadTimestampPrefix(
+                                                  doc.file_name,
+                                                )}
+                                              </p>
+                                            )}
+                                          </div>
+                                          <div className="module-inline-actions">
+                                            <Button
+                                              type="button"
+                                              size="sm"
+                                              variant="secondary"
+                                              onClick={() =>
+                                                setViewingDocument(doc)
+                                              }
+                                            >
+                                              View
+                                            </Button>
+                                            <a
+                                              className="link"
+                                              href={`${API_BASE}/api/documents/${doc.id}/file`}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                            >
+                                              Open file
+                                            </a>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </details>
+                              ))
                             )}
                           </div>
-                        ))}
-                      </div>
 
-                      {Object.keys(ocrResults).length > 0 && (
-                        <div className="ocr-results">
-                          <h4>OCR Results</h4>
-                          {Object.entries(ocrResults).map(([docType, data]) => {
-                            const label =
-                              DOC_TYPES.find((item) => item.value === docType)
-                                ?.label || docType;
-                            return (
-                              <details key={docType} className="doc-item" open>
-                                <summary>{label}</summary>
-                                <div className="ocr-side-by-side">
-                                  <div className="ocr-preview">
-                                    <p className="muted">Original Document</p>
-                                    <OriginalDocumentPreview file={data.file} />
-                                  </div>
-                                  <div className="ocr-preview">
-                                    <p className="muted">Markdown Preview</p>
-                                    <MarkdownReport text={data.text || ""} />
-                                  </div>
-                                </div>
-                                <Textarea
-                                  className="ocr-text"
-                                  value={data.text || ""}
-                                  onChange={handleOcrTextChange(docType)}
+                          <h4>Upload New Documents</h4>
+                          <p className="muted">
+                            Choose per type, run OCR, review the extracted
+                            text, then confirm re-admission.
+                          </p>
+                          <div className="doc-grid">
+                            {DOC_TYPES.map((doc) => (
+                              <div key={doc.value} className="doc-card">
+                                <h4>{doc.label}</h4>
+                                <DocumentUploadDropzone
+                                  accept={SUPPORTED_DOCUMENT_ACCEPT}
+                                  file={docFiles[doc.value]}
+                                  helperText={`Supported: ${SUPPORTED_DOCUMENT_EXTENSIONS.map((ext) => ext.toUpperCase()).join(", ")}`}
+                                  onFileSelect={handleFileSelect(doc.value)}
                                 />
-                                <div className="form-actions">
+                                <div className="module-inline-actions">
                                   <Button
                                     variant="secondary"
                                     type="button"
-                                    onClick={() => clearOcrEntry(docType)}
+                                    onClick={() => void handleOCR(doc.value)}
                                   >
-                                    Clear
+                                    Process OCR
                                   </Button>
+                                  {ocrResults[doc.value] && (
+                                    <Button
+                                      variant="ghost"
+                                      type="button"
+                                      onClick={() =>
+                                        setPreviewingOcrType(doc.value)
+                                      }
+                                    >
+                                      Preview & Edit
+                                    </Button>
+                                  )}
                                 </div>
-                              </details>
-                            );
-                          })}
-                        </div>
+                                {ocrStatus[doc.value] && (
+                                  <p className="muted">
+                                    {ocrStatus[doc.value]}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </>
                       )}
 
                       <Button
@@ -704,6 +773,98 @@ export default function ReadmitPage({
           })}
         </Table>
       </div>
+
+      <Modal
+        open={Boolean(viewingDocument)}
+        onClose={() => setViewingDocument(null)}
+        title={
+          viewingDocument
+            ? DOC_TYPES.find((item) => item.value === viewingDocument.doc_type)
+                ?.label || viewingDocument.doc_type
+            : undefined
+        }
+        description={
+          viewingDocument?.file_name
+            ? stripUploadTimestampPrefix(viewingDocument.file_name)
+            : undefined
+        }
+      >
+        {viewingDocument?.ocr_language && (
+          <p className="muted">
+            OCR Language: {viewingDocument.ocr_language}
+          </p>
+        )}
+        {viewingDocument?.ocr_text ? (
+          <div className="ocr-text-display">
+            <MarkdownReport text={viewingDocument.ocr_text} />
+          </div>
+        ) : (
+          <p className="muted">No OCR text recorded for this document.</p>
+        )}
+        {viewingDocument && (
+          <div className="form-actions">
+            <a
+              className="link"
+              href={`${API_BASE}/api/documents/${viewingDocument.id}/file`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open original file
+            </a>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={Boolean(previewingOcrType)}
+        onClose={() => setPreviewingOcrType(null)}
+        title={
+          previewingOcrType
+            ? DOC_TYPES.find((item) => item.value === previewingOcrType)
+                ?.label || previewingOcrType
+            : undefined
+        }
+      >
+        {previewingOcrType && ocrResults[previewingOcrType] && (
+          <>
+            <div className="ocr-side-by-side">
+              <div className="ocr-preview">
+                <p className="muted">Original Document</p>
+                <OriginalDocumentPreview
+                  file={ocrResults[previewingOcrType].file}
+                />
+              </div>
+              <div className="ocr-preview">
+                <p className="muted">Markdown Preview</p>
+                <MarkdownReport text={ocrResults[previewingOcrType].text || ""} />
+              </div>
+            </div>
+            <Textarea
+              className="ocr-text"
+              value={ocrResults[previewingOcrType].text || ""}
+              onChange={handleOcrTextChange(previewingOcrType)}
+            />
+            <div className="form-actions">
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => {
+                  clearOcrEntry(previewingOcrType);
+                  setPreviewingOcrType(null);
+                }}
+              >
+                Clear
+              </Button>
+              <Button
+                type="button"
+                onClick={() => setPreviewingOcrType(null)}
+              >
+                Done
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
     </section>
   );
 }
