@@ -2281,6 +2281,28 @@ def ensure_patient_bulk_columns(conn):
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_patients_bulk_import_phone "
         "ON patients(hospital_id, phone) WHERE phone IS NOT NULL AND phone <> '' AND source = 'bulk_import'"
     )
+    # Tracks which bulk-import job most recently touched a patient row, kept
+    # separate from patient_id (a stable natural key referenced by foreign
+    # keys elsewhere) so job-scoped AI Mode search can be re-pointed to the
+    # latest upload on re-import without ever rewriting patient_id itself.
+    _ensure_column(cursor, "patients", "bulk_import_job_id", "INTEGER")
+    # Backfill from patient_id's still-intact "BULK-{job_id}-{row}" prefix for
+    # rows imported before this column existed -- without this, every bulk
+    # import done before this migration would vanish from job-scoped search
+    # the moment it runs, since the new column starts out NULL for all of them.
+    cursor.execute(
+        r"""
+        UPDATE patients
+        SET bulk_import_job_id = split_part(patient_id, '-', 2)::integer
+        WHERE bulk_import_job_id IS NULL
+          AND source = 'bulk_import'
+          AND patient_id ~ '^BULK-[0-9]+-'
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_patients_bulk_import_job "
+        "ON patients(bulk_import_job_id) WHERE bulk_import_job_id IS NOT NULL"
+    )
     conn.commit()
 
 
@@ -2377,7 +2399,7 @@ BULK_IMPORT_PATIENT_FIELDS = [
 ]
 
 
-def upsert_bulk_import_patients_batch(hospital_id, rows):
+def upsert_bulk_import_patients_batch(hospital_id, job_id, rows):
     """Batch insert/update patients keyed on (hospital_id, phone) via one
     executemany call -- opening a connection per row would be far too slow at
     100k-300k rows. Each item in `rows` is (patient_id, phone, fields) where
@@ -2386,7 +2408,15 @@ def upsert_bulk_import_patients_batch(hospital_id, rows):
     idx_patients_bulk_import_phone's predicate exactly (both Postgres and
     SQLite require this to infer a partial unique index) -- this scopes the
     upsert to only collide with other bulk-imported rows, never with normal
-    registration data that may legitimately share a phone number."""
+    registration data that may legitimately share a phone number.
+
+    patient_id is intentionally NEVER reassigned on conflict: several tables
+    (emr_access_logs, documents, admissions, ...) carry a foreign key to
+    patients.patient_id, so changing it on an existing row throws a foreign
+    key violation the moment that patient has any related record. Which job
+    most recently touched a row is instead tracked in bulk_import_job_id, a
+    plain non-key column that's safe to overwrite on every re-upload -- job
+    scoped search filters on that column, not on patient_id."""
     if not rows:
         return
     columns = [
@@ -2394,16 +2424,11 @@ def upsert_bulk_import_patients_batch(hospital_id, rows):
         "patient_id",
         "phone",
         "source",
+        "bulk_import_job_id",
     ] + BULK_IMPORT_PATIENT_FIELDS
     placeholders = ", ".join(["?"] * len(columns))
-    # patient_id must be reassigned on conflict too, not just the data fields:
-    # patient_id encodes which job a row belongs to ("BULK-{job_id}-{row}"),
-    # and job-scoped search (_job_scope_clause) filters on that prefix. If a
-    # later import re-uploads a phone number seen in an earlier job, leaving
-    # the old patient_id in place would make that row invisible to every
-    # search scoped to the job that actually just imported it.
     update_assignments = ", ".join(
-        f"{col} = EXCLUDED.{col}" for col in ["patient_id"] + BULK_IMPORT_PATIENT_FIELDS
+        f"{col} = EXCLUDED.{col}" for col in ["bulk_import_job_id"] + BULK_IMPORT_PATIENT_FIELDS
     )
     param_rows = [
         (
@@ -2411,6 +2436,7 @@ def upsert_bulk_import_patients_batch(hospital_id, rows):
             patient_id,
             phone,
             "bulk_import",
+            job_id,
             *(fields.get(f) for f in BULK_IMPORT_PATIENT_FIELDS),
         )
         for patient_id, phone, fields in rows

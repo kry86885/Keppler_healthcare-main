@@ -255,7 +255,7 @@ def import_rows_task(job_id, confirmed_mapping):
                 imported += 1
 
             if len(batch) >= BATCH_SIZE:
-                upsert_bulk_import_patients_batch(hospital_id, batch)
+                upsert_bulk_import_patients_batch(hospital_id, job_id, batch)
                 batch = []
                 update_bulk_import_job(
                     job_id,
@@ -265,7 +265,7 @@ def import_rows_task(job_id, confirmed_mapping):
                 )
 
         if batch:
-            upsert_bulk_import_patients_batch(hospital_id, batch)
+            upsert_bulk_import_patients_batch(hospital_id, job_id, batch)
 
         update_bulk_import_job(
             job_id,

@@ -84,7 +84,11 @@ def _job_scope_clause(job_id):
         return "", []
     if numeric_job_id <= 0:
         return "", []
-    return " AND patient_id LIKE ?", [f"BULK-{numeric_job_id}-%"]
+    # bulk_import_job_id (not a patient_id prefix match) so a phone number
+    # re-uploaded under a later job correctly shows up in that job's search --
+    # see upsert_bulk_import_patients_batch for why patient_id itself is never
+    # reassigned on re-import.
+    return " AND bulk_import_job_id = ?", [numeric_job_id]
 
 
 @bulk_import_bp.post("/api/bulk-import/upload")
