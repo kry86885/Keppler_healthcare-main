@@ -384,7 +384,10 @@ CRITICAL RULES:
 5. Include urgency guidance without diagnosis.
 6. Always include this disclaimer: This information is for educational purposes only and is not medical advice.
 
-Use this exact markdown structure:
+Use this exact markdown structure. Each heading below must appear EXACTLY ONCE, in
+this exact order, immediately followed by one short paragraph or a few bullet points --
+never repeat a heading, never add a "(continued)" section, and never revisit a topic
+under a different heading:
 ### 🚦 Urgency Assessment
 ### 🌿 Understanding Your Sensation
 ### 💭 Everyday Possibilities
@@ -392,7 +395,23 @@ Use this exact markdown structure:
 ### ⚡ Body Region Insight
 ### 🚨 When to Seek Support
 ### ⚠️ Important Reminder
+Stop generating immediately after the Important Reminder section.
 """
+
+REQUIRED_HEADINGS = [
+    "🚦 Urgency Assessment",
+    "🌿 Understanding Your Sensation",
+    "💭 Everyday Possibilities",
+    "🌱 Gentle Self-Care Ideas",
+    "⚡ Body Region Insight",
+    "🚨 When to Seek Support",
+    "⚠️ Important Reminder",
+]
+
+
+def _missing_headings(text: str) -> list[str]:
+    present = set(re.findall(r"^### (.+)$", text, re.MULTILINE))
+    return [heading for heading in REQUIRED_HEADINGS if heading not in present]
 
 _last_request = 0.0
 
@@ -430,6 +449,8 @@ def _vllm_generate(
     json_mode: bool = False,
     temperature: float = 0.7,
     max_tokens: int = 1024,
+    frequency_penalty: float = 0.0,
+    presence_penalty: float = 0.0,
 ):
     payload = {
         "model": VLLM_MODEL,
@@ -437,6 +458,14 @@ def _vllm_generate(
         "stream": False,
         "temperature": temperature,
         "max_tokens": max_tokens,
+        # Without these, this model reliably loops and repeats whole
+        # sections verbatim on longer structured outputs (observed:
+        # the "Gentle Self-Care Ideas" section duplicated 3x in a single
+        # response) -- frequency_penalty discourages reusing the same
+        # tokens/phrases, presence_penalty discourages re-entering a
+        # heading it already emitted.
+        "frequency_penalty": frequency_penalty,
+        "presence_penalty": presence_penalty,
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
@@ -529,6 +558,51 @@ def _format_patient_info(patient_info):
     return "\n".join(lines)
 
 
+def _deduplicate_sections(text: str) -> str:
+    """Merges duplicate/continued markdown sections the local model sometimes emits
+    (observed: a "Gentle Self-Care Ideas" section followed by a second "Gentle Self-Care
+    Ideas (Continued)" one) into a single section under its first heading. Prompt
+    instructions alone don't reliably stop a 7B local model from re-entering a heading
+    it already covered, so this guarantees each heading appears exactly once regardless
+    of what the model actually generated."""
+    lines = text.split("\n")
+    sections = []
+    current = None
+    for line in lines:
+        if line.startswith("### "):
+            current = [line, []]
+            sections.append(current)
+        elif current is not None:
+            current[1].append(line)
+        else:
+            if not sections:
+                sections.append(["", []])
+                current = sections[0]
+            current[1].append(line)
+
+    def normalize(heading: str) -> str:
+        stripped = re.sub(r"\(continued\)", "", heading, flags=re.IGNORECASE)
+        return re.sub(r"\s+", " ", stripped).strip().lower()
+
+    merged = {}
+    order = []
+    for heading, content in sections:
+        key = normalize(heading)
+        if key not in merged:
+            merged[key] = [heading, list(content)]
+            order.append(key)
+        else:
+            merged[key][1].extend(content)
+
+    rebuilt = []
+    for key in order:
+        heading, content = merged[key]
+        if heading:
+            rebuilt.append(heading)
+        rebuilt.extend(content)
+    return "\n".join(rebuilt)
+
+
 def _sanitize_response(text: str):
     if not text:
         return "", []
@@ -560,6 +634,7 @@ def _sanitize_response(text: str):
     ):
         sanitized = sanitized.rstrip() + MANDATORY_DISCLAIMER
 
+    sanitized = _deduplicate_sections(sanitized)
     sanitized = re.sub(r" {2,}", " ", sanitized)
     sanitized = re.sub(r"\n{3,}", "\n\n", sanitized)
     sanitized = "\n".join(line.rstrip() for line in sanitized.split("\n")).strip()
@@ -777,6 +852,8 @@ def _generate_with_vllm(system_prompt: str, user_prompt: str):
         f"{system_prompt}\n\nUser input:\n{user_prompt}",
         temperature=0.7,
         max_tokens=1024,
+        frequency_penalty=0.4,
+        presence_penalty=0.2,
     )
     if error:
         return None, error
@@ -925,6 +1002,19 @@ def analyze():
 
     sanitized, removed_terms = _sanitize_response(model_response)
     used_fallback = False
+
+    # The local 7B model occasionally drops a required section outright (distinct from
+    # the repeated-heading issue _deduplicate_sections handles) -- one retry is usually
+    # enough since generation is stochastic, and this only fires on the already-uncommon
+    # incomplete case, so it doesn't add latency to the normal path.
+    if _missing_headings(sanitized):
+        retry_response, retry_error = _generate_with_vllm(
+            SYSTEM_PROMPT, _build_user_prompt(payload)
+        )
+        if retry_response:
+            retry_sanitized, retry_removed_terms = _sanitize_response(retry_response)
+            if len(_missing_headings(retry_sanitized)) < len(_missing_headings(sanitized)):
+                sanitized, removed_terms = retry_sanitized, retry_removed_terms
 
     return jsonify(
         {
