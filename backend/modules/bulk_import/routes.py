@@ -36,6 +36,16 @@ ALLOWED_EXTENSIONS = (".xlsx", ".csv") + DOCUMENT_EXTENSIONS
 # a parameterized WHERE clause. See translate_patient_filter_prompt() in ai/service.py.
 ALLOWED_FIELDS = set(BULK_IMPORT_PATIENT_FIELDS) | {"phone"}
 FALLBACK_SEARCH_FIELDS = ["name", "last_name", "phone", "medical_condition", "area"]
+
+# Words that carry no filtering intent by themselves -- used to detect a bare
+# "list everyone" prompt (see _deterministic_filter_clause) and to break a
+# prompt into individual search terms for the keyword fallback (see
+# bulk_import_query) when the LLM path doesn't apply.
+_LIST_FILLER_WORDS = {
+    "list", "show", "display", "get", "all", "every", "everyone", "patient",
+    "patients", "full", "the", "me", "of", "a", "an", "please", "with", "in",
+    "who", "that", "are", "is", "having", "for", "and", "or", "find", "search",
+}
 OP_SQL = {
     "eq": "= ?",
     "contains": "LIKE ?",
@@ -194,6 +204,29 @@ def _build_filter_clause(conditions, logic):
     return f" AND ({joiner.join(clauses)})", params
 
 
+def _keyword_fallback_clause(prompt):
+    """Best-effort keyword search used when neither the deterministic heuristic nor the
+    LLM could derive a structured filter. Requires each significant word in the prompt to
+    appear somewhere across FALLBACK_SEARCH_FIELDS (AND across words, OR across fields per
+    word) -- matching the whole raw prompt as a single substring, as this used to do,
+    essentially never matches real data for anything but a one-word prompt, since it
+    requires that exact multi-word phrase to appear verbatim in a single field."""
+    words = re.findall(r"[a-z0-9]+", (prompt or "").lower())
+    significant_words = [w for w in words if w not in _LIST_FILLER_WORDS and len(w) > 1]
+    if not significant_words:
+        significant_words = [prompt.strip().lower()] if (prompt or "").strip() else []
+    if not significant_words:
+        return "", []
+
+    clauses = []
+    params = []
+    for word in significant_words:
+        field_clauses = [f"{field} LIKE ?" for field in FALLBACK_SEARCH_FIELDS]
+        clauses.append(f"({' OR '.join(field_clauses)})")
+        params.extend([f"%{word}%"] * len(FALLBACK_SEARCH_FIELDS))
+    return f" AND ({' AND '.join(clauses)})", params
+
+
 def _deterministic_filter_clause(prompt):
     text = (prompt or "").strip().lower()
     if not text:
@@ -218,25 +251,20 @@ def _deterministic_filter_clause(prompt):
         low, high = sorted([int(between_match.group(1)), int(between_match.group(2))])
         return " AND age BETWEEN ? AND ?", [low, high]
 
-    if re.search(
-        r"\b(?:list|show|display|get|all|every|everyone|patients|patient list|full list)\b",
-        text,
-    ):
-        filter_words = (
-            "above",
-            "over",
-            "older",
-            "below",
-            "under",
-            "younger",
-            "between",
-            "diabetes",
-            "diabetic",
-            "area",
-            "city",
-        )
-        if not any(word in text for word in filter_words):
-            return "", []
+    # Only short-circuit to "no filter, list everyone" when nothing substantive
+    # remains after stripping generic list/filler words -- e.g. "list all
+    # patients" or "show me every patient". This used to instead check for a
+    # tiny hardcoded set of "filter words" (just age terms and literally
+    # "diabetes"/"diabetic"/"area"/"city") and treat ANY OTHER condition as "no
+    # filter" -- so "patients with fever" or "cold and cough patients" silently
+    # ignored the condition and returned the entire unfiltered list. Checking
+    # for leftover substantive words instead of a fixed vocabulary means any
+    # real condition/place name correctly falls through to the LLM translator
+    # below instead of being discarded.
+    words = re.findall(r"[a-z]+", text)
+    substantive_words = [word for word in words if word not in _LIST_FILLER_WORDS]
+    if not substantive_words:
+        return "", []
 
     return None, None
 
@@ -274,19 +302,15 @@ def bulk_import_query():
 
     filter_result = translate_patient_filter_prompt(prompt, list(ALLOWED_FIELDS))
     if not filter_result or not filter_result.get("conditions"):
-        search_term = f"%{prompt}%"
-        fallback_clauses = [f"{f} LIKE ?" for f in FALLBACK_SEARCH_FIELDS]
-        where_clause = scope_clause + f" AND ({' OR '.join(fallback_clauses)})"
-        params = scope_params + [search_term] * len(FALLBACK_SEARCH_FIELDS)
+        fallback_where, fallback_params = _keyword_fallback_clause(prompt)
+        where_clause = scope_clause + fallback_where
+        params = scope_params + fallback_params
     else:
         where_clause, params = _build_filter_clause(
             filter_result.get("conditions") or [], filter_result.get("logic")
         )
         if not where_clause:
-            search_term = f"%{prompt}%"
-            fallback_clauses = [f"{f} LIKE ?" for f in FALLBACK_SEARCH_FIELDS]
-            where_clause = f" AND ({' OR '.join(fallback_clauses)})"
-            params = [search_term] * len(FALLBACK_SEARCH_FIELDS)
+            where_clause, params = _keyword_fallback_clause(prompt)
         where_clause = scope_clause + where_clause
         params = scope_params + params
 
