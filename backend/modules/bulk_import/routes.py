@@ -45,6 +45,7 @@ _LIST_FILLER_WORDS = {
     "list", "show", "display", "get", "all", "every", "everyone", "patient",
     "patients", "full", "the", "me", "of", "a", "an", "please", "with", "in",
     "who", "that", "are", "is", "having", "for", "and", "or", "find", "search",
+    "data", "record", "records", "row", "rows", "table", "details", "info", "information"
 }
 OP_SQL = {
     "eq": "= ?",
