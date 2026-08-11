@@ -444,7 +444,7 @@ export default function EmployeesPage({
                     <option value="Other">Other</option>
                   </Select>
                 </Label>
-                <Label>
+                <Label className="grid-form-span-2">
                   Department
                   <Select
                     value={form.department}

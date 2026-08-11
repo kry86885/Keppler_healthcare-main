@@ -83,21 +83,30 @@ type SidebarIconName =
   | "settings"
   | "logout"
   | "profile"
-  | "appointment";
+  | "appointment"
+  | "bed"
+  | "prescription"
+  | "emr"
+  | "feedback"
+  | "schedule";
 
 const NAV_ICON_MAP: Record<string, SidebarIconName> = {
   dashboard: "dashboard",
   add: "add",
   ocr: "add",
-  "op-desk": "patients",
+  "op-desk": "schedule",
   "appointment-in": "appointment",
   "appointment-out": "appointment",
+  "doctor-prescription": "prescription",
+  emr: "emr",
   queue: "appointment",
   "patient-journey": "patients",
+  "patient-experience": "feedback",
   "consent-desk": "add",
   "insurance-desk": "billing",
   patients: "patients",
   readmit: "readmit",
+  beds: "bed",
   billing: "billing",
   "billing-aging": "billing",
   "billing-reconciliation": "billing",
@@ -225,6 +234,42 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
         <path d="M3 9.5h18" {...stroke} />
         <path d="M8 7v-2M16 7v-2" {...stroke} />
         <path d="M8.5 14.5h7M8.5 17.5h5" {...stroke} />
+      </>
+    ),
+    bed: (
+      <>
+        <path d="M3 19v-7a2 2 0 0 1 2-2h2" {...stroke} />
+        <path d="M21 19v-5a2 2 0 0 0-2-2H9" {...stroke} />
+        <path d="M3 14h18" {...stroke} />
+        <path d="M3 19v2M21 19v2" {...stroke} />
+        <rect x="5" y="9" width="5" height="4" rx="1.2" {...stroke} />
+      </>
+    ),
+    prescription: (
+      <>
+        <rect x="5" y="3" width="14" height="18" rx="2" {...stroke} />
+        <path d="M8 12h1.6l1.4-3 2 6 1.4-3H16" {...stroke} />
+        <path d="M9 3V2h6v1" {...stroke} />
+      </>
+    ),
+    emr: (
+      <>
+        <path d="M4 4h16v16H4z" {...stroke} />
+        <path d="M4 9h16" {...stroke} />
+        <path d="M8 13h3M8 16.5h6" {...stroke} />
+      </>
+    ),
+    feedback: (
+      <path
+        d="M12 17.3l-5.3 3 1-6-4.3-4.2 6-.9L12 3l2.6 5.2 6 .9-4.3 4.2 1 6z"
+        {...stroke}
+      />
+    ),
+    schedule: (
+      <>
+        <rect x="4" y="5" width="16" height="15" rx="2.4" {...stroke} />
+        <path d="M8 3v4M16 3v4M4 10h16" {...stroke} />
+        <path d="M9 15l2 2 4-4" {...stroke} />
       </>
     ),
     settings: (
@@ -1553,6 +1598,15 @@ function App() {
               >
                 <FiMenu size={24} />
               </button>
+              <span className="topbar-icon-badge" aria-hidden="true">
+                <SidebarIcon
+                  name={
+                    page === "admin"
+                      ? "settings"
+                      : NAV_ICON_MAP[page] || "dashboard"
+                  }
+                />
+              </span>
               <div>
                 <h2>
                   {page === "admin"

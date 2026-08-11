@@ -340,6 +340,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: "readmit",
     label: "Re-admit",
+    subtitle: "Find a previous patient and start a new visit.",
     group: "overview",
     permission: "patients.clinical.write",
     deniedHint: "Requires patient clinical-records access.",
@@ -350,6 +351,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: "add",
     label: "Patient Registration",
+    subtitle: "Register a new patient and capture their intake details.",
     group: "registration",
     permission: "patients.registration.write",
     deniedHint: "Requires patient registration access.",
@@ -358,6 +360,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: "consent-desk",
     label: "Consent Desk",
+    subtitle: "Collect and verify patient consent forms.",
     group: "registration",
     permission: "patients.consent.write",
     deniedHint: "Requires consent desk access.",
@@ -366,6 +369,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: "insurance-desk",
     label: "Insurance Desk",
+    subtitle: "Verify coverage and manage insurance claims eligibility.",
     group: "registration",
     permission: "patients.insurance.write",
     deniedHint: "Requires insurance desk access.",
@@ -374,6 +378,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: "appointment-in",
     label: "Appointment In",
+    subtitle: "Check patients in and manage incoming appointments.",
     group: "registration",
     permission: "patients.read",
     deniedHint: "Requires patient access.",
@@ -382,6 +387,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: "doctor-prescription",
     label: "Doctor Prescription",
+    subtitle: "Consult, prescribe, and manage today's patient queue.",
     group: "registration",
     permission: "patients.read",
     deniedHint: "Requires patient access.",
@@ -390,6 +396,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: "queue",
     label: "Queue Management",
+    subtitle: "Track waiting patients and consultation status live.",
     group: "registration",
     permission: "patients.read",
     deniedHint: "Requires patient access.",
@@ -398,6 +405,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: "emr",
     label: "EMR",
+    subtitle: "Look up a patient's electronic medical record.",
     group: "registration",
     permission: "patients.read",
     deniedHint: "Requires patient access.",
@@ -406,6 +414,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: "appointment-out",
     label: "Appointment Out",
+    subtitle: "Schedule and manage outgoing follow-up appointments.",
     group: "registration",
     permission: "patients.appointments.write",
     deniedHint: "Requires appointments access.",
@@ -445,6 +454,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: "symptom-ai",
     label: "SymptoMap AI",
+    subtitle: "AI-assisted symptom triage and wellness insights.",
     group: "ai",
     permission: "symptom_ai.use",
     deniedHint: "Requires SymptoMap AI access.",
@@ -504,6 +514,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: "employees",
     label: "Employee Management",
+    subtitle: "Manage staff accounts, roles, and module access.",
     group: "admin",
     permission: "employees.read",
     deniedHint: "Requires employee management access.",
@@ -512,6 +523,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: "patient-experience",
     label: "Patient Experience",
+    subtitle: "Track patient feedback and satisfaction trends.",
     group: "admin",
     permission: "patient_experience.read",
     deniedHint: "Requires patient experience access.",
@@ -520,6 +532,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: "hrms",
     label: "HRMS",
+    subtitle: "Attendance, payroll, leave, and department management.",
     group: "admin",
     permission: "hr.read",
     deniedHint: "Requires HRMS access.",

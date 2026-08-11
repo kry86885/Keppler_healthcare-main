@@ -882,6 +882,23 @@ a.link.danger {
   gap: 1rem;
 }
 
+.topbar-icon-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  min-width: 2.75rem;
+  border-radius: calc(var(--radius) - 2px);
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+}
+
+.topbar-icon-badge svg {
+  width: 22px;
+  height: 22px;
+}
+
 .admin-route-main {
   width: 100%;
 }
@@ -2874,6 +2891,10 @@ main {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.52rem;
+}
+
+.grid-form-span-2 {
+  grid-column: 1 / -1;
 }
 
 .patient-grid-form {
