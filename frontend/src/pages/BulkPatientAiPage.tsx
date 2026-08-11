@@ -108,6 +108,16 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
   );
   const [whatsappMessage, setWhatsappMessage] = useState("");
   const [lastSearchedPrompt, setLastSearchedPrompt] = useState("");
+  const [broadcastModalOpen, setBroadcastModalOpen] = useState(false);
+  const [broadcastMessage, setBroadcastMessage] = useState("");
+  const [broadcastSending, setBroadcastSending] = useState(false);
+  const [broadcastStatus, setBroadcastStatus] = useState<{
+    status: "PENDING" | "SENDING" | "DONE";
+    total_recipients: number;
+    sent_count: number;
+    failed_count: number;
+  } | null>(null);
+  const broadcastPollRef = useRef(false);
   const pollingRef = useRef(false);
   // startPolling's async loop and its callbacks are captured as closures at
   // the render they were created in, so reading `jobId` state there can be
@@ -175,6 +185,7 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
     }
     return () => {
       pollingRef.current = false;
+      broadcastPollRef.current = false;
     };
   }, []);
 
@@ -320,6 +331,7 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
   const handleStartOver = () => {
     localStorage.removeItem(JOB_ID_STORAGE_KEY);
     pollingRef.current = false;
+    broadcastPollRef.current = false;
     jobIdRef.current = null;
     setJobId(null);
     setJob(null);
@@ -352,6 +364,87 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
       "_blank",
     );
     setWhatsappTarget(null);
+  };
+
+  const openBroadcastModal = () => {
+    setBroadcastMessage(
+      "Hello {name}, this is a message from our hospital. {condition}",
+    );
+    setBroadcastStatus(null);
+    setBroadcastModalOpen(true);
+  };
+
+  const closeBroadcastModal = () => {
+    // Once the broadcast has actually been created, sending continues on the
+    // server regardless of whether this modal stays open -- only block
+    // closing during the brief window before that initial request resolves.
+    if (broadcastSending && !broadcastStatus) return;
+    broadcastPollRef.current = false;
+    setBroadcastModalOpen(false);
+  };
+
+  const pollBroadcastStatus = (broadcastId: number) => {
+    if (broadcastPollRef.current) return;
+    broadcastPollRef.current = true;
+    (async () => {
+      while (broadcastPollRef.current) {
+        try {
+          const data = await apiFetch<{
+            status: "PENDING" | "SENDING" | "DONE";
+            total_recipients: number;
+            sent_count: number;
+            failed_count: number;
+          }>(`/api/bulk-import/whatsapp/broadcasts/${broadcastId}`);
+          setBroadcastStatus(data);
+          if (data.status === "DONE") {
+            broadcastPollRef.current = false;
+            setBroadcastSending(false);
+            return;
+          }
+        } catch (error) {
+          broadcastPollRef.current = false;
+          setBroadcastSending(false);
+          reportError(
+            setNotice,
+            error as { message?: string; status?: number },
+            "Unable to check message progress.",
+          );
+          return;
+        }
+        await sleep(1500);
+      }
+    })();
+  };
+
+  const handleSendBroadcast = async () => {
+    if (!jobIdRef.current || !broadcastMessage.trim()) return;
+    setBroadcastSending(true);
+    try {
+      const data = await apiFetch<{
+        broadcast_id: number;
+        total_recipients: number;
+      }>(`/api/bulk-import/jobs/${jobIdRef.current}/whatsapp/broadcast`, {
+        method: "POST",
+        body: JSON.stringify({
+          prompt: lastSearchedPrompt,
+          message: broadcastMessage.trim(),
+        }),
+      });
+      setBroadcastStatus({
+        status: "PENDING",
+        total_recipients: data.total_recipients,
+        sent_count: 0,
+        failed_count: 0,
+      });
+      pollBroadcastStatus(data.broadcast_id);
+    } catch (error) {
+      setBroadcastSending(false);
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to send messages.",
+      );
+    }
   };
 
   return (
@@ -633,6 +726,11 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
                       ? `Found ${results.length} matching patient${results.length === 1 ? "" : "s"} in this document`
                       : `${results.length} of ${total} patient${total === 1 ? "" : "s"}`}
                   </p>
+                  {jobKind === "spreadsheet" && total > 0 && (
+                    <Button variant="secondary" onClick={openBroadcastModal}>
+                      <FaWhatsapp aria-hidden /> Send to All ({total})
+                    </Button>
+                  )}
                 </div>
                 <Table
                   className="module-table module-table-bulk-ai"
@@ -728,6 +826,99 @@ export default function BulkPatientAiPage({ setNotice }: Props) {
           </Button>
           <Button onClick={handleSendWhatsapp}>Send via WhatsApp</Button>
         </div>
+      </Modal>
+
+      <Modal
+        open={broadcastModalOpen}
+        onClose={closeBroadcastModal}
+        title="Send WhatsApp to All"
+        description={
+          broadcastStatus
+            ? undefined
+            : `This will message ${total} patient${total === 1 ? "" : "s"} ${
+                lastSearchedPrompt
+                  ? `matching "${lastSearchedPrompt}"`
+                  : "in this list"
+              } who have a phone number on file.`
+        }
+      >
+        {!broadcastStatus ? (
+          <>
+            <Textarea
+              rows={5}
+              value={broadcastMessage}
+              onChange={(event) => setBroadcastMessage(event.target.value)}
+              style={{ width: "100%" }}
+            />
+            <p className="muted" style={{ marginTop: "0.5rem" }}>
+              Use <code>{"{name}"}</code> and <code>{"{condition}"}</code> --
+              each patient's message is personalized automatically.
+            </p>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "0.75rem",
+                marginTop: "1rem",
+              }}
+            >
+              <Button variant="ghost" onClick={closeBroadcastModal}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSendBroadcast}
+                disabled={broadcastSending || !broadcastMessage.trim()}
+              >
+                {broadcastSending
+                  ? "Starting..."
+                  : `Send to ${total} Patient${total === 1 ? "" : "s"}`}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="ai-broadcast-progress">
+              <div className="trend-bar-track">
+                <div
+                  className="trend-bar-fill"
+                  style={{
+                    width: `${
+                      broadcastStatus.total_recipients
+                        ? ((broadcastStatus.sent_count +
+                            broadcastStatus.failed_count) /
+                            broadcastStatus.total_recipients) *
+                          100
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+              <p className="muted">
+                {broadcastStatus.status === "DONE"
+                  ? "Done"
+                  : broadcastStatus.status === "SENDING"
+                    ? "Sending..."
+                    : "Starting..."}{" "}
+                -- {broadcastStatus.sent_count} sent
+                {broadcastStatus.failed_count > 0
+                  ? `, ${broadcastStatus.failed_count} failed`
+                  : ""}{" "}
+                of {broadcastStatus.total_recipients}
+              </p>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                marginTop: "1rem",
+              }}
+            >
+              <Button variant="ghost" onClick={closeBroadcastModal}>
+                Close
+              </Button>
+            </div>
+          </>
+        )}
       </Modal>
     </section>
   );

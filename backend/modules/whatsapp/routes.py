@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app, g
 from app import require_session, require_permissions
-from utils.database import get_connection
+from utils.database import get_connection, get_whatsapp_settings, save_whatsapp_settings
+from core.secrets import encrypt_secret, encryption_configured
 import os
 import requests
 import json
@@ -202,6 +203,100 @@ def init_feedback():
             (real_patient_id, phone),
         )
 
+    return jsonify({"success": True}), 200
+
+
+@whatsapp_bp.route("/settings", methods=["GET"])
+@require_permissions("admin.use")
+def get_whatsapp_business_settings():
+    """Returns the WhatsApp Business (Twilio) config used for sending
+    messages/EMR app-wide. The auth token is never returned, only whether one
+    is set, so the settings screen can show "a key is configured" without
+    re-exposing the secret."""
+    row = get_whatsapp_settings()
+    if row and row.get("account_sid"):
+        return jsonify(
+            {
+                "source": "database",
+                "account_sid": row.get("account_sid") or "",
+                "auth_token_set": bool(row.get("auth_token_encrypted")),
+                "whatsapp_from": row.get("whatsapp_from") or "",
+                "default_country_code": row.get("default_country_code") or "+91",
+                "updated_by": row.get("updated_by"),
+                "updated_at": (
+                    row["updated_at"].isoformat()
+                    if row.get("updated_at") and hasattr(row["updated_at"], "isoformat")
+                    else row.get("updated_at")
+                ),
+                "encryption_configured": encryption_configured(),
+            }
+        )
+    env_configured = bool(
+        os.getenv("TWILIO_ACCOUNT_SID")
+        and os.getenv("TWILIO_AUTH_TOKEN")
+        and os.getenv("TWILIO_WHATSAPP_FROM")
+    )
+    return jsonify(
+        {
+            "source": "environment" if env_configured else "none",
+            "account_sid": os.getenv("TWILIO_ACCOUNT_SID", "") if env_configured else "",
+            "auth_token_set": bool(os.getenv("TWILIO_AUTH_TOKEN")),
+            "whatsapp_from": os.getenv("TWILIO_WHATSAPP_FROM", ""),
+            "default_country_code": os.getenv("WHATSAPP_DEFAULT_COUNTRY_CODE", "+91"),
+            "updated_by": None,
+            "updated_at": None,
+            "encryption_configured": encryption_configured(),
+        }
+    )
+
+
+@whatsapp_bp.route("/settings", methods=["PUT"])
+@require_permissions("admin.use")
+def update_whatsapp_business_settings():
+    """Saves the platform-wide WhatsApp Business (Twilio) credentials. Once
+    saved here, this DB row takes priority over TWILIO_* env vars for every
+    WhatsApp send in the app (see core/whatsapp.py) -- no redeploy needed."""
+    if not encryption_configured():
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "SETTINGS_ENCRYPTION_KEY is not set on the server. "
+                        "Ask whoever manages the deployment to set it before "
+                        "storing this key, so it's encrypted at rest."
+                    )
+                }
+            ),
+            500,
+        )
+
+    data = request.json or {}
+    account_sid = (data.get("account_sid") or "").strip()
+    auth_token = (data.get("auth_token") or "").strip()
+    whatsapp_from = (data.get("whatsapp_from") or "").strip()
+    default_country_code = (data.get("default_country_code") or "+91").strip()
+
+    if not account_sid or not whatsapp_from:
+        return jsonify({"error": "account_sid and whatsapp_from are required"}), 400
+
+    existing = get_whatsapp_settings()
+    if auth_token:
+        auth_token_encrypted = encrypt_secret(auth_token)
+    elif existing and existing.get("auth_token_encrypted"):
+        # Blank auth_token means "keep the one already saved" -- the settings
+        # screen never gets the real token back to resubmit, so this is the
+        # only way to update the other fields without re-entering it.
+        auth_token_encrypted = existing["auth_token_encrypted"]
+    else:
+        return jsonify({"error": "auth_token is required"}), 400
+
+    save_whatsapp_settings(
+        account_sid,
+        auth_token_encrypted,
+        whatsapp_from,
+        default_country_code,
+        g.current_user.get("username"),
+    )
     return jsonify({"success": True}), 200
 
 

@@ -11,9 +11,12 @@ from app import (
     save_uploaded_file,
 )
 from ai.service import translate_patient_filter_prompt, answer_bulk_document_prompt
+from core.whatsapp import is_configured as whatsapp_is_configured
 from utils.database import (
     create_bulk_import_job,
+    create_whatsapp_broadcast,
     get_bulk_import_job,
+    get_whatsapp_broadcast,
     query_bulk_patients,
     update_bulk_import_job,
     BULK_IMPORT_PATIENT_FIELDS,
@@ -24,8 +27,14 @@ from .tasks import (
     import_rows_task,
     extract_document_task,
     is_document_file,
+    send_whatsapp_broadcast_task,
     DOCUMENT_EXTENSIONS,
 )
+
+# Hard ceiling on a single "Send to All" broadcast -- keeps one click from
+# accidentally queuing a runaway send across an entire multi-hundred-thousand
+# row import. Narrow the search prompt to send to more than this many people.
+MAX_BROADCAST_RECIPIENTS = 2000
 
 bulk_import_bp = Blueprint("bulk_import", __name__)
 
@@ -337,6 +346,28 @@ def _deterministic_filter_clause(prompt):
     return None, None
 
 
+def _resolve_prompt_where_clause(prompt):
+    """Turns a free-text prompt into a (where_clause, params) pair scoped to
+    ALLOWED_FIELDS, WITHOUT any job/hospital scoping -- callers AND it with
+    their own scope clause. Shared by /query and the WhatsApp broadcast
+    endpoint so "search for X" and "message everyone matching X" always agree
+    on who X actually is."""
+    where_clause, params = _deterministic_filter_clause(prompt)
+    if where_clause is not None:
+        return where_clause, params
+
+    filter_result = translate_patient_filter_prompt(prompt, list(ALLOWED_FIELDS))
+    if not filter_result or not filter_result.get("conditions"):
+        return _keyword_fallback_clause(prompt)
+
+    where_clause, params = _build_filter_clause(
+        filter_result.get("conditions") or [], filter_result.get("logic")
+    )
+    if not where_clause:
+        return _keyword_fallback_clause(prompt)
+    return where_clause, params
+
+
 @bulk_import_bp.post("/api/bulk-import/query")
 @require_permissions("patients.bulk_ai.write")
 def bulk_import_query():
@@ -349,45 +380,121 @@ def bulk_import_query():
     hospital_id = current_hospital_id()
     scope_clause, scope_params = _job_scope_clause(job_id)
 
-    if not prompt:
-        rows, total = query_bulk_patients(
-            hospital_id, scope_clause, scope_params, page=page, page_size=page_size
-        )
-        return jsonify(
-            {"results": rows, "total": total, "page": page, "page_size": page_size}
-        )
-
-    where_clause, params = _deterministic_filter_clause(prompt)
-    if where_clause is not None:
-        where_clause = scope_clause + where_clause
-        params = scope_params + params
-        rows, total = query_bulk_patients(
-            hospital_id, where_clause, params, page=page, page_size=page_size
-        )
-        return jsonify(
-            {"results": rows, "total": total, "page": page, "page_size": page_size}
-        )
-
-    filter_result = translate_patient_filter_prompt(prompt, list(ALLOWED_FIELDS))
-    if not filter_result or not filter_result.get("conditions"):
-        fallback_where, fallback_params = _keyword_fallback_clause(prompt)
-        where_clause = scope_clause + fallback_where
-        params = scope_params + fallback_params
+    if prompt:
+        prompt_where, prompt_params = _resolve_prompt_where_clause(prompt)
+        where_clause = scope_clause + prompt_where
+        params = scope_params + prompt_params
     else:
-        where_clause, params = _build_filter_clause(
-            filter_result.get("conditions") or [], filter_result.get("logic")
-        )
-        if not where_clause:
-            where_clause, params = _keyword_fallback_clause(prompt)
-        where_clause = scope_clause + where_clause
-        params = scope_params + params
-    print(f"[DEBUG bulk_query] prompt={prompt!r} filter_result={filter_result!r} where_clause={where_clause!r} params={params!r}", flush=True)
+        where_clause, params = scope_clause, scope_params
 
     rows, total = query_bulk_patients(
         hospital_id, where_clause, params, page=page, page_size=page_size
     )
     return jsonify(
         {"results": rows, "total": total, "page": page, "page_size": page_size}
+    )
+
+
+@bulk_import_bp.post("/api/bulk-import/jobs/<int:job_id>/whatsapp/broadcast")
+@require_permissions("patients.bulk_ai.write")
+def bulk_import_whatsapp_broadcast(job_id):
+    """Sends one WhatsApp message to every patient matching the given prompt
+    (or the whole job if prompt is blank) -- the bulk equivalent of the
+    per-row "message on WhatsApp" button. Recipients are resolved with the
+    exact same filter logic as /query, so "Send to All" always matches what
+    the search results table is currently showing."""
+    payload = request.get_json(silent=True) or {}
+    prompt = (payload.get("prompt") or "").strip()
+    message_template = (payload.get("message") or "").strip()
+    if not message_template:
+        return jsonify({"error": "Message is required"}), 400
+
+    hospital_id = current_hospital_id()
+    if not get_bulk_import_job(job_id, hospital_id):
+        return jsonify({"error": "Job not found"}), 404
+
+    if not whatsapp_is_configured():
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "WhatsApp Business API isn't configured yet. Ask an "
+                        "owner/admin to set it up under Settings -> "
+                        "WhatsApp Business API."
+                    )
+                }
+            ),
+            400,
+        )
+
+    scope_clause, scope_params = _job_scope_clause(job_id)
+    if prompt:
+        prompt_where, prompt_params = _resolve_prompt_where_clause(prompt)
+        where_clause = scope_clause + prompt_where
+        params = scope_params + prompt_params
+    else:
+        where_clause, params = scope_clause, scope_params
+
+    rows, total = query_bulk_patients(
+        hospital_id, where_clause, params, page=1, page_size=MAX_BROADCAST_RECIPIENTS
+    )
+    if total > MAX_BROADCAST_RECIPIENTS:
+        return (
+            jsonify(
+                {
+                    "error": (
+                        f"This search matches {total} patients, over the "
+                        f"{MAX_BROADCAST_RECIPIENTS}-recipient limit per "
+                        "broadcast. Narrow the search prompt and try again."
+                    )
+                }
+            ),
+            400,
+        )
+
+    recipients = [row for row in rows if row.get("phone")]
+    if not recipients:
+        return (
+            jsonify({"error": "No matching patients have a phone number on file."}),
+            400,
+        )
+
+    broadcast_id = create_whatsapp_broadcast(
+        hospital_id,
+        job_id,
+        prompt,
+        message_template,
+        recipients,
+        g.current_user.get("username"),
+    )
+    send_whatsapp_broadcast_task.delay(broadcast_id)
+    log_audit_event(
+        "create",
+        "whatsapp_broadcasts",
+        str(broadcast_id),
+        {"job_id": job_id, "prompt": prompt, "recipient_count": len(recipients)},
+    )
+    return (
+        jsonify({"broadcast_id": broadcast_id, "total_recipients": len(recipients)}),
+        202,
+    )
+
+
+@bulk_import_bp.get("/api/bulk-import/whatsapp/broadcasts/<int:broadcast_id>")
+@require_permissions("patients.bulk_ai.write")
+def bulk_import_whatsapp_broadcast_status(broadcast_id):
+    hospital_id = current_hospital_id()
+    broadcast = get_whatsapp_broadcast(broadcast_id, hospital_id)
+    if not broadcast:
+        return jsonify({"error": "Broadcast not found"}), 404
+    return jsonify(
+        {
+            "id": broadcast["id"],
+            "status": broadcast["status"],
+            "total_recipients": broadcast["total_recipients"],
+            "sent_count": broadcast["sent_count"],
+            "failed_count": broadcast["failed_count"],
+        }
     )
 
 

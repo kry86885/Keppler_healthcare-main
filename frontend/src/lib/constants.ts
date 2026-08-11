@@ -51,6 +51,11 @@ export const MODULE_OPTIONS: ModuleOption[] = [
     description: "Doctor schedules and the doctor directory.",
   },
   {
+    value: "beds",
+    label: "Bed Management",
+    description: "Room/bed layout, admitting and discharging patients.",
+  },
+  {
     value: "billing",
     label: "Billing",
     description: "Invoices, collections, and payment workflows.",
@@ -115,6 +120,12 @@ export const SUB_MODULES: Partial<Record<ModuleId, SubModuleOption[]>> = {
     { value: "schedules", label: "Doctor Schedules" },
     { value: "doctors", label: "Doctor Directory" },
   ],
+  beds: [
+    {
+      value: "manage",
+      label: "Add/Edit Beds & Admit/Discharge Patients",
+    },
+  ],
   billing: [
     { value: "invoices", label: "Invoices & Payments" },
     { value: "claims", label: "Insurance Claims" },
@@ -168,6 +179,8 @@ export const ADMIN_PERMISSIONS: string[] = [
   "op.read",
   "op.schedules.write",
   "op.doctors.write",
+  "beds.read",
+  "beds.write",
   "symptom_ai.use",
   "symptom_ai.documents.write",
   "employees.read",
@@ -216,6 +229,7 @@ export const MODULE_PERMISSIONS: Record<ModuleId, string[]> = {
     "patients.bulk_ai.write",
   ],
   op: ["op.read", "op.schedules.write", "op.doctors.write"],
+  beds: ["beds.read", "beds.write"],
   billing: ["billing.read", "billing.invoices.write", "billing.claims.write"],
   pharmacy: [
     "pharmacy.read",
@@ -266,6 +280,9 @@ export const SUB_MODULE_PERMISSIONS: Partial<
   op: {
     schedules: ["op.schedules.write"],
     doctors: ["op.doctors.write"],
+  },
+  beds: {
+    manage: ["beds.write"],
   },
   billing: {
     invoices: ["billing.invoices.write"],
@@ -406,6 +423,15 @@ export const NAV_ITEMS: NavItem[] = [
     module: "op",
   },
   {
+    id: "beds",
+    label: "Bed Management",
+    subtitle: "See every room and bed at a glance, and admit or discharge patients.",
+    group: "operations",
+    permission: "beds.read",
+    deniedHint: "Requires bed management access.",
+    module: "beds",
+  },
+  {
     id: "pharmacy",
     label: "Pharmacy",
     subtitle: "Manage inventory, prescriptions, and sales intelligently.",
@@ -500,7 +526,13 @@ export const NAV_ITEMS: NavItem[] = [
     module: "hrms",
   },
 
-  { id: "settings", label: "Settings" },
+  {
+    id: "settings",
+    label: "Settings",
+    subtitle:
+      "Audit trail, WhatsApp Business API key, and message templates.",
+    group: "admin",
+  },
 ];
 
 export const DOC_TYPES = [

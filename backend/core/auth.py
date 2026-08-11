@@ -36,13 +36,15 @@ USER_TYPES = ("admin", "normal")
 # Modules a normal (non-admin) user can be granted. Each maps to a base "view"
 # permission (its read/GET routes) plus zero or more sub-items that gate a
 # specific write/delete action within it (see SUB_MODULES below). This stays
-# out of "emergency"/"icu"/"ambulance"/"nurse"/"queue"/"beds" deliberately --
-# those backend blueprints are stub scaffolding (Phase A/E/F/G/H) with no real
-# pages behind them yet; there's nothing to protect there.
+# out of "emergency"/"icu"/"ambulance"/"nurse"/"queue" deliberately -- those
+# backend blueprints are stub scaffolding (Phase A/E/F/G) with no real pages
+# behind them yet; there's nothing to protect there. "beds" (Phase H) is the
+# first of that batch to get a real page -- see modules/beds/routes.py.
 ASSIGNABLE_MODULES = (
     "dashboard",
     "patients",
     "op",
+    "beds",
     "billing",
     "pharmacy",
     "hrms",
@@ -58,6 +60,7 @@ MODULE_BASE_PERMISSION = {
     "dashboard": "patients.read",
     "patients": "patients.read",
     "op": "op.read",
+    "beds": "beds.read",
     "billing": "billing.read",
     "pharmacy": "pharmacy.read",
     "hrms": "hr.read",
@@ -121,6 +124,12 @@ SUB_MODULES = {
             "permissions": ["op.schedules.write"],
         },
         "doctors": {"label": "Doctor Directory", "permissions": ["op.doctors.write"]},
+    },
+    "beds": {
+        "manage": {
+            "label": "Add/Edit Beds & Admit/Discharge Patients",
+            "permissions": ["beds.write"],
+        },
     },
     "billing": {
         "invoices": {
@@ -360,7 +369,7 @@ def default_modules_for_legacy(
         return ["dashboard", "patients", "billing", "symptom_ai"]
 
     if normalized_legacy_role == "staff":
-        return ["dashboard", "patients", "billing", "symptom_ai"]
+        return ["dashboard", "patients", "beds", "billing", "symptom_ai"]
 
     return list(DEFAULT_NORMAL_MODULES)
 
@@ -594,7 +603,7 @@ def create_default_users():
                 "role": "staff",
                 "access_role": "receptionist",
                 "user_type": "normal",
-                "module_access": list(DEFAULT_NORMAL_MODULES),
+                "module_access": list(DEFAULT_NORMAL_MODULES) + ["beds"],
                 "job_role": "Staff",
                 "full_name": "Staff User",
                 "phone": "+1-234-567-8902",

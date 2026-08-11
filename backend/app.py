@@ -713,6 +713,9 @@ app.register_blueprint(dashboard_bp)
 from modules.op.routes import op_bp
 
 app.register_blueprint(op_bp)
+from modules.beds.routes import beds_bp
+
+app.register_blueprint(beds_bp)
 from modules.documents.routes import documents_bp
 
 app.register_blueprint(documents_bp)

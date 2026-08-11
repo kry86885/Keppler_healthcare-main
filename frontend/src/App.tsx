@@ -28,6 +28,7 @@ const DailyMonthlyReportsPage = lazy(
   () => import("./pages/DailyMonthlyReportsPage"),
 );
 const PharmacyPage = lazy(() => import("./pages/PharmacyPage"));
+const BedManagementPage = lazy(() => import("./pages/BedManagementPage"));
 const HrmsPage = lazy(() => import("./pages/HrmsPage"));
 const PatientsPage = lazy(() => import("./pages/PatientsPage"));
 const ReadmitPage = lazy(() => import("./pages/ReadmitPage"));
@@ -419,11 +420,7 @@ function App() {
     return hasPermission(permission);
   };
   const sidebarNavItems = useMemo(
-    () =>
-      NAV_ITEMS.filter(
-        (item) =>
-          item.id !== "settings" && canAccessNavItem(item, item.permission),
-      ),
+    () => NAV_ITEMS.filter((item) => canAccessNavItem(item, item.permission)),
     [permissions],
   );
   const sidebarGroups = useMemo(() => {
@@ -1725,6 +1722,10 @@ function App() {
                 />
               )}
 
+            {page === "beds" && hasPermission("beds.read") && (
+              <BedManagementPage setNotice={setNotice} />
+            )}
+
             {page === "pharmacy" && hasPermission("pharmacy.read") && (
               <PharmacyPage setNotice={setNotice} />
             )}
@@ -1754,6 +1755,7 @@ function App() {
                 stats={stats}
                 user={user}
                 canReadAudit={hasPermission("audit.read")}
+                isAdmin={isAdmin}
               />
             )}
           </Suspense>

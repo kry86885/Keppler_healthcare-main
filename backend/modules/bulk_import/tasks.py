@@ -3,13 +3,17 @@ import io
 import json
 import logging
 import re
+import time
 
 from celery import shared_task
 
 from core.storage import ObjectStorage
+from core.whatsapp import send_whatsapp_message
 from utils.database import (
     get_bulk_import_job_internal,
+    get_whatsapp_broadcast_internal,
     update_bulk_import_job,
+    update_whatsapp_broadcast,
     upsert_bulk_import_patients_batch,
     BULK_IMPORT_PATIENT_FIELDS,
 )
@@ -303,3 +307,60 @@ def extract_document_task(job_id):
     except Exception as exc:
         logger.exception("extract_document_task failed for job %s", job_id)
         update_bulk_import_job(job_id, status="FAILED", error=str(exc))
+
+
+# Between-message pacing so a broadcast to hundreds of patients doesn't slam
+# Twilio's per-number rate limit (1 msg/sec on unshared/non-preapproved
+# senders) all at once.
+_BROADCAST_SEND_DELAY_SECONDS = 0.35
+
+
+def _render_broadcast_message(template, recipient):
+    name = f"{recipient.get('name') or ''} {recipient.get('last_name') or ''}".strip() or "there"
+    condition = recipient.get("medical_condition") or ""
+    return template.replace("{name}", name).replace("{condition}", condition)
+
+
+@shared_task
+def send_whatsapp_broadcast_task(broadcast_id):
+    """Sends one WhatsApp message per recipient captured on the broadcast row
+    at Send to All time (see create_whatsapp_broadcast). Per-recipient
+    failures (bad number, Twilio error, etc.) are counted and skipped rather
+    than aborting the rest of the list -- one bad phone number shouldn't stop
+    everyone else's message."""
+    broadcast = get_whatsapp_broadcast_internal(broadcast_id)
+    if not broadcast:
+        return
+    try:
+        recipients = json.loads(broadcast["recipients"] or "[]")
+    except (TypeError, ValueError):
+        recipients = []
+
+    update_whatsapp_broadcast(broadcast_id, status="SENDING")
+    sent_count = 0
+    failed_count = 0
+    for index, recipient in enumerate(recipients):
+        phone = recipient.get("phone")
+        message = _render_broadcast_message(
+            broadcast["message_template"], recipient
+        )
+        try:
+            ok = send_whatsapp_message(phone, message) if phone else False
+        except Exception:
+            logger.exception(
+                "send_whatsapp_broadcast_task: send failed for broadcast %s recipient %s",
+                broadcast_id,
+                phone,
+            )
+            ok = False
+        if ok:
+            sent_count += 1
+        else:
+            failed_count += 1
+        update_whatsapp_broadcast(
+            broadcast_id, sent_count=sent_count, failed_count=failed_count
+        )
+        if index < len(recipients) - 1:
+            time.sleep(_BROADCAST_SEND_DELAY_SECONDS)
+
+    update_whatsapp_broadcast(broadcast_id, status="DONE")

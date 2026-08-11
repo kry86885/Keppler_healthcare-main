@@ -3,6 +3,7 @@ export type ModuleId =
   | "dashboard"
   | "patients"
   | "op"
+  | "beds"
   | "billing"
   | "pharmacy"
   | "hrms"

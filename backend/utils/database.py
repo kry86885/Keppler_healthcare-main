@@ -469,6 +469,9 @@ def init_database():
         ensure_emr_tables(conn)
         ensure_patient_bulk_columns(conn)
         ensure_bulk_import_jobs_table(conn)
+        ensure_whatsapp_settings_table(conn)
+        ensure_whatsapp_broadcasts_table(conn)
+        ensure_bed_management_columns(conn)
 
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_hospitals_code ON hospitals(code)"
@@ -2337,6 +2340,161 @@ def ensure_bulk_import_jobs_table(conn):
     # here and answered against directly via /ask, never turned into patient rows.
     _ensure_column(cursor, "bulk_import_jobs", "extracted_text", "TEXT")
     conn.commit()
+
+
+def ensure_whatsapp_settings_table(conn):
+    """Single-row table (id is always 1) holding the platform-wide Twilio
+    WhatsApp credentials that admins configure through Settings, as an
+    alternative to setting TWILIO_* env vars directly on the server. One row
+    for the whole deployment, not per-hospital -- see core/whatsapp.py for how
+    this is read (DB row wins over env vars when both are present)."""
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS whatsapp_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            account_sid TEXT,
+            auth_token_encrypted TEXT,
+            whatsapp_from TEXT,
+            default_country_code TEXT DEFAULT '+91',
+            updated_by TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+    conn.commit()
+
+
+def get_whatsapp_settings():
+    """Returns the single settings row as a dict, or None if never configured."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM whatsapp_settings WHERE id = 1")
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def save_whatsapp_settings(
+    account_sid, auth_token_encrypted, whatsapp_from, default_country_code, updated_by
+):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO whatsapp_settings
+                (id, account_sid, auth_token_encrypted, whatsapp_from, default_country_code, updated_by, updated_at)
+            VALUES (1, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT (id) DO UPDATE SET
+                account_sid = EXCLUDED.account_sid,
+                auth_token_encrypted = EXCLUDED.auth_token_encrypted,
+                whatsapp_from = EXCLUDED.whatsapp_from,
+                default_country_code = EXCLUDED.default_country_code,
+                updated_by = EXCLUDED.updated_by,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                account_sid,
+                auth_token_encrypted,
+                whatsapp_from,
+                default_country_code,
+                updated_by,
+            ),
+        )
+        conn.commit()
+
+
+def ensure_whatsapp_broadcasts_table(conn):
+    """Tracks a single 'message everyone matching this AI Mode search' send --
+    one row per Send to All click. Recipients are captured as a JSON snapshot
+    at send time (not re-queried later), so what actually gets messaged can't
+    drift if the underlying patient data changes while the Celery task is
+    still working through the list."""
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS whatsapp_broadcasts (
+            id SERIAL PRIMARY KEY,
+            hospital_id INTEGER NOT NULL,
+            bulk_import_job_id INTEGER,
+            prompt TEXT,
+            message_template TEXT NOT NULL,
+            recipients TEXT NOT NULL,
+            total_recipients INTEGER NOT NULL DEFAULT 0,
+            sent_count INTEGER NOT NULL DEFAULT 0,
+            failed_count INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            created_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_whatsapp_broadcasts_hospital "
+        "ON whatsapp_broadcasts(hospital_id)"
+    )
+    conn.commit()
+
+
+def create_whatsapp_broadcast(
+    hospital_id, bulk_import_job_id, prompt, message_template, recipients, created_by
+):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO whatsapp_broadcasts
+                (hospital_id, bulk_import_job_id, prompt, message_template,
+                 recipients, total_recipients, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                hospital_id,
+                bulk_import_job_id,
+                prompt,
+                message_template,
+                json.dumps(recipients, separators=(",", ":")),
+                len(recipients),
+                created_by,
+            ),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_whatsapp_broadcast(broadcast_id, hospital_id):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM whatsapp_broadcasts WHERE id = ? AND hospital_id = ?",
+            (broadcast_id, hospital_id),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def get_whatsapp_broadcast_internal(broadcast_id):
+    """Unscoped lookup for the Celery worker, same rationale as
+    get_bulk_import_job_internal -- no per-request tenant context to check
+    against, so it trusts hospital_id already stored on the row."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM whatsapp_broadcasts WHERE id = ?", (broadcast_id,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def update_whatsapp_broadcast(broadcast_id, **fields):
+    if not fields:
+        return
+    columns = list(fields.keys())
+    set_clause = ", ".join(f"{col} = ?" for col in columns)
+    values = [fields[col] for col in columns]
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE whatsapp_broadcasts SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (*values, broadcast_id),
+        )
+        conn.commit()
 
 
 def create_bulk_import_job(hospital_id, created_by, original_filename, storage_path):
@@ -4535,6 +4693,281 @@ def list_bed_allocations(patient_id=None, active_only=False):
             tuple(params),
         )
         return cursor.fetchall()
+
+
+def ensure_bed_management_columns(conn):
+    """bed_master (a hospital-scoped bed inventory) and bed_allocations (who's
+    currently in which bed) both existed already but were never wired up to
+    real routes -- bed_allocations in particular was missing hospital_id
+    entirely, so list_bed_allocations() had no tenant isolation. This adds
+    what Bed Management needs: a bed_type classification, hospital_id +
+    bed_id on bed_allocations (bed_id links a stay directly to a bed_master
+    row instead of only free-text ward/room/bed), and a uniqueness guarantee
+    so the same bed number can't be entered twice in one ward/room."""
+    cursor = conn.cursor()
+    _ensure_column(cursor, "bed_master", "bed_type", "TEXT DEFAULT 'General'")
+    _ensure_column(cursor, "bed_allocations", "hospital_id", "INTEGER")
+    _ensure_column(cursor, "bed_allocations", "bed_id", "INTEGER")
+    # Backfill hospital_id on any bed_allocations rows created before this
+    # column existed, via the admission each row belongs to.
+    cursor.execute("""
+        UPDATE bed_allocations
+        SET hospital_id = (
+            SELECT a.hospital_id FROM admissions a WHERE a.id = bed_allocations.admission_id
+        )
+        WHERE hospital_id IS NULL
+        """)
+    cursor.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_bed_master_unique "
+        "ON bed_master(hospital_id, ward, room_no, bed_no)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_bed_allocations_hospital ON bed_allocations(hospital_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_bed_allocations_bed ON bed_allocations(bed_id)"
+    )
+    conn.commit()
+
+
+def list_beds(hospital_id):
+    """All beds for a hospital, each with its current occupant (if any) via a
+    LEFT JOIN to the active bed_allocations row -- one query for the whole
+    grid instead of N+1 lookups per bed."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                b.id, b.ward, b.room_no, b.bed_no, b.bed_type, b.status,
+                ba.id AS allocation_id, ba.admission_id, ba.allocated_at,
+                p.patient_id, p.name AS patient_name, p.last_name AS patient_last_name,
+                p.phone AS patient_phone, p.age AS patient_age, p.gender AS patient_gender,
+                a.notes AS admission_notes
+            FROM bed_master b
+            LEFT JOIN bed_allocations ba
+                ON ba.bed_id = b.id AND ba.status = 'active'
+            LEFT JOIN patients p ON p.patient_id = ba.patient_id
+            LEFT JOIN admissions a ON a.id = ba.admission_id
+            WHERE b.hospital_id = ?
+            ORDER BY
+                b.ward,
+                b.room_no,
+                -- bed_no is free text (some hospitals label beds "A1", not just
+                -- numbers), so a plain text sort would order "10" before "2".
+                -- Zero-pad purely numeric bed numbers so those sort correctly;
+                -- non-numeric labels fall back to sorting as-is.
+                CASE WHEN b.bed_no ~ '^[0-9]+$' THEN LPAD(b.bed_no, 10, '0') ELSE b.bed_no END
+            """,
+            (hospital_id,),
+        )
+        rows = [dict(row) for row in cursor.fetchall()]
+        # Flask's default JSON provider serializes a raw datetime as an RFC
+        # 1123 string ("Tue, 11 Aug 2026 10:05:48 GMT") -- the frontend's date
+        # parser expects ISO 8601, so convert explicitly rather than let that
+        # mismatch silently fall back to displaying the raw string.
+        for row in rows:
+            if row.get("allocated_at") is not None and hasattr(
+                row["allocated_at"], "isoformat"
+            ):
+                row["allocated_at"] = row["allocated_at"].isoformat()
+        return rows
+
+
+def get_bed(bed_id, hospital_id):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM bed_master WHERE id = ? AND hospital_id = ?",
+            (bed_id, hospital_id),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def create_bed(hospital_id, ward, room_no, bed_no, bed_type):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO bed_master (hospital_id, ward, room_no, bed_no, bed_type, status)
+            VALUES (?, ?, ?, ?, ?, 'Available')
+            RETURNING id
+            """,
+            (hospital_id, ward, room_no, bed_no, bed_type),
+        )
+        bed_id = cursor.fetchone()[0]
+        conn.commit()
+        return bed_id
+
+
+def create_beds_range(hospital_id, ward, room_no, bed_type, from_bed, to_bed):
+    """Creates beds numbered from_bed..to_bed in one go (e.g. a 20-bed room in
+    one action instead of 20). Numbers that already exist in this
+    hospital/ward/room are silently skipped rather than failing the whole
+    batch -- e.g. re-running this to top up a room from 15 to 20 beds just
+    adds the 5 new ones."""
+    created = []
+    skipped = []
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        for n in range(from_bed, to_bed + 1):
+            bed_no = str(n)
+            cursor.execute(
+                """
+                INSERT INTO bed_master (hospital_id, ward, room_no, bed_no, bed_type, status)
+                VALUES (?, ?, ?, ?, ?, 'Available')
+                ON CONFLICT (hospital_id, ward, room_no, bed_no) DO NOTHING
+                RETURNING id
+                """,
+                (hospital_id, ward, room_no, bed_no, bed_type),
+            )
+            if cursor.fetchone():
+                created.append(bed_no)
+            else:
+                skipped.append(bed_no)
+        conn.commit()
+    return {"created": created, "skipped": skipped}
+
+
+def update_bed(bed_id, hospital_id, **fields):
+    if not fields:
+        return False
+    columns = list(fields.keys())
+    set_clause = ", ".join(f"{col} = ?" for col in columns)
+    values = [fields[col] for col in columns]
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE bed_master SET {set_clause}, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND hospital_id = ?",
+            (*values, bed_id, hospital_id),
+        )
+        updated = cursor.rowcount > 0
+        conn.commit()
+        return updated
+
+
+def delete_bed(bed_id, hospital_id):
+    """Refuses to delete an occupied bed -- returns False rather than
+    silently orphaning whoever's currently assigned to it."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM bed_master WHERE id = ? AND hospital_id = ? AND status != 'Occupied'",
+            (bed_id, hospital_id),
+        )
+        deleted = cursor.rowcount > 0
+        conn.commit()
+        return deleted
+
+
+def find_active_bed_for_patient(patient_id, hospital_id):
+    """Used to block double-booking -- a patient shouldn't be assigned to a
+    second bed while still occupying one."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT b.id, b.ward, b.room_no, b.bed_no
+            FROM bed_allocations ba
+            JOIN bed_master b ON b.id = ba.bed_id
+            WHERE ba.patient_id = ? AND ba.hospital_id = ? AND ba.status = 'active'
+            LIMIT 1
+            """,
+            (patient_id, hospital_id),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def assign_patient_to_bed(hospital_id, bed_id, patient_id, notes):
+    """Admitting a patient into a bed IS the admission, from this page's point
+    of view -- creates the admissions row and the bed_allocations link in one
+    step rather than requiring a separate admission to already exist."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT ward, room_no, bed_no, status FROM bed_master WHERE id = ? AND hospital_id = ?",
+            (bed_id, hospital_id),
+        )
+        bed = cursor.fetchone()
+        if not bed:
+            return None
+        if bed["status"] != "Available":
+            raise ValueError("This bed is no longer available.")
+
+        admission_timestamp = current_ist_timestamp()
+        cursor.execute(
+            """
+            INSERT INTO admissions (hospital_id, patient_id, admission_date, notes)
+            VALUES (?, ?, ?, ?)
+            RETURNING id
+            """,
+            (hospital_id, patient_id, admission_timestamp, notes),
+        )
+        admission_id = cursor.fetchone()[0]
+
+        cursor.execute(
+            """
+            INSERT INTO bed_allocations
+                (hospital_id, bed_id, admission_id, patient_id, ward, room_no, bed_no, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
+            RETURNING id
+            """,
+            (
+                hospital_id,
+                bed_id,
+                admission_id,
+                patient_id,
+                bed["ward"],
+                bed["room_no"],
+                bed["bed_no"],
+            ),
+        )
+        allocation_id = cursor.fetchone()[0]
+
+        cursor.execute(
+            "UPDATE bed_master SET status = 'Occupied', updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ?",
+            (bed_id,),
+        )
+        conn.commit()
+        return {"admission_id": admission_id, "allocation_id": allocation_id}
+
+
+def release_bed(hospital_id, bed_id):
+    """Discharges the current occupant and frees the bed: closes out the
+    active bed_allocations row, sets discharge_date on the admission it
+    belongs to, and flips the bed back to Available."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, admission_id FROM bed_allocations "
+            "WHERE bed_id = ? AND hospital_id = ? AND status = 'active'",
+            (bed_id, hospital_id),
+        )
+        allocation = cursor.fetchone()
+        if not allocation:
+            return False
+
+        cursor.execute(
+            "UPDATE bed_allocations SET status = 'released', released_at = CURRENT_TIMESTAMP "
+            "WHERE id = ?",
+            (allocation["id"],),
+        )
+        cursor.execute(
+            "UPDATE admissions SET discharge_date = CURRENT_DATE "
+            "WHERE id = ? AND discharge_date IS NULL",
+            (allocation["admission_id"],),
+        )
+        cursor.execute(
+            "UPDATE bed_master SET status = 'Available', updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ?",
+            (bed_id,),
+        )
+        conn.commit()
+        return True
 
 
 def add_medication_schedule(data):
