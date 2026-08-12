@@ -31,7 +31,9 @@ pharmacy_bp = Blueprint("pharmacy", __name__)
 @pharmacy_bp.get("/api/pharmacy/inventory")
 @require_permissions("pharmacy.read")
 def pharmacy_inventory_list():
-    return jsonify({"items": rows_to_dicts(list_inventory_items())})
+    return jsonify(
+        {"items": rows_to_dicts(list_inventory_items(hospital_id=current_hospital_id()))}
+    )
 
 
 @pharmacy_bp.post("/api/pharmacy/inventory")
@@ -41,7 +43,7 @@ def pharmacy_inventory_upsert():
     validation_error = validate_required_fields(payload, ["medicine_name"])
     if validation_error:
         return validation_error
-    item_id = upsert_inventory_item(payload)
+    item_id = upsert_inventory_item(payload, hospital_id=current_hospital_id())
     log_audit_event(
         "upsert",
         "pharmacy_inventory",
@@ -54,7 +56,9 @@ def pharmacy_inventory_upsert():
 @pharmacy_bp.delete("/api/pharmacy/inventory/<int:item_id>")
 @require_permissions("pharmacy.inventory.write")
 def pharmacy_inventory_delete(item_id):
-    deleted = delete_inventory_item(item_id, actor=g.current_user.get("username"))
+    deleted = delete_inventory_item(
+        item_id, hospital_id=current_hospital_id(), actor=g.current_user.get("username")
+    )
     if not deleted:
         return jsonify({"error": "Inventory item not found"}), 404
     log_audit_event("delete", "pharmacy_inventory", str(item_id), {"item_id": item_id})
@@ -103,7 +107,9 @@ def pharmacy_sales_list():
 @pharmacy_bp.get("/api/pharmacy/suppliers")
 @require_permissions("pharmacy.read")
 def pharmacy_suppliers_list():
-    return jsonify({"suppliers": rows_to_dicts(list_pharmacy_suppliers())})
+    return jsonify(
+        {"suppliers": rows_to_dicts(list_pharmacy_suppliers(hospital_id=current_hospital_id()))}
+    )
 
 
 @pharmacy_bp.post("/api/pharmacy/suppliers")
@@ -113,7 +119,7 @@ def pharmacy_suppliers_create():
     validation_error = validate_required_fields(payload, ["supplier_name"])
     if validation_error:
         return validation_error
-    supplier_id = create_pharmacy_supplier(payload)
+    supplier_id = create_pharmacy_supplier(payload, hospital_id=current_hospital_id())
     log_audit_event(
         "create",
         "pharmacy_suppliers",
@@ -127,7 +133,9 @@ def pharmacy_suppliers_create():
 @require_permissions("pharmacy.suppliers.write")
 def pharmacy_suppliers_update(supplier_id):
     payload = request.get_json(force=True)
-    updated = update_pharmacy_supplier(supplier_id, payload)
+    updated = update_pharmacy_supplier(
+        supplier_id, payload, hospital_id=current_hospital_id()
+    )
     if not updated:
         return jsonify({"error": "Supplier not found"}), 404
     log_audit_event(
@@ -140,7 +148,7 @@ def pharmacy_suppliers_update(supplier_id):
 @require_permissions("pharmacy.suppliers.write")
 def pharmacy_suppliers_delete(supplier_id):
     deleted = delete_pharmacy_supplier(
-        supplier_id, actor=g.current_user.get("username")
+        supplier_id, hospital_id=current_hospital_id(), actor=g.current_user.get("username")
     )
     if not deleted:
         return jsonify({"error": "Supplier not found"}), 404
@@ -154,7 +162,13 @@ def pharmacy_suppliers_delete(supplier_id):
 @require_permissions("pharmacy.read")
 def pharmacy_purchases_list():
     status = request.args.get("status")
-    return jsonify({"purchases": rows_to_dicts(list_pharmacy_purchases(status=status))})
+    return jsonify(
+        {
+            "purchases": rows_to_dicts(
+                list_pharmacy_purchases(status=status, hospital_id=current_hospital_id())
+            )
+        }
+    )
 
 
 @pharmacy_bp.post("/api/pharmacy/purchases")
@@ -166,7 +180,7 @@ def pharmacy_purchases_create():
     )
     if validation_error:
         return validation_error
-    purchase_id = create_pharmacy_purchase(payload)
+    purchase_id = create_pharmacy_purchase(payload, hospital_id=current_hospital_id())
     log_audit_event(
         "create",
         "pharmacy_purchases",
@@ -180,7 +194,9 @@ def pharmacy_purchases_create():
 @require_permissions("pharmacy.purchases.write")
 def pharmacy_purchases_update(purchase_id):
     payload = request.get_json(force=True)
-    updated = update_pharmacy_purchase(purchase_id, payload)
+    updated = update_pharmacy_purchase(
+        purchase_id, payload, hospital_id=current_hospital_id()
+    )
     if not updated:
         return jsonify({"error": "Purchase not found"}), 404
     log_audit_event(
@@ -193,7 +209,7 @@ def pharmacy_purchases_update(purchase_id):
 @require_permissions("pharmacy.purchases.write")
 def pharmacy_purchases_delete(purchase_id):
     deleted = delete_pharmacy_purchase(
-        purchase_id, actor=g.current_user.get("username")
+        purchase_id, hospital_id=current_hospital_id(), actor=g.current_user.get("username")
     )
     if not deleted:
         return jsonify({"error": "Purchase not found"}), 404

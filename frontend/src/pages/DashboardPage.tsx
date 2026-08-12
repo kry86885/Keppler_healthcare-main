@@ -185,6 +185,8 @@ export default function DashboardPage({
     permissions.includes("billing.read") ||
     permissions.includes("accounts.read");
   const canViewPharmacy = permissions.includes("pharmacy.read");
+  const canViewBeds = permissions.includes("beds.read");
+  const bedOccupancy = hospitalSummary?.bed_occupancy;
   const paymentModes = hospitalSummary?.revenue?.payment_mode_breakdown || [];
   const maxPaymentMode = Math.max(
     1,
@@ -309,6 +311,16 @@ export default function DashboardPage({
           label="Today's IP"
           value={hospitalSummary?.ip_op_counts?.daily_ip || 0}
         />
+        {canViewBeds && (
+          <StatCard
+            label="Bed Occupancy"
+            value={
+              bedOccupancy
+                ? `${bedOccupancy.occupied}/${bedOccupancy.total} (${bedOccupancy.occupancy_rate}%)`
+                : "0/0"
+            }
+          />
+        )}
         {canViewBilling && (
           <>
             <StatCard
@@ -319,6 +331,12 @@ export default function DashboardPage({
               label="Outstanding Due"
               value={formatCurrency(hospitalSummary?.revenue?.due)}
             />
+            {canViewBeds && (
+              <StatCard
+                label="IP Revenue (This Month)"
+                value={formatCurrency(hospitalSummary?.revenue?.ip_this_month)}
+              />
+            )}
           </>
         )}
         {canViewPharmacy && (
@@ -378,6 +396,67 @@ export default function DashboardPage({
             </div>
           </CardContent>
         </Card>
+        {canViewBeds && bedOccupancy && (
+          <Card className="panel dashboard-analytics-card">
+            <CardHeader>
+              <CardTitle>Bed Occupancy</CardTitle>
+              <CardDescription className="muted">
+                Live snapshot across every ward right now.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div
+                className="bed-occupancy-bar"
+                style={{ marginBottom: "1rem" }}
+                title={`${bedOccupancy.available} available, ${bedOccupancy.occupied} occupied, ${bedOccupancy.maintenance} maintenance`}
+              >
+                {bedOccupancy.available > 0 && (
+                  <span
+                    className="bed-occupancy-segment bed-occupancy-segment-available"
+                    style={{ width: `${(bedOccupancy.available / (bedOccupancy.total || 1)) * 100}%` }}
+                  />
+                )}
+                {bedOccupancy.occupied > 0 && (
+                  <span
+                    className="bed-occupancy-segment bed-occupancy-segment-occupied"
+                    style={{ width: `${(bedOccupancy.occupied / (bedOccupancy.total || 1)) * 100}%` }}
+                  />
+                )}
+                {bedOccupancy.maintenance > 0 && (
+                  <span
+                    className="bed-occupancy-segment bed-occupancy-segment-maintenance"
+                    style={{ width: `${(bedOccupancy.maintenance / (bedOccupancy.total || 1)) * 100}%` }}
+                  />
+                )}
+              </div>
+              <div className="summary-grid">
+                <div className="summary-tile">
+                  <span className="summary-label">Total Beds</span>
+                  <strong>{bedOccupancy.total}</strong>
+                </div>
+                <div className="summary-tile">
+                  <span className="summary-label">Available</span>
+                  <strong>{bedOccupancy.available}</strong>
+                </div>
+                <div className="summary-tile">
+                  <span className="summary-label">Occupied</span>
+                  <strong>{bedOccupancy.occupied}</strong>
+                </div>
+                <div className="summary-tile">
+                  <span className="summary-label">Maintenance</span>
+                  <strong>{bedOccupancy.maintenance}</strong>
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                style={{ marginTop: "1rem", width: "100%" }}
+                onClick={() => onNavigate("beds")}
+              >
+                Manage Beds
+              </Button>
+            </CardContent>
+          </Card>
+        )}
         {canViewBilling && (
           <Card className="panel dashboard-analytics-card">
             <CardHeader>

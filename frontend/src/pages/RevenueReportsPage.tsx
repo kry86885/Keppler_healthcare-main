@@ -31,6 +31,7 @@ type RevenueRecord = {
 
 const CATEGORIES = [
   { label: "OP / Billing", icon: "🧮", color: "#2563eb" },
+  { label: "IP / Bed Charges", icon: "🛏️", color: "#f59e0b" },
   { label: "Pharmacy", icon: "💊", color: "#3b82f6" },
   { label: "Monthly Revenue", icon: "📅", color: "#8b5cf6" },
   { label: "Pending Payments", icon: "⚠️", color: "#ef4444" },
@@ -62,7 +63,7 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
           invoiceRecords.push({
             id: inv.invoice_no,
             patientName: inv.patient_id || "Unknown",
-            category: "OP / Billing",
+            category: mod === "IP" ? "IP / Bed Charges" : "OP / Billing",
             amount: parseFloat(inv.total_amount) || 0,
             date:
               (inv.created_at || "").split("T")[0] ||
@@ -121,6 +122,7 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
 
   const collectionBars = [
     { label: "OP / Billing", color: "#2563eb" },
+    { label: "IP / Bed Charges", color: "#f59e0b" },
     { label: "Pharmacy", color: "#3b82f6" },
   ];
 

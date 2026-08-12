@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Button,
   Input,
@@ -18,12 +18,24 @@ type Props = {
   doctorName?: string;
   onClose: () => void;
   setNotice: (notice: Notice | null) => void;
+  // "ocr" (default) is the original scan-and-digitize flow. "manual" skips
+  // straight to the medicine table with a blank row so a doctor can write a
+  // fresh prescription during consultation, without needing a document to
+  // upload first.
+  mode?: "ocr" | "manual";
 };
 
 type ParsedMedicine = {
   name: string;
   quantity: number;
   dosage: string;
+};
+
+type InventoryItem = {
+  id: number;
+  medicine_name: string;
+  quantity?: number;
+  reorder_level?: number;
 };
 
 const POLL_INTERVAL_MS = 3000;
@@ -39,19 +51,40 @@ export default function PrescriptionUploadModal({
   doctorName,
   onClose,
   setNotice,
+  mode = "ocr",
 }: Props) {
+  const isManual = mode === "manual";
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [savingText, setSavingText] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [ocrText, setOcrText] = useState("");
-  const [medicines, setMedicines] = useState<ParsedMedicine[]>([]);
+  const [medicines, setMedicines] = useState<ParsedMedicine[]>(
+    isManual ? [{ name: "", dosage: "", quantity: 1 }] : [],
+  );
   const [documentId, setDocumentId] = useState<number | null>(null);
   const [step, setStep] = useState<"upload" | "review" | "verify" | "done">(
-    "upload",
+    isManual ? "verify" : "upload",
   );
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isManual) return;
+    apiFetch<{ items?: InventoryItem[] }>("/api/pharmacy/inventory")
+      .then((data) => setInventory(data.items || []))
+      .catch(() => setInventory([]));
+  }, [isManual]);
+
+  const stockFor = (medicineName: string) => {
+    const name = medicineName.trim().toLowerCase();
+    if (!name) return null;
+    return (
+      inventory.find((item) => item.medicine_name.trim().toLowerCase() === name) ||
+      null
+    );
+  };
 
   const handleUpload = async () => {
     if (!file) return;
@@ -242,12 +275,20 @@ export default function PrescriptionUploadModal({
   };
 
   const handleConfirm = async () => {
+    const finalMedicines = medicines.filter((med) => med.name.trim());
+    if (finalMedicines.length === 0) {
+      setNotice({
+        type: "warning",
+        message: "Add at least one medicine before sending to pharmacy.",
+      });
+      return;
+    }
     try {
       await apiFetch("/api/pharmacy/prescriptions", {
         method: "POST",
         body: JSON.stringify({
           patient_id: patientId,
-          medicines_json: JSON.stringify(medicines),
+          medicines_json: JSON.stringify(finalMedicines),
           doc_id: documentId,
         }),
       });
@@ -300,7 +341,10 @@ export default function PrescriptionUploadModal({
             marginBottom: "1rem",
           }}
         >
-          <h2>Upload Prescription for {patientName}</h2>
+          <h2>
+            {isManual ? "Write Prescription for" : "Upload Prescription for"}{" "}
+            {patientName}
+          </h2>
           <button
             className="modal-close"
             onClick={onClose}
@@ -563,62 +607,102 @@ export default function PrescriptionUploadModal({
         {step === "verify" && (
           <div>
             <p>
-              Review the extracted medicines. You can edit them before sending
-              to pharmacy.
+              {isManual
+                ? "Write out the medicines for this patient. Stock is shown from current pharmacy inventory."
+                : "Review the extracted medicines. You can edit them before sending to pharmacy."}
             </p>
+            {isManual && (
+              <datalist id="prescription-medicine-names">
+                {inventory.map((item) => (
+                  <option key={item.id} value={item.medicine_name} />
+                ))}
+              </datalist>
+            )}
             <div
               style={{ overflowX: "auto", marginBottom: "1rem", width: "100%" }}
             >
               <Table>
                 <TableHead>
                   <TableCell>Medicine</TableCell>
+                  {isManual && <TableCell>Stock</TableCell>}
                   <TableCell>Dosage</TableCell>
                   <TableCell>Qty</TableCell>
                   <TableCell>Action</TableCell>
                 </TableHead>
-                {medicines.map((med, i) => (
-                  <TableRow key={i}>
-                    <TableCell>
-                      <Input
-                        value={med.name}
-                        onChange={(e) =>
-                          handleMedicineChange(i, "name", e.target.value)
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        value={med.dosage}
-                        onChange={(e) =>
-                          handleMedicineChange(i, "dosage", e.target.value)
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        value={med.quantity}
-                        onChange={(e) =>
-                          handleMedicineChange(
-                            i,
-                            "quantity",
-                            Number(e.target.value),
-                          )
-                        }
-                        style={{ width: "60px" }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        onClick={() =>
-                          setMedicines(medicines.filter((_, idx) => idx !== i))
-                        }
-                      >
-                        Remove
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {medicines.map((med, i) => {
+                  const stockItem = isManual ? stockFor(med.name) : null;
+                  const quantity = Number(stockItem?.quantity ?? 0);
+                  const reorderLevel = Number(stockItem?.reorder_level ?? 0);
+                  return (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <Input
+                          value={med.name}
+                          list={isManual ? "prescription-medicine-names" : undefined}
+                          placeholder={isManual ? "Medicine name" : undefined}
+                          onChange={(e) =>
+                            handleMedicineChange(i, "name", e.target.value)
+                          }
+                        />
+                      </TableCell>
+                      {isManual && (
+                        <TableCell>
+                          {!med.name.trim() ? (
+                            <span className="muted">—</span>
+                          ) : !stockItem ? (
+                            <span className="pharmacy-badge pharmacy-badge-warning">
+                              Not in inventory
+                            </span>
+                          ) : quantity <= 0 ? (
+                            <span className="pharmacy-badge pharmacy-badge-danger">
+                              Out of stock
+                            </span>
+                          ) : quantity <= reorderLevel ? (
+                            <span className="pharmacy-badge pharmacy-badge-warning">
+                              Low ({quantity})
+                            </span>
+                          ) : (
+                            <span className="pharmacy-badge pharmacy-badge-success">
+                              {quantity} in stock
+                            </span>
+                          )}
+                        </TableCell>
+                      )}
+                      <TableCell>
+                        <Input
+                          value={med.dosage}
+                          placeholder={isManual ? "e.g. 1-0-1, 5 days" : undefined}
+                          onChange={(e) =>
+                            handleMedicineChange(i, "dosage", e.target.value)
+                          }
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          value={med.quantity}
+                          onChange={(e) =>
+                            handleMedicineChange(
+                              i,
+                              "quantity",
+                              Number(e.target.value),
+                            )
+                          }
+                          style={{ width: "60px" }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          onClick={() =>
+                            setMedicines(medicines.filter((_, idx) => idx !== i))
+                          }
+                        >
+                          Remove
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </Table>
             </div>
             <div
@@ -640,7 +724,9 @@ export default function PrescriptionUploadModal({
                 Add Medicine
               </Button>
               <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-                <Button onClick={() => setStep("review")}>Back</Button>
+                {!isManual && (
+                  <Button onClick={() => setStep("review")}>Back</Button>
+                )}
                 <Button onClick={handleConfirm}>
                   Confirm & Send to Pharmacy
                 </Button>

@@ -1,3 +1,4 @@
+import re
 import uuid
 
 from flask import Blueprint, g, jsonify, request
@@ -492,7 +493,7 @@ Analyze the symptoms and provide a JSON response with:
 1. "department": The most appropriate department from the EXACT list of Available departments. If the symptoms do not clearly match any of the available departments, you MUST output the best match from the list.
 2. "urgency": "Low", "Medium", "High", or "Critical".
 3. "reasoning": A brief explanation of your recommendation (1-2 sentences).
-4. "doctor": The specific doctor's name if mentioned in the prompt or clearly applicable from the Available doctors list. Otherwise, an empty string.
+4. "doctor": Pick one name from the Available doctors list whose department (shown in parentheses) matches the "department" you chose above -- prefer a doctor explicitly named in the symptoms if one is mentioned, otherwise pick any doctor from that department. Only return an empty string if no doctor in the Available doctors list belongs to the chosen department.
 
 Your response MUST be valid JSON only. Do not include markdown formatting or backticks.
 """
@@ -555,6 +556,22 @@ Your response MUST be valid JSON only. Do not include markdown formatting or bac
                         available_departments[0] if available_departments else "General"
                     )
                 )
+
+        # The local model doesn't reliably pick a doctor even when one is available for
+        # the chosen department, so backstop it deterministically here (mirrors the
+        # department hallucination guard above).
+        if not (result.get("doctor") or "").strip() and available_doctors:
+            final_dept_lower = result.get("department", "").strip().lower()
+            for doc_entry in available_doctors:
+                m = re.match(r"^(.*)\(([^()]*)\)\s*$", doc_entry.strip())
+                doc_name, doc_dept = (
+                    (m.group(1).strip(), m.group(2).strip().lower())
+                    if m
+                    else (doc_entry.strip(), "")
+                )
+                if doc_dept == final_dept_lower:
+                    result["doctor"] = doc_name
+                    break
 
         return jsonify(result)
     except json.JSONDecodeError:

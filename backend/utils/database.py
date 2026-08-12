@@ -1,5 +1,6 @@
 import os
 import json
+import math
 import uuid as uuid_lib
 from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
@@ -472,6 +473,11 @@ def init_database():
         ensure_whatsapp_settings_table(conn)
         ensure_whatsapp_broadcasts_table(conn)
         ensure_bed_management_columns(conn)
+        ensure_admission_care_columns(conn)
+        ensure_bed_transfer_columns(conn)
+        ensure_appointment_timestamp_columns(conn)
+        ensure_pharmacy_hospital_columns(conn)
+        ensure_bed_billing_columns(conn)
 
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_hospitals_code ON hospitals(code)"
@@ -2783,8 +2789,25 @@ def search_patients(query, hospital_id=None, doctor_name=None):
 
 
 def update_patient(patient_id, data):
+    """Partial update: any field omitted from `data` (value is None, since the
+    route always includes every key via payload.get()) keeps its existing
+    value instead of being wiped -- mirrors the data.get(field, existing[field])
+    pattern used by update_patient_consent() etc. Without this, a caller that
+    only means to change one field (e.g. just allergies) would silently null
+    out name/dob/phone/... for every field it didn't send."""
     with get_connection() as conn:
         cursor = conn.cursor()
+        cursor.execute("SELECT * FROM patients WHERE patient_id = ?", (patient_id,))
+        existing = cursor.fetchone()
+        if not existing:
+            return False
+
+        def field(key, default_empty=False):
+            value = data.get(key)
+            if value is not None:
+                return value
+            return existing[key] if not default_empty else (existing[key] or "")
+
         cursor.execute(
             """
             UPDATE patients SET name=?, middle_name=?, last_name=?, dob=?, age=?, weight=?, height=?,
@@ -2792,26 +2815,27 @@ def update_patient(patient_id, data):
             WHERE patient_id=?
         """,
             (
-                data["name"],
-                data.get("middle_name", ""),
-                data["last_name"],
-                data.get("dob"),
-                data.get("age"),
-                data.get("weight"),
-                data.get("height"),
-                data.get("gender"),
-                data.get("pregnant", 0),
-                data.get("allergies", ""),
-                data.get("symptoms", ""),
-                data.get("phone", ""),
-                data.get("address", ""),
-                data.get("blood_group", ""),
-                data.get("emergency_contact", ""),
-                data.get("aadhar_number", ""),
+                field("name"),
+                field("middle_name", default_empty=True),
+                field("last_name"),
+                field("dob"),
+                field("age"),
+                field("weight"),
+                field("height"),
+                field("gender"),
+                data.get("pregnant") if data.get("pregnant") is not None else existing["pregnant"],
+                field("allergies", default_empty=True),
+                field("symptoms", default_empty=True),
+                field("phone", default_empty=True),
+                field("address", default_empty=True),
+                field("blood_group", default_empty=True),
+                field("emergency_contact", default_empty=True),
+                field("aadhar_number", default_empty=True),
                 patient_id,
             ),
         )
         conn.commit()
+        return True
 
 
 def add_admission(patient_id, notes="", hospital_id=None):
@@ -3553,6 +3577,17 @@ def get_appointment_by_id(appointment_id, hospital_id=None):
         return cursor.fetchone()
 
 
+# Status -> timestamp column recorded the FIRST time an appointment transitions
+# into that status. Keyed by status value so update_appointment can stamp the
+# real moment each stage happened, not just the current status -- nothing
+# previously persisted this, only the latest status string.
+_APPOINTMENT_STATUS_TIMESTAMP_COLUMNS = {
+    "checked_in": "checked_in_at",
+    "in_consultation": "consultation_started_at",
+    "completed": "consultation_completed_at",
+}
+
+
 def update_appointment(appointment_id, data):
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -3560,6 +3595,21 @@ def update_appointment(appointment_id, data):
         existing = cursor.fetchone()
         if not existing:
             return False
+
+        new_status = data.get("status", existing["status"])
+        stamp_column = _APPOINTMENT_STATUS_TIMESTAMP_COLUMNS.get(new_status)
+        checked_in_at = existing["checked_in_at"]
+        consultation_started_at = existing["consultation_started_at"]
+        consultation_completed_at = existing["consultation_completed_at"]
+        if stamp_column and new_status != existing["status"]:
+            now = current_ist_timestamp()
+            if stamp_column == "checked_in_at":
+                checked_in_at = now
+            elif stamp_column == "consultation_started_at":
+                consultation_started_at = now
+            elif stamp_column == "consultation_completed_at":
+                consultation_completed_at = now
+
         cursor.execute(
             """
             UPDATE appointments
@@ -3574,7 +3624,10 @@ def update_appointment(appointment_id, data):
                 appointment_kind = ?,
                 follow_up_for = ?,
                 reminder_sent_at = ?,
-                no_show_marked = ?
+                no_show_marked = ?,
+                checked_in_at = ?,
+                consultation_started_at = ?,
+                consultation_completed_at = ?
             WHERE id = ?
             """,
             (
@@ -3584,12 +3637,15 @@ def update_appointment(appointment_id, data):
                 data.get("department", existing["department"]),
                 data.get("doctor_name", existing["doctor_name"]),
                 data.get("appointment_date", existing["appointment_date"]),
-                data.get("status", existing["status"]),
+                new_status,
                 data.get("notes", existing["notes"]),
                 data.get("appointment_kind", existing["appointment_kind"]),
                 data.get("follow_up_for", existing["follow_up_for"]),
                 data.get("reminder_sent_at", existing["reminder_sent_at"]),
                 1 if data.get("no_show_marked", existing["no_show_marked"]) else 0,
+                checked_in_at,
+                consultation_started_at,
+                consultation_completed_at,
                 appointment_id,
             ),
         )
@@ -4654,34 +4710,14 @@ def list_encounters(patient_id=None, hospital_id=None):
         return cursor.fetchall()
 
 
-def assign_bed(data):
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO bed_allocations (
-                admission_id, patient_id, ward, room_no, bed_no, status
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                data["admission_id"],
-                data["patient_id"],
-                data.get("ward"),
-                data.get("room_no"),
-                data.get("bed_no"),
-                data.get("status", "active"),
-            ),
-        )
-        bed_id = cursor.lastrowid
-        conn.commit()
-        return bed_id
-
-
-def list_bed_allocations(patient_id=None, active_only=False):
+def list_bed_allocations(patient_id=None, active_only=False, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
         clauses = []
         params = []
+        if hospital_id:
+            clauses.append("hospital_id = ?")
+            params.append(hospital_id)
         if patient_id:
             clauses.append("patient_id = ?")
             params.append(patient_id)
@@ -4730,6 +4766,107 @@ def ensure_bed_management_columns(conn):
     conn.commit()
 
 
+def ensure_admission_care_columns(conn):
+    """expected_discharge_date is the single source of truth for planned length
+    of stay -- the UI collects "days", the backend converts to a date so there's
+    never two numbers (days vs. date) that can drift out of sync. discharge_override_reason
+    is only set when staff discharge despite a pending-items warning (billing/prescriptions);
+    NULL means the discharge checklist was clean."""
+    cursor = conn.cursor()
+    _ensure_column(cursor, "admissions", "expected_discharge_date", "DATE")
+    _ensure_column(cursor, "admissions", "discharge_override_reason", "TEXT")
+    conn.commit()
+
+
+def ensure_bed_transfer_columns(conn):
+    """Supports transferring a patient bed-to-bed (e.g. ward -> ICU) without
+    releasing and re-admitting them, which would sever admission continuity.
+    previous_allocation_id chains transfer rows together under the same
+    admission_id; bed_allocations.status has no CHECK constraint today, so the
+    new 'transferred' status value needs no separate migration."""
+    cursor = conn.cursor()
+    _ensure_column(cursor, "bed_allocations", "previous_allocation_id", "INTEGER")
+    _ensure_column(cursor, "bed_allocations", "transfer_reason", "TEXT")
+    conn.commit()
+
+
+# Starting per-day room rates by bed type -- purely a seed default applied to
+# beds that don't already have a rate; every bed's rate stays freely editable
+# afterward (some rooms are priced differently than their type's default).
+BED_TYPE_DEFAULT_DAILY_RATE = {
+    "General": 1500,
+    "Semi-Private": 2500,
+    "Private": 4000,
+    "ICU": 8000,
+}
+
+
+def ensure_bed_billing_columns(conn):
+    """Nothing in the bed workflow ever generated a room charge -- admitting,
+    transferring, and discharging a patient was billing-free. bed_master gets
+    a per-bed daily_rate (seeded by bed_type); bed_allocations gets its own
+    daily_rate SNAPSHOTTED at assign/transfer time, because a stay must keep
+    billing at the rate that applied while the patient was actually in that
+    bed even if the bed's listed rate changes later. Existing allocations are
+    backfilled from their bed's current rate as a best-effort approximation
+    (no historical rate existed before this migration)."""
+    cursor = conn.cursor()
+    _ensure_column(cursor, "bed_master", "daily_rate", "REAL")
+    _ensure_column(cursor, "bed_allocations", "daily_rate", "REAL")
+
+    for bed_type, rate in BED_TYPE_DEFAULT_DAILY_RATE.items():
+        cursor.execute(
+            "UPDATE bed_master SET daily_rate = ? WHERE daily_rate IS NULL AND bed_type = ?",
+            (rate, bed_type),
+        )
+    cursor.execute(
+        "UPDATE bed_master SET daily_rate = ? WHERE daily_rate IS NULL",
+        (BED_TYPE_DEFAULT_DAILY_RATE["General"],),
+    )
+    cursor.execute(
+        """
+        UPDATE bed_allocations
+        SET daily_rate = (SELECT b.daily_rate FROM bed_master b WHERE b.id = bed_allocations.bed_id)
+        WHERE daily_rate IS NULL AND bed_id IS NOT NULL
+        """
+    )
+    conn.commit()
+
+
+def ensure_appointment_timestamp_columns(conn):
+    """appointment_date is only the scheduled slot -- these three record the
+    actual moment each status transition happened, which nothing previously
+    persisted (only the current status value was kept, not its history)."""
+    cursor = conn.cursor()
+    _ensure_column(cursor, "appointments", "checked_in_at", "TIMESTAMP")
+    _ensure_column(cursor, "appointments", "consultation_started_at", "TIMESTAMP")
+    _ensure_column(cursor, "appointments", "consultation_completed_at", "TIMESTAMP")
+    conn.commit()
+
+
+def ensure_pharmacy_hospital_columns(conn):
+    """pharmacy_inventory/pharmacy_suppliers/pharmacy_purchases were never
+    tenant-scoped despite every other operational table being hospital_id-
+    filtered -- every hospital was silently sharing (and could overwrite or
+    dispense against) every other hospital's medicine stock, suppliers, and
+    purchase orders. Backfills any pre-existing rows to the first/default
+    hospital, matching the ensure_bed_management_columns backfill pattern."""
+    cursor = conn.cursor()
+    for table_name in ("pharmacy_inventory", "pharmacy_suppliers", "pharmacy_purchases"):
+        _ensure_column(cursor, table_name, "hospital_id", "INTEGER")
+        cursor.execute(
+            f"""
+            UPDATE {table_name}
+            SET hospital_id = (SELECT id FROM hospitals ORDER BY id LIMIT 1)
+            WHERE hospital_id IS NULL
+            """
+        )
+        cursor.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{table_name}_hospital ON {table_name}(hospital_id)"
+        )
+    conn.commit()
+
+
 def list_beds(hospital_id):
     """All beds for a hospital, each with its current occupant (if any) via a
     LEFT JOIN to the active bed_allocations row -- one query for the whole
@@ -4739,11 +4876,19 @@ def list_beds(hospital_id):
         cursor.execute(
             """
             SELECT
-                b.id, b.ward, b.room_no, b.bed_no, b.bed_type, b.status,
+                b.id, b.ward, b.room_no, b.bed_no, b.bed_type, b.status, b.daily_rate,
                 ba.id AS allocation_id, ba.admission_id, ba.allocated_at,
                 p.patient_id, p.name AS patient_name, p.last_name AS patient_last_name,
                 p.phone AS patient_phone, p.age AS patient_age, p.gender AS patient_gender,
-                a.notes AS admission_notes
+                a.notes AS admission_notes, a.admission_date, a.expected_discharge_date,
+                (
+                    SELECT COALESCE(SUM(
+                        GREATEST(1, CEIL(EXTRACT(EPOCH FROM (COALESCE(seg.released_at, CURRENT_TIMESTAMP) - seg.allocated_at)) / 86400.0))
+                        * COALESCE(seg.daily_rate, 0)
+                    ), 0)
+                    FROM bed_allocations seg
+                    WHERE seg.admission_id = ba.admission_id
+                ) AS room_charges_so_far
             FROM bed_master b
             LEFT JOIN bed_allocations ba
                 ON ba.bed_id = b.id AND ba.status = 'active'
@@ -4767,10 +4912,9 @@ def list_beds(hospital_id):
         # parser expects ISO 8601, so convert explicitly rather than let that
         # mismatch silently fall back to displaying the raw string.
         for row in rows:
-            if row.get("allocated_at") is not None and hasattr(
-                row["allocated_at"], "isoformat"
-            ):
-                row["allocated_at"] = row["allocated_at"].isoformat()
+            for field in ("allocated_at", "admission_date", "expected_discharge_date"):
+                if row.get(field) is not None and hasattr(row[field], "isoformat"):
+                    row[field] = row[field].isoformat()
         return rows
 
 
@@ -4785,28 +4929,34 @@ def get_bed(bed_id, hospital_id):
         return dict(row) if row else None
 
 
-def create_bed(hospital_id, ward, room_no, bed_no, bed_type):
+def create_bed(hospital_id, ward, room_no, bed_no, bed_type, daily_rate=None):
+    rate = daily_rate if daily_rate is not None else BED_TYPE_DEFAULT_DAILY_RATE.get(
+        bed_type, BED_TYPE_DEFAULT_DAILY_RATE["General"]
+    )
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO bed_master (hospital_id, ward, room_no, bed_no, bed_type, status)
-            VALUES (?, ?, ?, ?, ?, 'Available')
+            INSERT INTO bed_master (hospital_id, ward, room_no, bed_no, bed_type, status, daily_rate)
+            VALUES (?, ?, ?, ?, ?, 'Available', ?)
             RETURNING id
             """,
-            (hospital_id, ward, room_no, bed_no, bed_type),
+            (hospital_id, ward, room_no, bed_no, bed_type, rate),
         )
         bed_id = cursor.fetchone()[0]
         conn.commit()
         return bed_id
 
 
-def create_beds_range(hospital_id, ward, room_no, bed_type, from_bed, to_bed):
+def create_beds_range(hospital_id, ward, room_no, bed_type, from_bed, to_bed, daily_rate=None):
     """Creates beds numbered from_bed..to_bed in one go (e.g. a 20-bed room in
     one action instead of 20). Numbers that already exist in this
     hospital/ward/room are silently skipped rather than failing the whole
     batch -- e.g. re-running this to top up a room from 15 to 20 beds just
     adds the 5 new ones."""
+    rate = daily_rate if daily_rate is not None else BED_TYPE_DEFAULT_DAILY_RATE.get(
+        bed_type, BED_TYPE_DEFAULT_DAILY_RATE["General"]
+    )
     created = []
     skipped = []
     with get_connection() as conn:
@@ -4815,12 +4965,12 @@ def create_beds_range(hospital_id, ward, room_no, bed_type, from_bed, to_bed):
             bed_no = str(n)
             cursor.execute(
                 """
-                INSERT INTO bed_master (hospital_id, ward, room_no, bed_no, bed_type, status)
-                VALUES (?, ?, ?, ?, ?, 'Available')
+                INSERT INTO bed_master (hospital_id, ward, room_no, bed_no, bed_type, status, daily_rate)
+                VALUES (?, ?, ?, ?, ?, 'Available', ?)
                 ON CONFLICT (hospital_id, ward, room_no, bed_no) DO NOTHING
                 RETURNING id
                 """,
-                (hospital_id, ward, room_no, bed_no, bed_type),
+                (hospital_id, ward, room_no, bed_no, bed_type, rate),
             )
             if cursor.fetchone():
                 created.append(bed_no)
@@ -4881,14 +5031,19 @@ def find_active_bed_for_patient(patient_id, hospital_id):
         return dict(row) if row else None
 
 
-def assign_patient_to_bed(hospital_id, bed_id, patient_id, notes):
+def assign_patient_to_bed(hospital_id, bed_id, patient_id, notes, expected_los_days=None):
     """Admitting a patient into a bed IS the admission, from this page's point
     of view -- creates the admissions row and the bed_allocations link in one
-    step rather than requiring a separate admission to already exist."""
+    step rather than requiring a separate admission to already exist.
+
+    expected_los_days, when given, is converted to a concrete
+    expected_discharge_date at write time (admission_date + N days) so the UI
+    never has to keep "days" and "date" in sync itself -- the date is the
+    single source of truth from here on."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT ward, room_no, bed_no, status FROM bed_master WHERE id = ? AND hospital_id = ?",
+            "SELECT ward, room_no, bed_no, status, daily_rate FROM bed_master WHERE id = ? AND hospital_id = ?",
             (bed_id, hospital_id),
         )
         bed = cursor.fetchone()
@@ -4898,21 +5053,26 @@ def assign_patient_to_bed(hospital_id, bed_id, patient_id, notes):
             raise ValueError("This bed is no longer available.")
 
         admission_timestamp = current_ist_timestamp()
+        expected_discharge_date = None
+        if expected_los_days:
+            expected_discharge_date = (
+                current_ist_datetime().date() + timedelta(days=int(expected_los_days))
+            )
         cursor.execute(
             """
-            INSERT INTO admissions (hospital_id, patient_id, admission_date, notes)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO admissions (hospital_id, patient_id, admission_date, notes, expected_discharge_date)
+            VALUES (?, ?, ?, ?, ?)
             RETURNING id
             """,
-            (hospital_id, patient_id, admission_timestamp, notes),
+            (hospital_id, patient_id, admission_timestamp, notes, expected_discharge_date),
         )
         admission_id = cursor.fetchone()[0]
 
         cursor.execute(
             """
             INSERT INTO bed_allocations
-                (hospital_id, bed_id, admission_id, patient_id, ward, room_no, bed_no, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
+                (hospital_id, bed_id, admission_id, patient_id, ward, room_no, bed_no, status, daily_rate)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)
             RETURNING id
             """,
             (
@@ -4923,6 +5083,7 @@ def assign_patient_to_bed(hospital_id, bed_id, patient_id, notes):
                 bed["ward"],
                 bed["room_no"],
                 bed["bed_no"],
+                bed["daily_rate"],
             ),
         )
         allocation_id = cursor.fetchone()[0]
@@ -4936,10 +5097,82 @@ def assign_patient_to_bed(hospital_id, bed_id, patient_id, notes):
         return {"admission_id": admission_id, "allocation_id": allocation_id}
 
 
-def release_bed(hospital_id, bed_id):
+def compute_room_charges(hospital_id, admission_id):
+    """Prices every bed_allocations segment of a stay at the rate that applied
+    while the patient was actually in that bed (bed_allocations.daily_rate,
+    snapshotted at assign/transfer time) -- so a ward -> ICU -> ward stay
+    bills each leg at its own correct rate instead of one blended average.
+    Partial days round up (minimum 1 day per segment), matching standard
+    hotel-style room billing. Safe to call mid-stay (the still-open segment
+    is priced up to now) or after discharge (every segment already has a
+    released_at)."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT ward, room_no, bed_no, allocated_at, released_at, daily_rate "
+            "FROM bed_allocations WHERE hospital_id = ? AND admission_id = ? "
+            "ORDER BY allocated_at ASC",
+            (hospital_id, admission_id),
+        )
+        rows = cursor.fetchall()
+
+    segments = []
+    total = 0.0
+    now = current_ist_datetime().replace(tzinfo=None)
+    for row in rows:
+        allocated_at = row["allocated_at"]
+        released_at = row["released_at"] or now
+        if isinstance(allocated_at, str):
+            allocated_at = datetime.fromisoformat(allocated_at)
+        if isinstance(released_at, str):
+            released_at = datetime.fromisoformat(released_at)
+        # allocated_at/released_at may or may not carry timezone info
+        # depending on the driver -- normalize to naive so the subtraction
+        # below can't raise a naive/aware TypeError.
+        if allocated_at.tzinfo:
+            allocated_at = allocated_at.replace(tzinfo=None)
+        if released_at.tzinfo:
+            released_at = released_at.replace(tzinfo=None)
+        elapsed_seconds = (released_at - allocated_at).total_seconds()
+        days = max(1, math.ceil(elapsed_seconds / 86400))
+        rate = float(row["daily_rate"] or 0)
+        amount = days * rate
+        total += amount
+        segments.append(
+            {
+                "ward": row["ward"],
+                "room_no": row["room_no"],
+                "bed_no": row["bed_no"],
+                "days": days,
+                "daily_rate": rate,
+                "amount": amount,
+            }
+        )
+    return {"segments": segments, "total": total}
+
+
+def release_bed(
+    hospital_id,
+    bed_id,
+    discharge_override_reason=None,
+    room_charge_total=None,
+    created_by=None,
+):
     """Discharges the current occupant and frees the bed: closes out the
     active bed_allocations row, sets discharge_date on the admission it
-    belongs to, and flips the bed back to Available."""
+    belongs to, flips the bed back to Available, and raises the room-charge
+    invoice for the whole stay (every ward/bed segment the patient passed
+    through, each at its own rate) -- this is what actually bills the
+    admission; nothing else in the bed workflow ever did.
+
+    discharge_override_reason is recorded only when staff chose to discharge
+    despite the discharge checklist flagging pending dues/prescriptions --
+    NULL means the checklist was clean (or wasn't checked). room_charge_total,
+    when given, is the staff-reviewed/adjusted total from the discharge
+    modal (mirrors the Pharmacy fulfill flow's editable line items); when
+    omitted, the server-computed compute_room_charges() total is used --
+    covers non-UI callers and keeps this endpoint safe to call without the
+    review step."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -4957,17 +5190,192 @@ def release_bed(hospital_id, bed_id):
             (allocation["id"],),
         )
         cursor.execute(
-            "UPDATE admissions SET discharge_date = CURRENT_DATE "
+            "UPDATE admissions SET discharge_date = CURRENT_DATE, "
+            "discharge_override_reason = COALESCE(?, discharge_override_reason) "
             "WHERE id = ? AND discharge_date IS NULL",
-            (allocation["admission_id"],),
+            (discharge_override_reason, allocation["admission_id"]),
         )
         cursor.execute(
             "UPDATE bed_master SET status = 'Available', updated_at = CURRENT_TIMESTAMP "
             "WHERE id = ?",
             (bed_id,),
         )
+
+        cursor.execute(
+            "SELECT patient_id FROM bed_allocations WHERE id = ?", (allocation["id"],)
+        )
+        patient_id = cursor.fetchone()["patient_id"]
         conn.commit()
-        return True
+
+    # released_at is now set, so this call prices every segment definitively
+    # (no more "still open, priced to now" segment).
+    total = (
+        room_charge_total
+        if room_charge_total is not None
+        else compute_room_charges(hospital_id, allocation["admission_id"])["total"]
+    )
+    if total and total > 0:
+        invoice_no = f"INV-IP-{allocation['admission_id']}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        create_invoice(
+            {
+                "invoice_no": invoice_no,
+                "patient_id": patient_id,
+                "module": "IP",
+                "total_amount": total,
+                "subtotal": total,
+                "payment_status": "due",
+                "created_by": created_by,
+            },
+            hospital_id=hospital_id,
+        )
+    return True
+
+
+def transfer_bed(hospital_id, from_bed_id, to_bed_id, reason=None):
+    """Moves a patient from one bed to another (e.g. general ward -> ICU)
+    without releasing and re-admitting them, which would sever admission
+    continuity and history. Closes the current bed_allocations row as
+    'transferred' and opens a new one under the SAME admission_id, chained via
+    previous_allocation_id. Raises ValueError on bad input (mirrors
+    assign_patient_to_bed's error style) so routes can translate to a 400."""
+    if from_bed_id == to_bed_id:
+        raise ValueError("Source and destination beds must be different.")
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, admission_id, patient_id FROM bed_allocations "
+            "WHERE bed_id = ? AND hospital_id = ? AND status = 'active'",
+            (from_bed_id, hospital_id),
+        )
+        current_allocation = cursor.fetchone()
+        if not current_allocation:
+            raise ValueError("No active patient found in the source bed.")
+
+        cursor.execute(
+            "SELECT ward, room_no, bed_no, status, daily_rate FROM bed_master WHERE id = ? AND hospital_id = ?",
+            (to_bed_id, hospital_id),
+        )
+        target_bed = cursor.fetchone()
+        if not target_bed:
+            raise ValueError("Destination bed not found.")
+        if target_bed["status"] != "Available":
+            raise ValueError("Destination bed is not available.")
+
+        cursor.execute(
+            "UPDATE bed_allocations SET status = 'transferred', released_at = CURRENT_TIMESTAMP "
+            "WHERE id = ?",
+            (current_allocation["id"],),
+        )
+        cursor.execute(
+            """
+            INSERT INTO bed_allocations
+                (hospital_id, bed_id, admission_id, patient_id, ward, room_no, bed_no,
+                 status, previous_allocation_id, transfer_reason, daily_rate)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+            RETURNING id
+            """,
+            (
+                hospital_id,
+                to_bed_id,
+                current_allocation["admission_id"],
+                current_allocation["patient_id"],
+                target_bed["ward"],
+                target_bed["room_no"],
+                target_bed["bed_no"],
+                current_allocation["id"],
+                reason,
+                target_bed["daily_rate"],
+            ),
+        )
+        new_allocation_id = cursor.fetchone()[0]
+
+        cursor.execute(
+            "UPDATE bed_master SET status = 'Available', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (from_bed_id,),
+        )
+        cursor.execute(
+            "UPDATE bed_master SET status = 'Occupied', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (to_bed_id,),
+        )
+        conn.commit()
+        return {
+            "allocation_id": new_allocation_id,
+            "admission_id": current_allocation["admission_id"],
+            "from_bed": from_bed_id,
+            "to_bed": to_bed_id,
+        }
+
+
+def get_discharge_checklist(hospital_id, bed_id):
+    """Read-only snapshot of pending items for the patient currently in
+    bed_id, shown before discharge -- warns staff but never blocks discharge
+    (real hospitals need to allow discharge-against-medical-advice with dues
+    still outstanding)."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, admission_id, patient_id FROM bed_allocations "
+            "WHERE bed_id = ? AND hospital_id = ? AND status = 'active'",
+            (bed_id, hospital_id),
+        )
+        allocation = cursor.fetchone()
+        if not allocation:
+            return None
+
+        cursor.execute(
+            "SELECT admission_date FROM admissions WHERE id = ?",
+            (allocation["admission_id"],),
+        )
+        admission = cursor.fetchone()
+        admission_date = admission["admission_date"] if admission else None
+
+        cursor.execute(
+            """
+            SELECT invoice_no, total_amount, paid_amount, due_amount, payment_status
+            FROM invoices
+            WHERE patient_id = ? AND hospital_id = ? AND deleted_at IS NULL
+              AND payment_status IN ('due', 'partial')
+            """,
+            (allocation["patient_id"], hospital_id),
+        )
+        pending_invoices = [dict(row) for row in cursor.fetchall()]
+
+        cursor.execute(
+            """
+            SELECT id, medicines_json, status, created_at
+            FROM pharmacy_prescriptions
+            WHERE patient_id = ? AND hospital_id = ? AND status != 'fulfilled'
+              AND created_at >= ?
+            """,
+            (allocation["patient_id"], hospital_id, admission_date),
+        )
+        pending_prescriptions = [dict(row) for row in cursor.fetchall()]
+
+        cursor.execute(
+            "SELECT COUNT(*) AS c FROM documents WHERE admission_id = ?",
+            (allocation["admission_id"],),
+        )
+        document_count = cursor.fetchone()["c"]
+
+        billing_ok = len(pending_invoices) == 0
+        prescriptions_ok = len(pending_prescriptions) == 0
+        admission_id = allocation["admission_id"]
+        patient_id = allocation["patient_id"]
+
+    room_charges = compute_room_charges(hospital_id, admission_id)
+    return {
+        "admission_id": admission_id,
+        "patient_id": patient_id,
+        "billing": {"ok": billing_ok, "pending_invoices": pending_invoices},
+        "prescriptions": {
+            "ok": prescriptions_ok,
+            "pending_count": len(pending_prescriptions),
+        },
+        "documents": {"count": document_count},
+        "room_charges": room_charges,
+        "clear": billing_ok and prescriptions_ok,
+    }
 
 
 def add_medication_schedule(data):
@@ -5111,19 +5519,121 @@ def get_patient_journey(patient_id, hospital_id=None):
                 },
             }
         )
-        if appt.get("status") in (
-            "checked_in",
-            "in_consultation",
-            "completed",
-            "cancelled",
-        ):
+        if appt.get("checked_in_at"):
             events.append(
                 {
                     "stage": "consultation",
-                    "label": f"Status: {(appt.get('status') or '').replace('_', ' ')}",
+                    "label": "Patient checked in",
+                    "timestamp": appt.get("checked_in_at"),
+                }
+            )
+        if appt.get("consultation_started_at"):
+            events.append(
+                {
+                    "stage": "consultation",
+                    "label": f"Consultation started with Dr. {appt.get('doctor_name') or '—'}",
+                    "timestamp": appt.get("consultation_started_at"),
+                }
+            )
+        if appt.get("consultation_completed_at"):
+            events.append(
+                {
+                    "stage": "consultation",
+                    "label": "Consultation completed",
+                    "timestamp": appt.get("consultation_completed_at"),
+                }
+            )
+        if appt.get("status") == "cancelled":
+            events.append(
+                {
+                    "stage": "consultation",
+                    "label": "Appointment cancelled",
                     "timestamp": appt.get("appointment_date"),
                 }
             )
+
+    for row in list_bed_allocations(patient_id=patient_id, hospital_id=hospital_id):
+        allocation = dict(row)
+        bed_label = f"{allocation.get('ward') or '-'} / Room {allocation.get('room_no') or '-'} / Bed {allocation.get('bed_no') or '-'}"
+        if allocation.get("allocated_at"):
+            events.append(
+                {
+                    "stage": "bed",
+                    "label": (
+                        f"Transferred to {bed_label}"
+                        if allocation.get("previous_allocation_id")
+                        else f"Admitted to {bed_label}"
+                    ),
+                    "timestamp": allocation.get("allocated_at"),
+                }
+            )
+        if allocation.get("status") == "transferred" and allocation.get("released_at"):
+            events.append(
+                {
+                    "stage": "bed",
+                    "label": f"Transferred out of {bed_label}"
+                    + (f" — {allocation['transfer_reason']}" if allocation.get("transfer_reason") else ""),
+                    "timestamp": allocation.get("released_at"),
+                }
+            )
+        elif allocation.get("status") == "released" and allocation.get("released_at"):
+            events.append(
+                {
+                    "stage": "bed",
+                    "label": f"Discharged, {bed_label} released",
+                    "timestamp": allocation.get("released_at"),
+                }
+            )
+
+    for row in list_observation_notes(patient_id):
+        note = dict(row)
+        events.append(
+            {
+                "stage": "clinical",
+                "label": f"Treatment plan / notes recorded by Dr. {note.get('doctor_name') or '—'}",
+                "timestamp": note.get("created_at"),
+                "detail": {
+                    "note": note.get("note"),
+                    "treatment_plan": note.get("treatment_plan"),
+                },
+            }
+        )
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM pharmacy_prescriptions WHERE patient_id = ? AND hospital_id = ? "
+            "ORDER BY created_at DESC",
+            (patient_id, hospital_id),
+        )
+        prescription_rows = [dict(r) for r in cursor.fetchall()]
+        cursor.execute(
+            "SELECT * FROM documents WHERE patient_id = ? AND deleted_at IS NULL "
+            "ORDER BY created_at DESC",
+            (patient_id,),
+        )
+        document_rows = [dict(r) for r in cursor.fetchall()]
+
+    for med in parse_pharmacy_prescriptions(prescription_rows):
+        events.append(
+            {
+                "stage": "pharmacy",
+                "label": f"Prescribed {med.get('medicine_name')}"
+                + (f" ({med['dosage']})" if med.get("dosage") else "")
+                + f" — Dr. {med.get('doctor_username') or '—'}",
+                "timestamp": med.get("created_at"),
+                "detail": {"status": med.get("status")},
+            }
+        )
+
+    for doc in document_rows:
+        events.append(
+            {
+                "stage": "documents",
+                "label": f"{doc.get('doc_type') or 'Document'} uploaded: {doc.get('file_name')}",
+                "timestamp": doc.get("created_at"),
+            }
+        )
 
     for row in list_patient_movements(patient_id):
         movement = dict(row)
@@ -5845,7 +6355,11 @@ def get_reports_overview(hospital_id=None):
     }
 
 
-def upsert_inventory_item(data):
+def upsert_inventory_item(data, hospital_id=None):
+    """hospital_id is required for correct multi-tenant isolation: without it,
+    every hospital would share (and silently overwrite) the same medicine
+    stock rows, since medicine_name alone isn't unique across hospitals."""
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         item_id = data.get("id")
@@ -5854,7 +6368,7 @@ def upsert_inventory_item(data):
                 """
                 UPDATE pharmacy_inventory
                 SET medicine_name=?, batch_no=?, quantity=?, reorder_level=?, unit_price=?, expiry_date=?, stock_condition=?, updated_at=CURRENT_TIMESTAMP
-                WHERE id=?
+                WHERE id=? AND hospital_id=?
                 """,
                 (
                     data["medicine_name"],
@@ -5865,6 +6379,7 @@ def upsert_inventory_item(data):
                     data.get("expiry_date"),
                     data.get("stock_condition", "proper"),
                     item_id,
+                    scoped_hospital_id,
                 ),
             )
             conn.commit()
@@ -5872,10 +6387,11 @@ def upsert_inventory_item(data):
         cursor.execute(
             """
             INSERT INTO pharmacy_inventory (
-                medicine_name, batch_no, quantity, reorder_level, unit_price, expiry_date, stock_condition
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                hospital_id, medicine_name, batch_no, quantity, reorder_level, unit_price, expiry_date, stock_condition
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                scoped_hospital_id,
                 data["medicine_name"],
                 data.get("batch_no"),
                 data.get("quantity", 0),
@@ -5890,34 +6406,44 @@ def upsert_inventory_item(data):
         return item_id
 
 
-def list_inventory_items():
+def list_inventory_items(hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM pharmacy_inventory WHERE deleted_at IS NULL ORDER BY medicine_name ASC"
+            "SELECT * FROM pharmacy_inventory WHERE hospital_id = ? AND deleted_at IS NULL ORDER BY medicine_name ASC",
+            (scoped_hospital_id,),
         )
         return cursor.fetchall()
 
 
-def delete_inventory_item(item_id, actor=None):
+def delete_inventory_item(item_id, hospital_id=None, actor=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         deleted = soft_delete_row(
-            cursor, "pharmacy_inventory", "id", item_id, actor=actor
+            cursor,
+            "pharmacy_inventory",
+            "id",
+            item_id,
+            hospital_id=scoped_hospital_id,
+            actor=actor,
         )
         conn.commit()
         return deleted
 
 
-def create_pharmacy_supplier(data):
+def create_pharmacy_supplier(data, hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO pharmacy_suppliers (supplier_name, contact_person, phone, status)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO pharmacy_suppliers (hospital_id, supplier_name, contact_person, phone, status)
+            VALUES (?, ?, ?, ?, ?)
             """,
             (
+                scoped_hospital_id,
                 data["supplier_name"],
                 data.get("contact_person"),
                 data.get("phone"),
@@ -5929,19 +6455,25 @@ def create_pharmacy_supplier(data):
         return supplier_id
 
 
-def list_pharmacy_suppliers():
+def list_pharmacy_suppliers(hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM pharmacy_suppliers WHERE deleted_at IS NULL ORDER BY supplier_name ASC"
+            "SELECT * FROM pharmacy_suppliers WHERE hospital_id = ? AND deleted_at IS NULL ORDER BY supplier_name ASC",
+            (scoped_hospital_id,),
         )
         return cursor.fetchall()
 
 
-def update_pharmacy_supplier(supplier_id, data):
+def update_pharmacy_supplier(supplier_id, data, hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM pharmacy_suppliers WHERE id = ?", (supplier_id,))
+        cursor.execute(
+            "SELECT * FROM pharmacy_suppliers WHERE id = ? AND hospital_id = ?",
+            (supplier_id, scoped_hospital_id),
+        )
         existing = cursor.fetchone()
         if not existing:
             return False
@@ -5963,24 +6495,30 @@ def update_pharmacy_supplier(supplier_id, data):
         return cursor.rowcount > 0
 
 
-def delete_pharmacy_supplier(supplier_id, actor=None):
+def delete_pharmacy_supplier(supplier_id, hospital_id=None, actor=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE pharmacy_purchases SET supplier_id = NULL WHERE supplier_id = ?",
-            (supplier_id,),
+            "UPDATE pharmacy_purchases SET supplier_id = NULL WHERE supplier_id = ? AND hospital_id = ?",
+            (supplier_id, scoped_hospital_id),
         )
         deleted = soft_delete_row(
-            cursor, "pharmacy_suppliers", "id", supplier_id, actor=actor
+            cursor,
+            "pharmacy_suppliers",
+            "id",
+            supplier_id,
+            hospital_id=scoped_hospital_id,
+            actor=actor,
         )
         conn.commit()
         return deleted
 
 
-def _apply_purchase_inventory(cursor, medicine_name, quantity):
+def _apply_purchase_inventory(cursor, hospital_id, medicine_name, quantity):
     cursor.execute(
-        "SELECT id, quantity FROM pharmacy_inventory WHERE medicine_name = ? AND deleted_at IS NULL",
-        (medicine_name,),
+        "SELECT id, quantity FROM pharmacy_inventory WHERE hospital_id = ? AND medicine_name = ? AND deleted_at IS NULL",
+        (hospital_id, medicine_name),
     )
     existing_inventory = cursor.fetchone()
     if existing_inventory:
@@ -5996,14 +6534,15 @@ def _apply_purchase_inventory(cursor, medicine_name, quantity):
         cursor.execute(
             """
             INSERT INTO pharmacy_inventory (
-                medicine_name, quantity, reorder_level, unit_price, stock_condition
-            ) VALUES (?, ?, ?, ?, ?)
+                hospital_id, medicine_name, quantity, reorder_level, unit_price, stock_condition
+            ) VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (medicine_name, quantity, 10, 0, "proper"),
+            (hospital_id, medicine_name, quantity, 10, 0, "proper"),
         )
 
 
-def create_pharmacy_purchase(data):
+def create_pharmacy_purchase(data, hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         quantity = int(data["quantity"])
@@ -6013,11 +6552,12 @@ def create_pharmacy_purchase(data):
         cursor.execute(
             """
             INSERT INTO pharmacy_purchases (
-                supplier_id, medicine_name, quantity, unit_cost, total_cost, status,
+                hospital_id, supplier_id, medicine_name, quantity, unit_cost, total_cost, status,
                 expected_date, received_date, stock_applied
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                scoped_hospital_id,
                 data.get("supplier_id"),
                 data["medicine_name"],
                 quantity,
@@ -6031,30 +6571,38 @@ def create_pharmacy_purchase(data):
         )
         purchase_id = cursor.lastrowid
         if stock_applied:
-            _apply_purchase_inventory(cursor, data["medicine_name"], quantity)
+            _apply_purchase_inventory(
+                cursor, scoped_hospital_id, data["medicine_name"], quantity
+            )
         conn.commit()
         return purchase_id
 
 
-def list_pharmacy_purchases(status=None):
+def list_pharmacy_purchases(status=None, hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         if status:
             cursor.execute(
-                "SELECT * FROM pharmacy_purchases WHERE status = ? AND deleted_at IS NULL ORDER BY created_at DESC, id DESC",
-                (status,),
+                "SELECT * FROM pharmacy_purchases WHERE hospital_id = ? AND status = ? AND deleted_at IS NULL ORDER BY created_at DESC, id DESC",
+                (scoped_hospital_id, status),
             )
         else:
             cursor.execute(
-                "SELECT * FROM pharmacy_purchases WHERE deleted_at IS NULL ORDER BY created_at DESC, id DESC"
+                "SELECT * FROM pharmacy_purchases WHERE hospital_id = ? AND deleted_at IS NULL ORDER BY created_at DESC, id DESC",
+                (scoped_hospital_id,),
             )
         return cursor.fetchall()
 
 
-def update_pharmacy_purchase(purchase_id, data):
+def update_pharmacy_purchase(purchase_id, data, hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM pharmacy_purchases WHERE id = ?", (purchase_id,))
+        cursor.execute(
+            "SELECT * FROM pharmacy_purchases WHERE id = ? AND hospital_id = ?",
+            (purchase_id, scoped_hospital_id),
+        )
         existing = cursor.fetchone()
         if not existing:
             return False
@@ -6084,7 +6632,10 @@ def update_pharmacy_purchase(purchase_id, data):
         )
         if status == "received" and not stock_applied:
             _apply_purchase_inventory(
-                cursor, data.get("medicine_name", existing["medicine_name"]), quantity
+                cursor,
+                scoped_hospital_id,
+                data.get("medicine_name", existing["medicine_name"]),
+                quantity,
             )
             cursor.execute(
                 "UPDATE pharmacy_purchases SET stock_applied = 1 WHERE id = ?",
@@ -6094,11 +6645,17 @@ def update_pharmacy_purchase(purchase_id, data):
         return cursor.rowcount > 0
 
 
-def delete_pharmacy_purchase(purchase_id, actor=None):
+def delete_pharmacy_purchase(purchase_id, hospital_id=None, actor=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         deleted = soft_delete_row(
-            cursor, "pharmacy_purchases", "id", purchase_id, actor=actor
+            cursor,
+            "pharmacy_purchases",
+            "id",
+            purchase_id,
+            hospital_id=scoped_hospital_id,
+            actor=actor,
         )
         conn.commit()
         return deleted
@@ -6132,9 +6689,9 @@ def create_pharmacy_sale(data, hospital_id=None):
             """
             UPDATE pharmacy_inventory
             SET quantity = CASE WHEN quantity >= ? THEN quantity - ? ELSE 0 END, updated_at=CURRENT_TIMESTAMP
-            WHERE medicine_name = ?
+            WHERE hospital_id = ? AND LOWER(medicine_name) = LOWER(?)
             """,
-            (data["quantity"], data["quantity"], data["medicine_name"]),
+            (data["quantity"], data["quantity"], scoped_hospital_id, data["medicine_name"]),
         )
         conn.commit()
         return sale_id
@@ -6177,23 +6734,32 @@ def get_pharmacy_summary(hospital_id=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT COUNT(*) AS value
             FROM pharmacy_inventory
-            WHERE quantity <= reorder_level
-            """)
+            WHERE hospital_id = ? AND deleted_at IS NULL AND quantity <= reorder_level
+            """,
+            (scoped_hospital_id,),
+        )
         low_stock = cursor.fetchone()["value"]
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT COUNT(*) AS value
             FROM pharmacy_inventory
-            WHERE quantity = 0
-            """)
+            WHERE hospital_id = ? AND deleted_at IS NULL AND quantity = 0
+            """,
+            (scoped_hospital_id,),
+        )
         out_of_stock = cursor.fetchone()["value"]
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT COUNT(*) AS value
             FROM pharmacy_inventory
-            WHERE stock_condition = 'damaged'
-            """)
+            WHERE hospital_id = ? AND deleted_at IS NULL AND stock_condition = 'damaged'
+            """,
+            (scoped_hospital_id,),
+        )
         damaged = cursor.fetchone()["value"]
         cursor.execute(
             "SELECT COALESCE(SUM(amount), 0) AS value FROM pharmacy_sales WHERE hospital_id = ?",
@@ -6825,7 +7391,7 @@ def get_hospital_dashboard_summary(hospital_id=None):
                 COALESCE(SUM(total_amount), 0) AS total_revenue,
                 COALESCE(SUM(due_amount), 0) AS due_collection
             FROM invoices
-            WHERE hospital_id = ? AND created_at >= ? AND created_at < ?
+            WHERE hospital_id = ? AND deleted_at IS NULL AND created_at >= ? AND created_at < ?
             """,
             (scoped_hospital_id, month_start_str, next_month_start_str),
         )
@@ -6883,6 +7449,35 @@ def get_hospital_dashboard_summary(hospital_id=None):
         )
         referral_summary = [dict(row) for row in cursor.fetchall()]
 
+        cursor.execute(
+            """
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN status = 'Available' THEN 1 ELSE 0 END) AS available,
+                SUM(CASE WHEN status = 'Occupied' THEN 1 ELSE 0 END) AS occupied,
+                SUM(CASE WHEN status = 'Maintenance' THEN 1 ELSE 0 END) AS maintenance
+            FROM bed_master
+            WHERE hospital_id = ?
+            """,
+            (scoped_hospital_id,),
+        )
+        bed_row = dict(cursor.fetchone() or {})
+
+        cursor.execute(
+            """
+            SELECT COALESCE(SUM(total_amount), 0) AS ip_revenue
+            FROM invoices
+            WHERE hospital_id = ? AND module = 'IP' AND deleted_at IS NULL
+              AND created_at >= ? AND created_at < ?
+            """,
+            (scoped_hospital_id, month_start_str, next_month_start_str),
+        )
+        ip_revenue_row = cursor.fetchone()
+        ip_revenue = (ip_revenue_row["ip_revenue"] if ip_revenue_row else 0) or 0
+
+    bed_total = bed_row.get("total", 0) or 0
+    bed_occupied = bed_row.get("occupied", 0) or 0
+
     return {
         "ip_op_counts": {
             "daily_ip": encounter_summary.get("daily_ip", 0) or 0,
@@ -6898,10 +7493,18 @@ def get_hospital_dashboard_summary(hospital_id=None):
             "total": revenue_summary.get("total_revenue", 0) or 0,
             "due": revenue_summary.get("due_collection", 0) or 0,
             "payment_mode_breakdown": payment_mode_breakdown,
+            "ip_this_month": ip_revenue,
         },
         "pharmacy_summary": {"monthly_sales": pharmacy_sales},
         "diagnostics_summary": {"monthly_income": diagnostics_income},
         "referrals": referral_summary,
+        "bed_occupancy": {
+            "total": bed_total,
+            "available": bed_row.get("available", 0) or 0,
+            "occupied": bed_occupied,
+            "maintenance": bed_row.get("maintenance", 0) or 0,
+            "occupancy_rate": round((bed_occupied / bed_total) * 100) if bed_total else 0,
+        },
     }
 
 
@@ -6926,6 +7529,41 @@ def ensure_pharmacy_prescriptions_tables(conn):
         )
         """)
     conn.commit()
+
+
+def parse_pharmacy_prescriptions(raw_prescriptions):
+    """Each pharmacy_prescriptions row stores its medicines as an opaque JSON
+    blob (medicines_json: [{name, dosage, quantity, unit_price?}, ...]) rather
+    than flat columns. Flatten to one row per medicine, keyed off the fields
+    actually captured at creation time (PrescriptionUploadModal.tsx) -- there
+    is no frequency/instructions field anywhere in this data model, so we
+    don't fabricate one. Shared by the EMR Medications tab and the patient
+    journey timeline so both flatten prescriptions the same way."""
+    flattened = []
+    for presc in raw_prescriptions:
+        try:
+            medicines = json.loads(presc.get("medicines_json") or "[]")
+        except (TypeError, ValueError):
+            medicines = []
+        if not isinstance(medicines, list):
+            medicines = []
+        for med in medicines:
+            if not isinstance(med, dict):
+                continue
+            flattened.append(
+                {
+                    "prescription_id": presc.get("id"),
+                    "medicine_name": med.get("name") or med.get("medicine_name") or "—",
+                    "dosage": med.get("dosage"),
+                    "quantity": med.get("quantity"),
+                    "unit_price": med.get("unit_price"),
+                    "status": presc.get("status"),
+                    "doctor_username": presc.get("doctor_username"),
+                    "created_at": presc.get("created_at"),
+                    "fulfilled_at": presc.get("fulfilled_at"),
+                }
+            )
+    return flattened
 
 
 def create_pharmacy_prescription(

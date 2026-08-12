@@ -9,8 +9,41 @@ import {
   FiZap as Zap,
   FiChevronLeft as Back,
   FiDownload as Download,
+  FiUserPlus,
+  FiCalendar,
+  FiActivity,
+  FiHome,
+  FiClipboard,
+  FiPackage,
+  FiFileText,
+  FiDollarSign,
+  FiCircle,
 } from "react-icons/fi";
 import type { Notice, Patient } from "../types";
+
+/* ─── journey timeline stage styling ─── */
+const STAGE_ICON: Record<string, typeof FiCircle> = {
+  registration: FiUserPlus,
+  queue: FiCalendar,
+  consultation: FiActivity,
+  bed: FiHome,
+  clinical: FiClipboard,
+  pharmacy: FiPackage,
+  documents: FiFileText,
+  billing: FiDollarSign,
+  lab: FiActivity,
+};
+const STAGE_COLOR: Record<string, string> = {
+  registration: "#0369a1",
+  queue: "#854d0e",
+  consultation: "#5b21b6",
+  bed: "#be123c",
+  clinical: "#166534",
+  pharmacy: "#0891b2",
+  documents: "#475569",
+  billing: "#065f46",
+  lab: "#9333ea",
+};
 
 /* ─── helpers ─── */
 const fmt = (ts: string) =>
@@ -154,6 +187,19 @@ body{font-family:'Inter',Arial,sans-serif;background:#fff;color:#111;}
 .wa-big-btn:hover{background:#1ebe5d;}
 .wa-big-btn svg{width:28px;height:28px;}
 .wa-note{margin-top:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px 14px;font-size:12.5px;color:#166534;line-height:1.6;}
+
+/* journey timeline */
+.timeline-track{position:relative;padding-left:6px;margin-top:4px;}
+.timeline-node{position:relative;display:flex;gap:12px;padding:0 0 18px 26px;}
+.timeline-node:last-child{padding-bottom:2px;}
+.timeline-node::before{content:"";position:absolute;left:9px;top:20px;bottom:-2px;width:1.5px;background:#e2e8f0;}
+.timeline-node:last-child::before{display:none;}
+.timeline-node-icon{position:absolute;left:0;top:0;width:20px;height:20px;border-radius:50%;background:#fff;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;}
+.timeline-node-content{flex:1;min-width:0;}
+.timeline-node-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;}
+.timeline-node-label{font-size:12.5px;font-weight:700;color:#1e293b;}
+.timeline-node-time{font-size:11px;color:#94a3b8;white-space:nowrap;}
+.timeline-node-detail{font-size:11.5px;color:#64748b;margin-top:2px;line-height:1.5;}
 
 @media screen{
   .rpt-wrap{background:#fff;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.10);}
@@ -339,60 +385,26 @@ export default function EmrPage({
       invoice_payments = [],
       insurance_claims = [],
       certificates = [],
+      timeline: rawTimeline = [],
     } = data;
 
     const currentAdmission =
       admissions.find((a: any) => !a.discharge_date) || admissions[0] || null;
-    const currentBed = bed_history.find((b: any) => b.status === "active") || null;
+    // Joined by admission_id (not just "any active bed") so a readmission that
+    // hasn't been given a bed yet correctly shows "Not currently assigned"
+    // instead of picking up an unrelated stay's bed.
+    const currentBed =
+      bed_history.find(
+        (b: any) => b.status === "active" && b.admission_id === currentAdmission?.id,
+      ) || null;
 
-    // Timeline – OLDEST FIRST
-    const timeline = [
-      ...encounters.map((e: any) => {
-        const dx = diagnoses.filter((d: any) => d.encounter_id === e.id);
-        return {
-          type: e.encounter_type || "Encounter",
-          desc: dx.length
-            ? `Diagnosis: ${dx.map((d: any) => d.diagnosis_name).join(", ")}`
-            : "Clinical encounter",
-          ts: e.created_at,
-          by: e.doctor_name || "Doctor",
-          status: e.status || "Completed",
-          amt: null,
-        };
-      }),
-      ...admissions.map((a: any) => ({
-        type: a.discharge_date ? "Discharge" : "Admission",
-        desc: a.notes || (a.discharge_date ? "Patient discharged" : "Patient admitted"),
-        ts: a.discharge_date || a.admission_date,
-        by: "Hospital",
-        status: a.discharge_date ? "Discharged" : "Admitted",
-        amt: null,
-      })),
-      ...appointments.map((a: any) => ({
-        type: "Appointment",
-        desc: `${a.department || "General"} — Dr. ${a.doctor_name || "—"}`,
-        ts: a.appointment_date || a.created_at,
-        by: a.doctor_name || "—",
-        status: a.status || "Scheduled",
-        amt: a.consultation_fee > 0 ? Number(a.consultation_fee) : null,
-      })),
-      ...pharmacy_sales.map((s: any) => ({
-        type: "Pharmacy",
-        desc: `${s.medicine_name} × ${s.quantity}`,
-        ts: s.sold_at || s.created_at,
-        by: "Pharmacist",
-        status: "Dispensed",
-        amt: Number(s.amount || 0),
-      })),
-      ...documents.map((d: any) => ({
-        type: "Document",
-        desc: `${d.doc_type || "File"}: ${d.file_name}`,
-        ts: d.created_at,
-        by: "System",
-        status: "Uploaded",
-        amt: null,
-      })),
-    ].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    // Journey timeline — built server-side (see get_patient_journey in
+    // database.py) from every real event: registration, appointments,
+    // checked-in/consultation start/complete, bed admit/transfer/discharge,
+    // prescriptions, treatment plan notes, billing, documents. Oldest first.
+    const timeline = [...rawTimeline].sort(
+      (a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+    );
 
     const totalFee = appointments.reduce(
       (s: number, a: any) =>
@@ -411,7 +423,31 @@ export default function EmrPage({
       (s: number, i: any) => s + Number(i.paid_amount || 0),
       0,
     );
-    const grandTotal = totalFee + totalPharm;
+
+    // Every invoice already carries which module it's for (OP/IP/LAB/PHARMACY
+    // -- pharmacy is never invoiced here, it's tracked directly in
+    // pharmacy_sales instead), so the real "total bill" is a sum across every
+    // module, not just consultation fees + pharmacy -- bed/room (IP) charges
+    // and lab invoices were previously silently excluded from this number.
+    const billedByModule = (mod: string) =>
+      invoices
+        .filter((i: any) => i.module === mod)
+        .reduce((s: number, i: any) => s + Number(i.total_amount || 0), 0);
+    const paidByModule = (mod: string) =>
+      invoices
+        .filter((i: any) => i.module === mod)
+        .reduce((s: number, i: any) => s + Number(i.paid_amount || 0), 0);
+
+    const opBilled = billedByModule("OP");
+    const opPaid = paidByModule("OP");
+    const ipBilled = billedByModule("IP");
+    const ipPaid = paidByModule("IP");
+    const labBilled = billedByModule("LAB");
+    const labPaid = paidByModule("LAB");
+
+    const grandTotal = opBilled + ipBilled + labBilled + totalPharm;
+    const grandPaid = opPaid + ipPaid + labPaid + totalPharm;
+    const grandDue = Math.max(grandTotal - grandPaid, 0);
 
     return (
       <div style={{ padding: "24px 0" }}>
@@ -649,81 +685,130 @@ export default function EmrPage({
             </table>
 
             <div className="sec-title">
-              Journey Timeline — Chronological (Oldest to Newest)
+              Journey Timeline — Registration to Discharge
             </div>
-            <table className="data-tbl">
-              <thead>
-                <tr>
-                  <th style={{ width: "36px" }}>#</th>
-                  <th style={{ width: "110px" }}>Stage</th>
-                  <th>Description</th>
-                  <th style={{ width: "130px" }}>Date & Time</th>
-                  <th style={{ width: "110px" }}>Handled By</th>
-                  <th style={{ width: "90px", textAlign: "right" }}>Amount</th>
-                  <th style={{ width: "100px", textAlign: "center" }}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {timeline.length === 0 ? (
-                  <EmptyRow colSpan={7} label="No events found." />
-                ) : (
-                  timeline.map((e: any, i: number) => (
-                    <tr key={i}>
-                      <td style={{ color: "#64748b", fontWeight: 600, textAlign: "center" }}>
-                        {i + 1}
-                      </td>
-                      <td style={{ fontWeight: 700, color: "#1e3a5f", fontSize: "12px" }}>
-                        {e.type}
-                      </td>
-                      <td style={{ fontSize: "12px" }}>{e.desc}</td>
-                      <td style={{ fontSize: "11.5px" }}>
-                        {e.ts ? fmt(e.ts) : "—"}
-                      </td>
-                      <td style={{ fontSize: "12px" }}>{e.by}</td>
-                      <td
-                        style={{
-                          textAlign: "right",
-                          fontWeight: 700,
-                          color: e.amt != null ? "#065f46" : "#cbd5e1",
-                          fontSize: "12px",
-                        }}
+            {timeline.length === 0 ? (
+              <p style={{ color: "#94a3b8", padding: "16px", textAlign: "center" }}>
+                No events found.
+              </p>
+            ) : (
+              <div className="timeline-track">
+                {timeline.map((e: any, i: number) => {
+                  const Icon = STAGE_ICON[e.stage] || FiCircle;
+                  const detail = e.detail as Record<string, any> | undefined;
+                  return (
+                    <div className="timeline-node" key={i}>
+                      <div
+                        className="timeline-node-icon"
+                        style={{ color: STAGE_COLOR[e.stage] || "#64748b" }}
                       >
-                        {e.amt != null ? money(e.amt) : "—"}
-                      </td>
-                      <td style={{ textAlign: "center" }}>
-                        <StatusBadge status={e.status} />
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                        <Icon size={13} />
+                      </div>
+                      <div className="timeline-node-content">
+                        <div className="timeline-node-head">
+                          <span className="timeline-node-label">{e.label}</span>
+                          <span className="timeline-node-time">
+                            {e.timestamp ? fmtDt(e.timestamp) : "—"}
+                          </span>
+                        </div>
+                        {detail && (
+                          <div className="timeline-node-detail">
+                            {detail.doctor_name && `Dr. ${detail.doctor_name}`}
+                            {detail.department &&
+                              (detail.doctor_name ? ` — ${detail.department}` : detail.department)}
+                            {detail.note && detail.note}
+                            {detail.treatment_plan && (
+                              <>
+                                {detail.note ? " · " : ""}
+                                Treatment plan: {detail.treatment_plan}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {grandTotal > 0 && (
               <>
                 <div className="sec-title">Financial Summary</div>
-                <div className="fin-box">
-                  {totalFee > 0 && (
-                    <div className="fin-row sub">
-                      <span>Consultation Fees</span>
-                      <span style={{ fontWeight: 700, color: "#065f46" }}>
-                        {money(totalFee)}
-                      </span>
-                    </div>
-                  )}
-                  {totalPharm > 0 && (
-                    <div className="fin-row sub">
-                      <span>Pharmacy Charges</span>
-                      <span style={{ fontWeight: 700, color: "#065f46" }}>
-                        {money(totalPharm)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="fin-row">
-                    <span>TOTAL AMOUNT PAYABLE</span>
-                    <span>{money(grandTotal)}</span>
-                  </div>
-                </div>
+                <table className="data-tbl">
+                  <thead>
+                    <tr>
+                      <th>Category</th>
+                      <th style={{ textAlign: "right" }}>Billed</th>
+                      <th style={{ textAlign: "right" }}>Paid</th>
+                      <th style={{ textAlign: "right" }}>Due</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {opBilled > 0 && (
+                      <tr>
+                        <td>Consultation (OP)</td>
+                        <td style={{ textAlign: "right" }}>{money(opBilled)}</td>
+                        <td style={{ textAlign: "right", color: "#065f46" }}>
+                          {money(opPaid)}
+                        </td>
+                        <td style={{ textAlign: "right", color: opBilled > opPaid ? "#991b1b" : "#94a3b8" }}>
+                          {money(Math.max(opBilled - opPaid, 0))}
+                        </td>
+                      </tr>
+                    )}
+                    {ipBilled > 0 && (
+                      <tr>
+                        <td>Bed &amp; Room Charges (IP)</td>
+                        <td style={{ textAlign: "right" }}>{money(ipBilled)}</td>
+                        <td style={{ textAlign: "right", color: "#065f46" }}>
+                          {money(ipPaid)}
+                        </td>
+                        <td style={{ textAlign: "right", color: ipBilled > ipPaid ? "#991b1b" : "#94a3b8" }}>
+                          {money(Math.max(ipBilled - ipPaid, 0))}
+                        </td>
+                      </tr>
+                    )}
+                    {labBilled > 0 && (
+                      <tr>
+                        <td>Lab / Diagnostics</td>
+                        <td style={{ textAlign: "right" }}>{money(labBilled)}</td>
+                        <td style={{ textAlign: "right", color: "#065f46" }}>
+                          {money(labPaid)}
+                        </td>
+                        <td style={{ textAlign: "right", color: labBilled > labPaid ? "#991b1b" : "#94a3b8" }}>
+                          {money(Math.max(labBilled - labPaid, 0))}
+                        </td>
+                      </tr>
+                    )}
+                    {totalPharm > 0 && (
+                      <tr>
+                        <td>Pharmacy</td>
+                        <td style={{ textAlign: "right" }}>{money(totalPharm)}</td>
+                        <td style={{ textAlign: "right", color: "#065f46" }}>
+                          {money(totalPharm)}
+                        </td>
+                        <td style={{ textAlign: "right", color: "#94a3b8" }}>
+                          {money(0)}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td style={{ fontWeight: 800 }}>GRAND TOTAL</td>
+                      <td style={{ textAlign: "right", fontWeight: 800 }}>
+                        {money(grandTotal)}
+                      </td>
+                      <td style={{ textAlign: "right", fontWeight: 800, color: "#065f46" }}>
+                        {money(grandPaid)}
+                      </td>
+                      <td style={{ textAlign: "right", fontWeight: 800, color: grandDue > 0 ? "#991b1b" : "#065f46" }}>
+                        {money(grandDue)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
               </>
             )}
           </div>

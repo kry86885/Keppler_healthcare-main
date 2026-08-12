@@ -40,7 +40,6 @@ from utils.database import (
     list_encounters,
     create_encounter,
     list_bed_allocations,
-    assign_bed,
     list_medication_schedules,
     add_medication_schedule,
     current_ist_datetime,
@@ -353,7 +352,7 @@ def patients_update(patient_id):
         "weight": payload.get("weight"),
         "height": payload.get("height"),
         "gender": payload.get("gender"),
-        "pregnant": 1 if payload.get("pregnant") else 0,
+        "pregnant": (1 if payload.get("pregnant") else 0) if "pregnant" in payload else None,
         "allergies": payload.get("allergies"),
         "symptoms": payload.get("symptoms"),
         "phone": payload.get("phone"),
@@ -511,31 +510,6 @@ def patient_beds(patient_id):
             )
         }
     )
-
-
-@patients_bp.post("/api/patients/<patient_id>/beds")
-@require_permissions("patients.clinical.write")
-def patient_bed_assign(patient_id):
-    payload = request.get_json(force=True)
-    validation_error = validate_required_fields(
-        payload, ["admission_id", "ward", "room_no", "bed_no"]
-    )
-    if validation_error:
-        return validation_error
-    bed_id = assign_bed(
-        {
-            "admission_id": payload.get("admission_id"),
-            "patient_id": patient_id,
-            "ward": payload.get("ward"),
-            "room_no": payload.get("room_no"),
-            "bed_no": payload.get("bed_no"),
-            "status": payload.get("status", "active"),
-        }
-    )
-    log_audit_event(
-        "create", "bed_allocations", str(bed_id), {"patient_id": patient_id}
-    )
-    return jsonify({"bed_allocation_id": bed_id})
 
 
 @patients_bp.get("/api/patients/<patient_id>/medications")

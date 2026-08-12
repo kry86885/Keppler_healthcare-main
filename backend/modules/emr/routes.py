@@ -6,7 +6,13 @@ import os
 from flask import Blueprint, jsonify, request, g, send_file
 
 from app import require_permissions, current_hospital_id
-from utils.database import get_connection, create_certificate, store_whatsapp_media
+from utils.database import (
+    get_connection,
+    create_certificate,
+    store_whatsapp_media,
+    get_patient_journey,
+    parse_pharmacy_prescriptions,
+)
 from core.export import generate_pdf
 from core.whatsapp import send_whatsapp_message, is_configured as whatsapp_is_configured
 from ai.service import generate_patient_summary
@@ -40,40 +46,6 @@ def search_emr():
         cursor.execute(sql, (hospital_id, wildcard, wildcard, wildcard, wildcard))
         rows = cursor.fetchall()
         return jsonify([dict(r) for r in rows])
-
-
-def _parse_prescriptions(raw_prescriptions):
-    """Each pharmacy_prescriptions row stores its medicines as an opaque JSON
-    blob (medicines_json: [{name, dosage, quantity, unit_price?}, ...]) rather
-    than flat columns. Flatten to one row per medicine, keyed off the fields
-    that are actually captured at creation time (PrescriptionUploadModal.tsx)
-    -- there is no frequency/instructions field anywhere in this data model,
-    so we don't fabricate one."""
-    flattened = []
-    for presc in raw_prescriptions:
-        try:
-            medicines = json.loads(presc.get("medicines_json") or "[]")
-        except (TypeError, ValueError):
-            medicines = []
-        if not isinstance(medicines, list):
-            medicines = []
-        for med in medicines:
-            if not isinstance(med, dict):
-                continue
-            flattened.append(
-                {
-                    "prescription_id": presc.get("id"),
-                    "medicine_name": med.get("name") or med.get("medicine_name") or "—",
-                    "dosage": med.get("dosage"),
-                    "quantity": med.get("quantity"),
-                    "unit_price": med.get("unit_price"),
-                    "status": presc.get("status"),
-                    "doctor_username": presc.get("doctor_username"),
-                    "created_at": presc.get("created_at"),
-                    "fulfilled_at": presc.get("fulfilled_at"),
-                }
-            )
-    return flattened
 
 
 @emr_bp.route("/api/emr/<patient_id>", methods=["GET"])
@@ -125,7 +97,7 @@ def get_emr(patient_id):
             "SELECT * FROM pharmacy_prescriptions WHERE patient_id = %s AND hospital_id = %s ORDER BY created_at DESC",
             (patient_id, hospital_id),
         )
-        prescriptions = _parse_prescriptions([dict(r) for r in cursor.fetchall()])
+        prescriptions = parse_pharmacy_prescriptions([dict(r) for r in cursor.fetchall()])
 
         # Lab/diagnostic charges -- this table tracks what was billed for a
         # test, not the clinical result value, so it's presented as such
@@ -278,29 +250,37 @@ def get_emr(patient_id):
                     apt["invoice_payment_status"] = invoices[0]["payment_status"]
             appointments.append(apt)
 
-        return jsonify(
-            {
-                "patient": dict(patient),
-                "medical_history": dict(medical_history) if medical_history else None,
-                "admissions": admissions,
-                "bed_history": bed_history,
-                "encounters": encounters,
-                "notes": notes,
-                "vitals": vitals,
-                "diagnoses": diagnoses,
-                "prescriptions": prescriptions,
-                "medication_schedules": medication_schedules,
-                "observation_notes": observation_notes,
-                "labs": labs,
-                "documents": documents,
-                "pharmacy_sales": pharmacy_sales,
-                "appointments": appointments,
-                "invoices": invoices,
-                "invoice_payments": invoice_payments,
-                "insurance_claims": insurance_claims,
-                "certificates": certificates,
-            }
-        )
+        emr_response = {
+            "patient": dict(patient),
+            "medical_history": dict(medical_history) if medical_history else None,
+            "admissions": admissions,
+            "bed_history": bed_history,
+            "encounters": encounters,
+            "notes": notes,
+            "vitals": vitals,
+            "diagnoses": diagnoses,
+            "prescriptions": prescriptions,
+            "medication_schedules": medication_schedules,
+            "observation_notes": observation_notes,
+            "labs": labs,
+            "documents": documents,
+            "pharmacy_sales": pharmacy_sales,
+            "appointments": appointments,
+            "invoices": invoices,
+            "invoice_payments": invoice_payments,
+            "insurance_claims": insurance_claims,
+            "certificates": certificates,
+        }
+
+    # A single consolidated, chronologically-sorted view of the whole patient
+    # journey (registration -> appointment -> consultation -> bed events ->
+    # prescriptions -> treatment plan -> billing -> discharge), additive to
+    # the per-category arrays above so the other tabs don't need to change.
+    journey = get_patient_journey(patient_id, hospital_id=hospital_id)
+    emr_response["timeline"] = journey["events"] if journey else []
+    emr_response["financial_summary"] = journey["summary"] if journey else None
+
+    return jsonify(emr_response)
 
 
 @emr_bp.route("/api/emr/<patient_id>/ai-summary", methods=["POST"])
@@ -340,7 +320,7 @@ def get_ai_summary(patient_id):
             "SELECT * FROM pharmacy_prescriptions WHERE patient_id = %s AND hospital_id = %s ORDER BY created_at DESC",
             (patient_id, hospital_id),
         )
-        prescriptions = _parse_prescriptions([dict(r) for r in cursor.fetchall()])
+        prescriptions = parse_pharmacy_prescriptions([dict(r) for r in cursor.fetchall()])
 
         cursor.execute(
             "SELECT * FROM diagnostics WHERE patient_id = %s AND hospital_id = %s AND deleted_at IS NULL ORDER BY created_at DESC",

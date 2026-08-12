@@ -39,6 +39,7 @@ const PAYMENT_METHODS = [
 
 const MODULES = [
   { label: "OP / Billing", color: "#2563eb" },
+  { label: "IP / Bed Charges", color: "#f59e0b" },
   { label: "Pharmacy", color: "#0ea5e9" },
 ];
 
@@ -88,7 +89,7 @@ export default function DailyMonthlyReportsPage({
             patientName: p.patient_name || p.patientName || "Unknown",
             patientId: p.patient_id || p.patientId || "",
             paymentMethod: normalizeModeDisplay(p.mode),
-            module: "OP / Billing",
+            module: paymentFor === "IP" ? "IP / Bed Charges" : "OP / Billing",
             amount: parseFloat(p.amount) || 0,
             date: p.date || "",
           });

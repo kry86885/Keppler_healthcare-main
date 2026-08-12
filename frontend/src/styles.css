@@ -3752,6 +3752,12 @@ main {
   gap: 1rem;
 }
 
+.bed-ward-select {
+  width: auto;
+  min-width: 180px;
+  font-weight: 600;
+}
+
 .bed-legend-item {
   display: flex;
   align-items: center;
@@ -3827,51 +3833,282 @@ main {
   margin: 0 0 0.5rem 0;
 }
 
-.bed-icon-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.9rem;
+.bed-icon {
+  font-size: 1rem;
 }
 
-.bed-icon-tile {
+.bed-legend-swatch {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 3px;
+  margin-right: 0.2rem;
+  vertical-align: -0.1rem;
+}
+
+.bed-legend-swatch-icu {
+  background: #ede9fe;
+  border: 1px solid #c4b5fd;
+}
+
+/* Ward/room occupancy bar -- a quick visual read of how full a ward is,
+   alongside (not instead of) the existing count badges. */
+.bed-occupancy-bar {
+  display: flex;
+  height: 0.4rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: hsl(var(--muted));
+  margin-bottom: 1rem;
+}
+
+.bed-occupancy-segment {
+  height: 100%;
+}
+
+.bed-occupancy-segment-available {
+  background: #0ca479;
+}
+
+.bed-occupancy-segment-occupied {
+  background: #bc253e;
+}
+
+.bed-occupancy-segment-maintenance {
+  background: #bd800b;
+}
+
+/* Bed card grid -- replaces the old plain icon-tile grid with a proper
+   ward-map card per bed: patient, bed type, and (when occupied) a
+   length-of-stay progress indicator. */
+.bed-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.bed-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.2rem;
-  width: 4.5rem;
-  padding: 0.5rem 0.35rem;
-  border-radius: calc(var(--radius) - 4px);
-  border: 1px solid transparent;
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  overflow: hidden;
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.bed-card:hover {
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+}
+
+.bed-card-icu {
+  border-left: 3px solid #7c3aed;
+}
+
+.bed-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.85rem;
+  border: none;
   background: none;
+  text-align: left;
   cursor: pointer;
   font-family: inherit;
-  transition: transform 0.1s ease, background 0.1s ease;
+  width: 100%;
 }
 
-.bed-icon-tile:hover {
-  transform: translateY(-1px);
-  background: hsl(var(--muted));
-  border-color: hsl(var(--border));
+.bed-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
 }
 
-.bed-icon {
-  font-size: 1.6rem;
-}
-
-.bed-icon-number {
-  font-size: 0.75rem;
+.bed-card-number {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   font-weight: 700;
+  font-size: 0.88rem;
   color: hsl(var(--foreground));
 }
 
-.bed-icon-occupant {
+.bed-card-type-badge {
   font-size: 0.68rem;
-  color: #bc253e;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.bed-card-status-text {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.bed-card-status-available {
+  color: #0ca479;
   font-weight: 600;
+}
+
+.bed-card-occupant {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.bed-card-occupant-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
+}
+
+.bed-card-los-label {
+  font-size: 0.72rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.bed-card-charges-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #065f46;
+}
+
+.bed-los-bar {
+  height: 0.3rem;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  overflow: hidden;
+}
+
+.bed-los-bar-fill {
+  height: 100%;
+  background: #0ca479;
+}
+
+.bed-los-bar-fill-warning {
+  background: #bc253e;
+}
+
+.bed-card-actions {
+  display: flex;
+  border-top: 1px solid hsl(var(--border));
+}
+
+.bed-card-action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+  background: none;
+  border: none;
+  border-right: 1px solid hsl(var(--border));
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.bed-card-action-btn:last-child {
+  border-right: none;
+}
+
+.bed-card-action-btn:hover {
+  background: hsl(var(--muted));
+}
+
+.bed-card-action-btn-danger:hover {
+  color: #bc253e;
+}
+
+/* Transfer target picker */
+.bed-transfer-target-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  margin-top: 0.5rem;
+}
+
+.bed-transfer-target {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-bottom: 1px solid hsl(var(--border));
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.bed-transfer-target:last-child {
+  border-bottom: none;
+}
+
+.bed-transfer-target:hover {
+  background: hsl(var(--muted));
+}
+
+.bed-transfer-target-selected {
+  background: hsl(var(--muted));
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: -2px;
+}
+
+/* Discharge checklist */
+.discharge-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.discharge-checklist-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  border: 1px solid transparent;
+}
+
+.discharge-checklist-row span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.discharge-checklist-row-ok {
+  background: #f0fdf4;
+  color: #166534;
+  border-color: #86efac;
+}
+
+.discharge-checklist-row-warn {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+
+.discharge-checklist-row-info {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
 }
 
 .bed-status-Available {

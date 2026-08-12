@@ -73,7 +73,6 @@ from utils.database import (
     add_observation_note,
     add_patient,
     add_patient_movement,
-    assign_bed,
     check_duplicate_patient,
     create_account_ledger_entry,
     create_attendance,

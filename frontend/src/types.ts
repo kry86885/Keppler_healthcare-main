@@ -107,6 +107,7 @@ export interface HospitalSummary {
     total: number;
     due: number;
     payment_mode_breakdown: DistributionItem[];
+    ip_this_month: number;
   };
   pharmacy_summary: {
     monthly_sales: number;
@@ -115,6 +116,13 @@ export interface HospitalSummary {
     monthly_income: number;
   };
   referrals: DistributionItem[];
+  bed_occupancy: {
+    total: number;
+    available: number;
+    occupied: number;
+    maintenance: number;
+    occupancy_rate: number;
+  };
 }
 
 export interface Patient {
