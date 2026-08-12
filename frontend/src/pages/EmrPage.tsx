@@ -1,14 +1,16 @@
-import React, { useState, useRef } from "react";
-import { apiFetch } from "../lib/api";
-import { Button, Input, Modal } from "../components/ui";
+import React, { useState } from "react";
+import { apiFetch, reportError } from "../lib/api";
+import { API_BASE } from "../lib/constants";
+import { Button, Input, Modal, Tabs, TabsTrigger, Textarea } from "../components/ui";
 import {
   FiSearch as Search,
   FiPrinter as Printer,
   FiShare2 as Share2,
   FiZap as Zap,
   FiChevronLeft as Back,
+  FiDownload as Download,
 } from "react-icons/fi";
-import type { Patient } from "../types";
+import type { Notice, Patient } from "../types";
 
 /* ─── helpers ─── */
 const fmt = (ts: string) =>
@@ -30,17 +32,29 @@ const fmtDt = (ts: string) =>
         hour12: true,
       })
     : "—";
+const money = (v: any) => `₹${Number(v || 0).toFixed(2)}`;
 
 /* ─── STATUS BADGE ─── */
 const StatusBadge = ({ status }: { status: string }) => {
   const s = (status || "").toLowerCase();
   const palette: Record<string, string> = {
     completed: "background:#dcfce7;color:#166534;border:1px solid #86efac",
+    paid: "background:#dcfce7;color:#166534;border:1px solid #86efac",
+    settled: "background:#dcfce7;color:#166534;border:1px solid #86efac",
+    approved: "background:#dcfce7;color:#166534;border:1px solid #86efac",
+    fulfilled: "background:#dcfce7;color:#166534;border:1px solid #86efac",
+    active: "background:#dcfce7;color:#166534;border:1px solid #86efac",
     dispensed: "background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd",
     uploaded: "background:#dbeafe;color:#1e40af;border:1px solid #93c5fd",
+    partial: "background:#fef9c3;color:#854d0e;border:1px solid #fde047",
     scheduled: "background:#fef9c3;color:#854d0e;border:1px solid #fde047",
+    pending: "background:#fef9c3;color:#854d0e;border:1px solid #fde047",
+    submitted: "background:#fef9c3;color:#854d0e;border:1px solid #fde047",
     confirmed: "background:#dcfce7;color:#166534;border:1px solid #86efac",
+    due: "background:#fee2e2;color:#991b1b;border:1px solid #fca5a5",
+    rejected: "background:#fee2e2;color:#991b1b;border:1px solid #fca5a5",
     cancelled: "background:#fee2e2;color:#991b1b;border:1px solid #fca5a5",
+    released: "background:#e2e8f0;color:#334155;border:1px solid #cbd5e1",
   };
   const key = Object.keys(palette).find((k) => s.includes(k)) || "scheduled";
   return (
@@ -62,6 +76,14 @@ const StatusBadge = ({ status }: { status: string }) => {
   );
 };
 
+const EmptyRow = ({ colSpan, label }: { colSpan: number; label: string }) => (
+  <tr>
+    <td colSpan={colSpan} style={{ textAlign: "center", padding: "16px", color: "#94a3b8" }}>
+      {label}
+    </td>
+  </tr>
+);
+
 /* ────────────────────────────────────── PRINT STYLES ─── */
 const PRINT_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -74,10 +96,11 @@ body{font-family:'Inter',Arial,sans-serif;background:#fff;color:#111;}
   #emr-printable,#emr-printable *{visibility:visible!important;}
   #emr-printable{position:fixed;top:0;left:0;width:100%;height:auto;background:#fff;}
   .no-print{display:none!important;}
+  .tab-panel{display:block!important;}
 }
 
 /* ── Report Chrome ── */
-.rpt-wrap{max-width:900px;margin:0 auto;padding:28px;background:#fff;}
+.rpt-wrap{max-width:960px;margin:0 auto;padding:28px;background:#fff;}
 
 /* header */
 .rpt-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5f;padding-bottom:16px;margin-bottom:18px;}
@@ -114,6 +137,17 @@ body{font-family:'Inter',Arial,sans-serif;background:#fff;color:#111;}
 .rpt-footer{margin-top:28px;padding-top:10px;border-top:2px solid #1e3a5f;display:flex;justify-content:space-between;font-size:10.5px;color:#64748b;}
 .rpt-footer-center{text-align:center;color:#94a3b8;font-size:10px;}
 
+/* tab panels -- all mounted, only the active one shows on screen; print forces all visible (see @media print above) */
+.tab-panel{display:none;}
+.tab-panel.active{display:block;}
+
+/* AI summary */
+.ai-summary-box{white-space:pre-wrap;border:1px solid #c4b5fd;border-radius:8px;padding:14px;font-size:12.5px;line-height:1.7;color:#374151;background:#faf5ff;}
+.ai-summary-editor textarea{width:100%;min-height:260px;font-family:'Inter',Arial,sans-serif;font-size:13px;line-height:1.6;}
+.ai-cert-list{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+.ai-cert-item{border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:12.5px;cursor:pointer;background:#fff;}
+.ai-cert-item:hover{background:#f8fafc;}
+
 /* whatsapp share modal */
 .wa-modal-body{padding:6px 0;}
 .wa-big-btn{display:flex;align-items:center;gap:14px;background:#25d366;color:#fff;border:none;border-radius:12px;padding:18px 22px;font-size:16px;font-weight:700;cursor:pointer;width:100%;transition:background .2s;}
@@ -126,6 +160,23 @@ body{font-family:'Inter',Arial,sans-serif;background:#fff;color:#111;}
 }
 `;
 
+type TabKey =
+  | "overview"
+  | "clinical"
+  | "medications"
+  | "documents"
+  | "billing"
+  | "ai-summary";
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "clinical", label: "Clinical" },
+  { key: "medications", label: "Medications" },
+  { key: "documents", label: "Documents" },
+  { key: "billing", label: "Billing" },
+  { key: "ai-summary", label: "AI Summary" },
+];
+
 /* ═══════════════════════════════════════ MAIN COMPONENT ═════════════════════════════════ */
 export default function EmrPage({
   setNotice,
@@ -137,8 +188,14 @@ export default function EmrPage({
   const [pid, setPid] = useState<string | null>(null);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [aiSum, setAiSum] = useState("");
-  const [showModal, setShowModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabKey>("overview");
+
+  const [aiSummary, setAiSummary] = useState("");
+  const [aiTitle, setAiTitle] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [manualShareOpen, setManualShareOpen] = useState(false);
+  const [manualShareReason, setManualShareReason] = useState("");
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -157,10 +214,19 @@ export default function EmrPage({
 
   const handleOpen = async (patientId: string) => {
     setPid(patientId);
+    setActiveTab("overview");
+    setAiSummary("");
+    setAiTitle("");
     setLoading(true);
     try {
       const d = await apiFetch<any>(`/api/emr/${patientId}`);
       setData(d);
+      // Prefill the AI Summary tab with the most recently generated one, if any.
+      const latestCert = (d.certificates || [])[0];
+      if (latestCert) {
+        setAiSummary(latestCert.body || "");
+        setAiTitle(latestCert.title || "AI Clinical Summary");
+      }
       apiFetch("/api/emr/access-log", {
         method: "POST",
         body: JSON.stringify({ patient_id: patientId, action: "viewed" }),
@@ -172,45 +238,79 @@ export default function EmrPage({
     }
   };
 
-  const handleAI = async () => {
+  const handleGenerateAiSummary = async () => {
     if (!pid) return;
-    setLoading(true);
+    setAiLoading(true);
     try {
-      const r = await apiFetch<any>(`/api/emr/${pid}/ai-summary`, {
-        method: "POST",
-      });
-      setAiSum(r.summary);
-    } catch {
-      setNotice({ type: "error", message: "AI summary failed." });
+      const r = await apiFetch<{
+        summary: string;
+        title: string;
+        certificate_id: number;
+      }>(`/api/emr/${pid}/ai-summary`, { method: "POST" });
+      setAiSummary(r.summary);
+      setAiTitle(r.title);
+      setActiveTab("ai-summary");
+      setNotice({ type: "success", message: `${r.title} generated.` });
+    } catch (error) {
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "AI summary generation failed.",
+      );
     } finally {
-      setLoading(false);
+      setAiLoading(false);
     }
   };
 
-  const handleWhatsApp = async () => {
-    if (!data) return;
-    setShowModal(false);
-    const phone = (data.patient.phone || "").replace(/\D/g, "");
-    // Init feedback on backend
-    if (phone) {
-      apiFetch("/api/whatsapp/init_feedback", {
+  const buildFallbackShareText = () => {
+    const patient = data?.patient;
+    return (
+      `Dear ${patient?.name || "Patient"},\n\nYour ${aiTitle || "clinical summary"} from *HospAI Medical Centre* is ready.\n\n` +
+      `📋 *Patient ID:* ${patient?.patient_id}\n` +
+      `📅 *Date:* ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}\n\n` +
+      `_Please save the attached PDF from the print dialog and share it manually._`
+    );
+  };
+
+  const handleShareWhatsapp = async () => {
+    if (!pid) return;
+    if (!aiSummary.trim()) {
+      setActiveTab("ai-summary");
+      setNotice({
+        type: "error",
+        message: "Generate an AI summary first, then share it.",
+      });
+      return;
+    }
+    setSharing(true);
+    try {
+      await apiFetch(`/api/emr/${pid}/share-whatsapp`, {
         method: "POST",
         body: JSON.stringify({
-          patient_id: data.patient.patient_id || data.patient.id,
-          phone,
+          summary: aiSummary,
+          title: aiTitle || "AI Clinical Summary",
         }),
-      }).catch(() => {});
+      });
+      setNotice({ type: "success", message: "Sent via WhatsApp." });
+    } catch (error) {
+      const err = error as { message?: string; payload?: { fallback?: string } };
+      if (err.payload?.fallback === "manual") {
+        setManualShareReason(err.message || "WhatsApp isn't available right now.");
+        setManualShareOpen(true);
+      } else {
+        reportError(setNotice, error as any, "Unable to share via WhatsApp.");
+      }
+    } finally {
+      setSharing(false);
     }
-    // 1. Auto-open print → user saves PDF
+  };
+
+  const handleManualShare = () => {
+    if (!data) return;
+    setManualShareOpen(false);
+    const phone = (data.patient.phone || "").replace(/\D/g, "");
     window.print();
-    // 2. After brief delay, open WhatsApp with feedback text
-    const text =
-      `Dear ${data.patient.name},\n\nYour complete Patient Journey Report from *HospAI Medical Centre* has been generated and shared with you.\n\n` +
-      `📋 *Patient ID:* ${data.patient.patient_id}\n` +
-      `📅 *Report Date:* ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}\n\n` +
-      `We value your feedback! Please reply with:\n` +
-      `💬 Any comments about your experience\n\n` +
-      `Thank you for choosing HospAI Medical Centre.\n\n_This is an automated message. Please save the PDF from your print dialog._`;
+    const text = buildFallbackShareText();
     const url = phone
       ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
       : `https://wa.me/?text=${encodeURIComponent(text)}`;
@@ -222,14 +322,28 @@ export default function EmrPage({
     const {
       patient,
       medical_history,
+      admissions = [],
+      bed_history = [],
       encounters = [],
+      notes = [],
+      vitals = [],
       diagnoses = [],
       prescriptions = [],
+      medication_schedules = [],
+      observation_notes = [],
       labs = [],
       documents = [],
       pharmacy_sales = [],
       appointments = [],
+      invoices = [],
+      invoice_payments = [],
+      insurance_claims = [],
+      certificates = [],
     } = data;
+
+    const currentAdmission =
+      admissions.find((a: any) => !a.discharge_date) || admissions[0] || null;
+    const currentBed = bed_history.find((b: any) => b.status === "active") || null;
 
     // Timeline – OLDEST FIRST
     const timeline = [
@@ -246,6 +360,14 @@ export default function EmrPage({
           amt: null,
         };
       }),
+      ...admissions.map((a: any) => ({
+        type: a.discharge_date ? "Discharge" : "Admission",
+        desc: a.notes || (a.discharge_date ? "Patient discharged" : "Patient admitted"),
+        ts: a.discharge_date || a.admission_date,
+        by: "Hospital",
+        status: a.discharge_date ? "Discharged" : "Admitted",
+        amt: null,
+      })),
       ...appointments.map((a: any) => ({
         type: "Appointment",
         desc: `${a.department || "General"} — Dr. ${a.doctor_name || "—"}`,
@@ -281,6 +403,14 @@ export default function EmrPage({
       (s: number, a: any) => s + Number(a.amount || 0),
       0,
     );
+    const totalInvoiced = invoices.reduce(
+      (s: number, i: any) => s + Number(i.total_amount || 0),
+      0,
+    );
+    const totalPaidInvoices = invoices.reduce(
+      (s: number, i: any) => s + Number(i.paid_amount || 0),
+      0,
+    );
     const grandTotal = totalFee + totalPharm;
 
     return (
@@ -294,15 +424,18 @@ export default function EmrPage({
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: "20px",
+            marginBottom: "16px",
             padding: "0 4px",
+            flexWrap: "wrap",
+            gap: "10px",
           }}
         >
           <button
             onClick={() => {
               setPid(null);
               setData(null);
-              setAiSum("");
+              setAiSummary("");
+              setAiTitle("");
             }}
             style={{
               display: "flex",
@@ -319,9 +452,10 @@ export default function EmrPage({
           >
             <Back size={16} /> Back to Search
           </button>
-          <div style={{ display: "flex", gap: "10px" }}>
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
             <button
-              onClick={handleAI}
+              onClick={handleGenerateAiSummary}
+              disabled={aiLoading}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -330,16 +464,18 @@ export default function EmrPage({
                 border: "1px solid #c4b5fd",
                 borderRadius: "8px",
                 padding: "8px 16px",
-                cursor: "pointer",
+                cursor: aiLoading ? "default" : "pointer",
                 fontWeight: 600,
                 color: "#5b21b6",
                 fontSize: "14px",
+                opacity: aiLoading ? 0.6 : 1,
               }}
             >
-              <Zap size={16} /> AI Summary
+              <Zap size={16} /> {aiLoading ? "Generating..." : "AI Summary"}
             </button>
             <button
-              onClick={() => setShowModal(true)}
+              onClick={handleShareWhatsapp}
+              disabled={sharing}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -348,13 +484,14 @@ export default function EmrPage({
                 border: "none",
                 borderRadius: "8px",
                 padding: "8px 18px",
-                cursor: "pointer",
+                cursor: sharing ? "default" : "pointer",
                 fontWeight: 700,
                 color: "#fff",
                 fontSize: "14px",
+                opacity: sharing ? 0.7 : 1,
               }}
             >
-              <Share2 size={16} /> Share via WhatsApp
+              <Share2 size={16} /> {sharing ? "Sending..." : "Share via WhatsApp"}
             </button>
             <button
               onClick={() => window.print()}
@@ -377,6 +514,21 @@ export default function EmrPage({
           </div>
         </div>
 
+        <div className="no-print" style={{ marginBottom: "16px" }}>
+          <Tabs role="tablist" aria-label="EMR sections">
+            {TABS.map((t) => (
+              <TabsTrigger
+                key={t.key}
+                type="button"
+                active={activeTab === t.key}
+                onClick={() => setActiveTab(t.key)}
+              >
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </Tabs>
+        </div>
+
         {/* ══════════════ PRINTABLE REPORT ══════════════ */}
         <div id="emr-printable" className="rpt-wrap">
           {/* ── HEADER ── */}
@@ -386,7 +538,7 @@ export default function EmrPage({
               <div className="rpt-logo-sub">
                 Advanced Healthcare Management System
               </div>
-              <div className="rpt-doc-title">PATIENT JOURNEY REPORT</div>
+              <div className="rpt-doc-title">PATIENT MEDICAL RECORD</div>
             </div>
             <div className="rpt-meta">
               <div>
@@ -398,425 +550,735 @@ export default function EmrPage({
                 })}
               </div>
               <div>
-                <strong>Generated At:</strong>{" "}
-                {new Date().toLocaleTimeString("en-IN", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  second: "2-digit",
-                  hour12: true,
-                })}
-              </div>
-              <div>
                 <strong>Patient ID:</strong> {patient.patient_id}
               </div>
               <div>
-                <strong>System:</strong> HospAI EMR v2.0
+                <strong>System:</strong> HospAI EMR v3.0
               </div>
             </div>
           </div>
 
-          {/* ── PATIENT DETAILS ── */}
-          <div className="sec-title">Patient Details</div>
-          <table className="info-grid">
-            <tbody>
-              <tr>
-                <td className="lbl">Patient ID</td>
-                <td>
-                  <strong>{patient.patient_id}</strong>
-                </td>
-                <td className="lbl">Full Name</td>
-                <td>
-                  <strong>
-                    {patient.name} {patient.last_name || ""}
-                  </strong>
-                </td>
-              </tr>
-              <tr>
-                <td className="lbl">Age / Gender</td>
-                <td>
-                  {patient.age} Yrs / {patient.gender}
-                </td>
-                <td className="lbl">Mobile</td>
-                <td>{patient.phone || "—"}</td>
-              </tr>
-              <tr>
-                <td className="lbl">Blood Group</td>
-                <td>{patient.blood_group || "—"}</td>
-                <td className="lbl">Registered On</td>
-                <td>{patient.created_at ? fmtDt(patient.created_at) : "—"}</td>
-              </tr>
-              <tr>
-                <td className="lbl">Address</td>
-                <td>{patient.address || "—"}</td>
-                <td className="lbl">Emergency Contact</td>
-                <td>{patient.emergency_contact || "—"}</td>
-              </tr>
-              <tr>
-                <td className="lbl">Aadhar No.</td>
-                <td colSpan={3}>{patient.aadhar_number || "—"}</td>
-              </tr>
-            </tbody>
-          </table>
+          {/* ══════════════ OVERVIEW ══════════════ */}
+          <div className={`tab-panel ${activeTab === "overview" ? "active" : ""}`}>
+            <div className="sec-title">Patient Details</div>
+            <table className="info-grid">
+              <tbody>
+                <tr>
+                  <td className="lbl">Patient ID</td>
+                  <td>
+                    <strong>{patient.patient_id}</strong>
+                  </td>
+                  <td className="lbl">Full Name</td>
+                  <td>
+                    <strong>
+                      {patient.name} {patient.last_name || ""}
+                    </strong>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="lbl">Age / Gender</td>
+                  <td>
+                    {patient.age} Yrs / {patient.gender}
+                  </td>
+                  <td className="lbl">Mobile</td>
+                  <td>{patient.phone || "—"}</td>
+                </tr>
+                <tr>
+                  <td className="lbl">Blood Group</td>
+                  <td>{patient.blood_group || "—"}</td>
+                  <td className="lbl">Registered On</td>
+                  <td>{patient.created_at ? fmtDt(patient.created_at) : "—"}</td>
+                </tr>
+                <tr>
+                  <td className="lbl">Address</td>
+                  <td>{patient.address || "—"}</td>
+                  <td className="lbl">Emergency Contact</td>
+                  <td>{patient.emergency_contact || "—"}</td>
+                </tr>
+                <tr>
+                  <td className="lbl">Aadhar No.</td>
+                  <td colSpan={3}>{patient.aadhar_number || "—"}</td>
+                </tr>
+              </tbody>
+            </table>
 
-          {/* ── MEDICAL INFORMATION ── */}
-          <div className="sec-title">Medical Information</div>
-          <table className="info-grid">
-            <tbody>
-              <tr>
-                <td className="lbl">Allergies</td>
-                <td>
-                  {medical_history?.allergies || patient.allergies || "None"}
-                </td>
-                <td className="lbl">Existing Diseases</td>
-                <td>{medical_history?.existing_diseases || "—"}</td>
-              </tr>
-              <tr>
-                <td className="lbl">Chronic Conditions</td>
-                <td>{medical_history?.chronic_conditions || "—"}</td>
-                <td className="lbl">Previous Surgeries</td>
-                <td>{medical_history?.previous_surgeries || "—"}</td>
-              </tr>
-            </tbody>
-          </table>
+            <div className="sec-title">Medical Information</div>
+            <table className="info-grid">
+              <tbody>
+                <tr>
+                  <td className="lbl">Allergies</td>
+                  <td>
+                    {medical_history?.allergies || patient.allergies || "None"}
+                  </td>
+                  <td className="lbl">Existing Diseases</td>
+                  <td>{medical_history?.existing_diseases || "—"}</td>
+                </tr>
+                <tr>
+                  <td className="lbl">Chronic Conditions</td>
+                  <td>{medical_history?.chronic_conditions || "—"}</td>
+                  <td className="lbl">Previous Surgeries</td>
+                  <td>{medical_history?.previous_surgeries || "—"}</td>
+                </tr>
+              </tbody>
+            </table>
 
-          {/* ── AI SUMMARY (if generated) ── */}
-          {aiSum && (
-            <>
-              <div className="sec-title">AI Clinical Summary</div>
-              <div
-                style={{
-                  border: "1px solid #c4b5fd",
-                  background: "#faf5ff",
-                  borderRadius: "0 0 6px 6px",
-                  padding: "12px 14px",
-                  fontSize: "12.5px",
-                  color: "#374151",
-                  lineHeight: 1.7,
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                {aiSum}
-              </div>
-            </>
-          )}
+            <div className="sec-title">Current Status</div>
+            <table className="info-grid">
+              <tbody>
+                <tr>
+                  <td className="lbl">Admission Status</td>
+                  <td>
+                    {currentAdmission ? (
+                      currentAdmission.discharge_date ? (
+                        <StatusBadge status="Discharged" />
+                      ) : (
+                        <StatusBadge status="Admitted" />
+                      )
+                    ) : (
+                      "No admission on record"
+                    )}
+                  </td>
+                  <td className="lbl">Current Bed</td>
+                  <td>
+                    {currentBed
+                      ? `${currentBed.ward} / Room ${currentBed.room_no} / Bed ${currentBed.bed_no}`
+                      : "Not currently assigned"}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
 
-          {/* ── APPOINTMENTS ── */}
-          {appointments.length > 0 && (
-            <>
-              <div className="sec-title">Appointment History</div>
-              <table className="data-tbl">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Date & Time</th>
-                    <th>Department</th>
-                    <th>Doctor</th>
-                    <th style={{ textAlign: "right" }}>Consultation Fee</th>
-                    <th style={{ textAlign: "center" }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {appointments.map((a: any, i: number) => (
+            <div className="sec-title">
+              Journey Timeline — Chronological (Oldest to Newest)
+            </div>
+            <table className="data-tbl">
+              <thead>
+                <tr>
+                  <th style={{ width: "36px" }}>#</th>
+                  <th style={{ width: "110px" }}>Stage</th>
+                  <th>Description</th>
+                  <th style={{ width: "130px" }}>Date & Time</th>
+                  <th style={{ width: "110px" }}>Handled By</th>
+                  <th style={{ width: "90px", textAlign: "right" }}>Amount</th>
+                  <th style={{ width: "100px", textAlign: "center" }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {timeline.length === 0 ? (
+                  <EmptyRow colSpan={7} label="No events found." />
+                ) : (
+                  timeline.map((e: any, i: number) => (
                     <tr key={i}>
-                      <td style={{ color: "#64748b", fontWeight: 600 }}>
+                      <td style={{ color: "#64748b", fontWeight: 600, textAlign: "center" }}>
                         {i + 1}
                       </td>
-                      <td>{fmtDt(a.appointment_date || a.created_at)}</td>
-                      <td>{a.department || "General"}</td>
-                      <td>{a.doctor_name ? `Dr. ${a.doctor_name}` : "—"}</td>
+                      <td style={{ fontWeight: 700, color: "#1e3a5f", fontSize: "12px" }}>
+                        {e.type}
+                      </td>
+                      <td style={{ fontSize: "12px" }}>{e.desc}</td>
+                      <td style={{ fontSize: "11.5px" }}>
+                        {e.ts ? fmt(e.ts) : "—"}
+                      </td>
+                      <td style={{ fontSize: "12px" }}>{e.by}</td>
                       <td
                         style={{
                           textAlign: "right",
                           fontWeight: 700,
-                          color: a.consultation_fee > 0 ? "#065f46" : "#94a3b8",
+                          color: e.amt != null ? "#065f46" : "#cbd5e1",
+                          fontSize: "12px",
                         }}
                       >
-                        {a.consultation_fee > 0
-                          ? `₹${Number(a.consultation_fee).toFixed(2)}`
-                          : "—"}
+                        {e.amt != null ? money(e.amt) : "—"}
                       </td>
                       <td style={{ textAlign: "center" }}>
-                        <StatusBadge status={a.status || "Scheduled"} />
+                        <StatusBadge status={e.status} />
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-                {totalFee > 0 && (
-                  <tfoot>
-                    <tr>
-                      <td colSpan={4} style={{ textAlign: "right" }}>
-                        Total Consultation Fees:
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        ₹{totalFee.toFixed(2)}
-                      </td>
-                      <td />
-                    </tr>
-                  </tfoot>
+                  ))
                 )}
-              </table>
-            </>
-          )}
+              </tbody>
+            </table>
 
-          {/* ── PRESCRIPTIONS ── */}
-          {prescriptions.length > 0 && (
-            <>
-              <div className="sec-title">Prescriptions</div>
-              <table className="data-tbl">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Medicine</th>
-                    <th>Dosage</th>
-                    <th>Frequency</th>
-                    <th>Duration</th>
-                    <th>Instructions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {prescriptions.map((rx: any, i: number) => (
+            {grandTotal > 0 && (
+              <>
+                <div className="sec-title">Financial Summary</div>
+                <div className="fin-box">
+                  {totalFee > 0 && (
+                    <div className="fin-row sub">
+                      <span>Consultation Fees</span>
+                      <span style={{ fontWeight: 700, color: "#065f46" }}>
+                        {money(totalFee)}
+                      </span>
+                    </div>
+                  )}
+                  {totalPharm > 0 && (
+                    <div className="fin-row sub">
+                      <span>Pharmacy Charges</span>
+                      <span style={{ fontWeight: 700, color: "#065f46" }}>
+                        {money(totalPharm)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="fin-row">
+                    <span>TOTAL AMOUNT PAYABLE</span>
+                    <span>{money(grandTotal)}</span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* ══════════════ CLINICAL ══════════════ */}
+          <div className={`tab-panel ${activeTab === "clinical" ? "active" : ""}`}>
+            <div className="sec-title">Encounters &amp; Diagnoses</div>
+            <table className="data-tbl">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Type</th>
+                  <th>Doctor</th>
+                  <th>Diagnosis</th>
+                  <th>Date</th>
+                  <th style={{ textAlign: "center" }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {encounters.length === 0 ? (
+                  <EmptyRow colSpan={6} label="No encounters recorded." />
+                ) : (
+                  encounters.map((e: any, i: number) => {
+                    const dx = diagnoses.filter((d: any) => d.encounter_id === e.id);
+                    return (
+                      <tr key={i}>
+                        <td>{i + 1}</td>
+                        <td style={{ fontWeight: 600 }}>{e.encounter_type}</td>
+                        <td>{e.doctor_name || "—"}</td>
+                        <td>
+                          {dx.length
+                            ? dx.map((d: any) => d.diagnosis_name).join(", ")
+                            : "—"}
+                        </td>
+                        <td>{fmt(e.created_at || e.arrival_at)}</td>
+                        <td style={{ textAlign: "center" }}>
+                          <StatusBadge status={e.status || "Completed"} />
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+
+            {vitals.length > 0 && (
+              <>
+                <div className="sec-title">Vitals</div>
+                <table className="data-tbl">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Recorded</th>
+                      <th>Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vitals.map((v: any, i: number) => (
+                      <tr key={i}>
+                        <td>{i + 1}</td>
+                        <td>{fmtDt(v.recorded_at || v.created_at)}</td>
+                        <td>
+                          {Object.entries(v)
+                            .filter(
+                              ([k, val]) =>
+                                !["id", "patient_id", "recorded_at", "created_at"].includes(k) &&
+                                val != null &&
+                                val !== "",
+                            )
+                            .map(([k, val]) => `${k.replace(/_/g, " ")}: ${val}`)
+                            .join(" · ") || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+
+            <div className="sec-title">Clinical &amp; Observation Notes</div>
+            <table className="data-tbl">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Date</th>
+                  <th>By</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {notes.length === 0 && observation_notes.length === 0 ? (
+                  <EmptyRow colSpan={4} label="No clinical notes recorded." />
+                ) : (
+                  <>
+                    {notes.map((n: any, i: number) => (
+                      <tr key={`cn-${i}`}>
+                        <td>{i + 1}</td>
+                        <td>{fmtDt(n.created_at)}</td>
+                        <td>Clinical</td>
+                        <td>
+                          {[n.chief_complaint, n.notes, n.follow_up]
+                            .filter(Boolean)
+                            .join(" — ") || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                    {observation_notes.map((n: any, i: number) => (
+                      <tr key={`on-${i}`}>
+                        <td>{notes.length + i + 1}</td>
+                        <td>{fmtDt(n.created_at)}</td>
+                        <td>{n.doctor_name || "Observation"}</td>
+                        <td>
+                          {[n.note, n.treatment_plan].filter(Boolean).join(" — ") || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* ══════════════ MEDICATIONS ══════════════ */}
+          <div className={`tab-panel ${activeTab === "medications" ? "active" : ""}`}>
+            <div className="sec-title">Prescriptions</div>
+            <table className="data-tbl">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Medicine</th>
+                  <th>Dosage</th>
+                  <th>Qty</th>
+                  <th>Prescribed By</th>
+                  <th>Date</th>
+                  <th style={{ textAlign: "center" }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {prescriptions.length === 0 ? (
+                  <EmptyRow colSpan={7} label="No prescriptions recorded." />
+                ) : (
+                  prescriptions.map((rx: any, i: number) => (
                     <tr key={i}>
                       <td style={{ color: "#64748b" }}>{i + 1}</td>
                       <td style={{ fontWeight: 600 }}>{rx.medicine_name}</td>
                       <td>{rx.dosage || "—"}</td>
-                      <td>{rx.frequency || "—"}</td>
-                      <td>{rx.duration || "—"}</td>
-                      <td>{rx.instructions || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-
-          {/* ── LAB REPORTS ── */}
-          {labs.length > 0 && (
-            <>
-              <div className="sec-title">Laboratory Reports</div>
-              <table className="data-tbl">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Test Name</th>
-                    <th>Result</th>
-                    <th>Normal Range</th>
-                    <th>Date</th>
-                    <th style={{ textAlign: "center" }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {labs.map((lab: any, i: number) => (
-                    <tr key={i}>
-                      <td style={{ color: "#64748b" }}>{i + 1}</td>
-                      <td style={{ fontWeight: 600 }}>{lab.test_name}</td>
-                      <td>{lab.result || "—"}</td>
-                      <td>{lab.normal_range || "—"}</td>
-                      <td>{fmt(lab.created_at)}</td>
+                      <td>{rx.quantity ?? "—"}</td>
+                      <td>{rx.doctor_username || "—"}</td>
+                      <td>{fmt(rx.created_at)}</td>
                       <td style={{ textAlign: "center" }}>
-                        <StatusBadge status={lab.status || "Done"} />
+                        <StatusBadge status={rx.status || "pending"} />
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
+                  ))
+                )}
+              </tbody>
+            </table>
 
-          {/* ── PHARMACY ── */}
-          {pharmacy_sales.length > 0 && (
-            <>
-              <div className="sec-title">Pharmacy Dispensations</div>
-              <table className="data-tbl">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Medicine</th>
-                    <th style={{ textAlign: "center" }}>Qty</th>
-                    <th style={{ textAlign: "right" }}>Amount</th>
-                    <th>Date</th>
-                    <th style={{ textAlign: "center" }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pharmacy_sales.map((s: any, i: number) => (
+            <div className="sec-title">Medication Schedule</div>
+            <table className="data-tbl">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Medicine</th>
+                  <th>Dosage</th>
+                  <th>Scheduled</th>
+                  <th style={{ textAlign: "center" }}>Administered</th>
+                </tr>
+              </thead>
+              <tbody>
+                {medication_schedules.length === 0 ? (
+                  <EmptyRow colSpan={5} label="No medication schedule recorded." />
+                ) : (
+                  medication_schedules.map((m: any, i: number) => (
+                    <tr key={i}>
+                      <td>{i + 1}</td>
+                      <td style={{ fontWeight: 600 }}>{m.medicine_name}</td>
+                      <td>{m.dosage || "—"}</td>
+                      <td>{fmtDt(m.schedule_time)}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <StatusBadge status={m.administered ? "Completed" : "Pending"} />
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+
+            <div className="sec-title">Pharmacy Dispensations</div>
+            <table className="data-tbl">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Medicine</th>
+                  <th style={{ textAlign: "center" }}>Qty</th>
+                  <th style={{ textAlign: "right" }}>Amount</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pharmacy_sales.length === 0 ? (
+                  <EmptyRow colSpan={5} label="No pharmacy dispensations recorded." />
+                ) : (
+                  pharmacy_sales.map((s: any, i: number) => (
                     <tr key={i}>
                       <td style={{ color: "#64748b" }}>{i + 1}</td>
                       <td style={{ fontWeight: 600 }}>{s.medicine_name}</td>
                       <td style={{ textAlign: "center" }}>{s.quantity}</td>
-                      <td
-                        style={{
-                          textAlign: "right",
-                          fontWeight: 700,
-                          color: "#065f46",
-                        }}
-                      >
-                        ₹{Number(s.amount).toFixed(2)}
+                      <td style={{ textAlign: "right", fontWeight: 700, color: "#065f46" }}>
+                        {money(s.amount)}
                       </td>
                       <td>{fmt(s.sold_at || s.created_at)}</td>
-                      <td style={{ textAlign: "center" }}>
-                        <StatusBadge status="Dispensed" />
-                      </td>
                     </tr>
-                  ))}
-                </tbody>
-                {totalPharm > 0 && (
-                  <tfoot>
-                    <tr>
-                      <td colSpan={3} style={{ textAlign: "right" }}>
-                        Total Pharmacy Charges:
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        ₹{totalPharm.toFixed(2)}
-                      </td>
-                      <td colSpan={2} />
-                    </tr>
-                  </tfoot>
+                  ))
                 )}
-              </table>
-            </>
-          )}
-
-          {/* ── JOURNEY TIMELINE ── */}
-          <div className="sec-title">
-            Journey Timeline — Chronological (Oldest to Newest)
-          </div>
-          <table className="data-tbl">
-            <thead>
-              <tr>
-                <th style={{ width: "36px" }}>#</th>
-                <th style={{ width: "110px" }}>Stage</th>
-                <th>Description</th>
-                <th style={{ width: "130px" }}>Date & Time</th>
-                <th style={{ width: "110px" }}>Handled By</th>
-                <th style={{ width: "90px", textAlign: "right" }}>Amount</th>
-                <th style={{ width: "100px", textAlign: "center" }}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {timeline.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={7}
-                    style={{
-                      textAlign: "center",
-                      padding: "20px",
-                      color: "#94a3b8",
-                    }}
-                  >
-                    No events found.
-                  </td>
-                </tr>
-              ) : (
-                timeline.map((e: any, i: number) => (
-                  <tr key={i}>
-                    <td
-                      style={{
-                        color: "#64748b",
-                        fontWeight: 600,
-                        textAlign: "center",
-                      }}
-                    >
-                      {i + 1}
+              </tbody>
+              {totalPharm > 0 && (
+                <tfoot>
+                  <tr>
+                    <td colSpan={3} style={{ textAlign: "right" }}>
+                      Total Pharmacy Charges:
                     </td>
-                    <td
-                      style={{
-                        fontWeight: 700,
-                        color: "#1e3a5f",
-                        fontSize: "12px",
-                      }}
-                    >
-                      {e.type}
-                    </td>
-                    <td style={{ fontSize: "12px" }}>{e.desc}</td>
-                    <td style={{ fontSize: "11.5px" }}>
-                      <div style={{ fontWeight: 600 }}>
-                        {e.ts ? fmt(e.ts) : "—"}
-                      </div>
-                      <div style={{ color: "#64748b" }}>
-                        {e.ts
-                          ? new Date(e.ts).toLocaleTimeString("en-IN", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              hour12: true,
-                            })
-                          : ""}
-                      </div>
-                    </td>
-                    <td style={{ fontSize: "12px" }}>{e.by}</td>
-                    <td
-                      style={{
-                        textAlign: "right",
-                        fontWeight: 700,
-                        color: e.amt != null ? "#065f46" : "#cbd5e1",
-                        fontSize: "12px",
-                      }}
-                    >
-                      {e.amt != null ? `₹${Number(e.amt).toFixed(2)}` : "—"}
-                    </td>
-                    <td style={{ textAlign: "center" }}>
-                      <StatusBadge status={e.status} />
-                    </td>
+                    <td style={{ textAlign: "right" }}>{money(totalPharm)}</td>
+                    <td />
                   </tr>
-                ))
+                </tfoot>
               )}
-            </tbody>
-            {timeline.some((e: any) => e.amt != null) && (
-              <tfoot>
-                <tr>
-                  <td colSpan={5} style={{ textAlign: "right" }}>
-                    Grand Total:
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    ₹
-                    {timeline
-                      .filter((e: any) => e.amt != null)
-                      .reduce((s: number, e: any) => s + Number(e.amt), 0)
-                      .toFixed(2)}
-                  </td>
-                  <td />
-                </tr>
-              </tfoot>
-            )}
-          </table>
+            </table>
+          </div>
 
-          {/* ── FINANCIAL SUMMARY ── */}
-          {grandTotal > 0 && (
-            <>
-              <div className="sec-title">Financial Summary</div>
-              <div className="fin-box">
-                {totalFee > 0 && (
-                  <div className="fin-row sub">
-                    <span>
-                      Consultation Fees (
-                      {
-                        appointments.filter((a: any) => a.consultation_fee > 0)
-                          .length
-                      }{" "}
-                      visit{appointments.length > 1 ? "s" : ""})
-                    </span>
-                    <span style={{ fontWeight: 700, color: "#065f46" }}>
-                      ₹{totalFee.toFixed(2)}
-                    </span>
-                  </div>
+          {/* ══════════════ DOCUMENTS ══════════════ */}
+          <div className={`tab-panel ${activeTab === "documents" ? "active" : ""}`}>
+            <div className="sec-title">Uploaded Documents</div>
+            <table className="data-tbl">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>File</th>
+                  <th>Type</th>
+                  <th>Date</th>
+                  <th style={{ textAlign: "center" }}>OCR</th>
+                  <th className="no-print" style={{ textAlign: "center" }}>
+                    Action
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {documents.length === 0 ? (
+                  <EmptyRow colSpan={6} label="No documents uploaded." />
+                ) : (
+                  documents.map((d: any, i: number) => (
+                    <tr key={i}>
+                      <td style={{ color: "#64748b" }}>{i + 1}</td>
+                      <td style={{ fontWeight: 600 }}>{d.file_name}</td>
+                      <td>{d.doc_type || "—"}</td>
+                      <td>{fmt(d.created_at)}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <StatusBadge status={d.has_ocr_text ? "Completed" : "Pending"} />
+                      </td>
+                      <td className="no-print" style={{ textAlign: "center" }}>
+                        <a
+                          href={`${API_BASE}/api/documents/${d.id}/file`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            color: "#1e3a5f",
+                            fontWeight: 600,
+                            fontSize: "12px",
+                          }}
+                        >
+                          <Download size={13} /> View
+                        </a>
+                      </td>
+                    </tr>
+                  ))
                 )}
-                {totalPharm > 0 && (
-                  <div className="fin-row sub">
-                    <span>
-                      Pharmacy Charges ({pharmacy_sales.length} item
-                      {pharmacy_sales.length > 1 ? "s" : ""})
-                    </span>
-                    <span style={{ fontWeight: 700, color: "#065f46" }}>
-                      ₹{totalPharm.toFixed(2)}
-                    </span>
-                  </div>
+              </tbody>
+            </table>
+          </div>
+
+          {/* ══════════════ BILLING ══════════════ */}
+          <div className={`tab-panel ${activeTab === "billing" ? "active" : ""}`}>
+            {appointments.length > 0 && (
+              <>
+                <div className="sec-title">Appointment History</div>
+                <table className="data-tbl">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Date &amp; Time</th>
+                      <th>Department</th>
+                      <th>Doctor</th>
+                      <th style={{ textAlign: "right" }}>Consultation Fee</th>
+                      <th style={{ textAlign: "center" }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {appointments.map((a: any, i: number) => (
+                      <tr key={i}>
+                        <td style={{ color: "#64748b", fontWeight: 600 }}>{i + 1}</td>
+                        <td>{fmtDt(a.appointment_date || a.created_at)}</td>
+                        <td>{a.department || "General"}</td>
+                        <td>{a.doctor_name ? `Dr. ${a.doctor_name}` : "—"}</td>
+                        <td
+                          style={{
+                            textAlign: "right",
+                            fontWeight: 700,
+                            color: a.consultation_fee > 0 ? "#065f46" : "#94a3b8",
+                          }}
+                        >
+                          {a.consultation_fee > 0 ? money(a.consultation_fee) : "—"}
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <StatusBadge status={a.status || "Scheduled"} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {totalFee > 0 && (
+                    <tfoot>
+                      <tr>
+                        <td colSpan={4} style={{ textAlign: "right" }}>
+                          Total Consultation Fees:
+                        </td>
+                        <td style={{ textAlign: "right" }}>{money(totalFee)}</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </>
+            )}
+
+            <div className="sec-title">Invoices</div>
+            <table className="data-tbl">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Invoice No.</th>
+                  <th>Module</th>
+                  <th style={{ textAlign: "right" }}>Total</th>
+                  <th style={{ textAlign: "right" }}>Paid</th>
+                  <th style={{ textAlign: "right" }}>Due</th>
+                  <th>Date</th>
+                  <th style={{ textAlign: "center" }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.length === 0 ? (
+                  <EmptyRow colSpan={8} label="No invoices recorded." />
+                ) : (
+                  invoices.map((inv: any, i: number) => (
+                    <tr key={i}>
+                      <td>{i + 1}</td>
+                      <td style={{ fontWeight: 600 }}>{inv.invoice_no}</td>
+                      <td>{inv.module}</td>
+                      <td style={{ textAlign: "right" }}>{money(inv.total_amount)}</td>
+                      <td style={{ textAlign: "right" }}>{money(inv.paid_amount)}</td>
+                      <td style={{ textAlign: "right" }}>{money(inv.due_amount)}</td>
+                      <td>{fmt(inv.created_at)}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <StatusBadge status={inv.payment_status} />
+                      </td>
+                    </tr>
+                  ))
                 )}
-                <div className="fin-row">
-                  <span>TOTAL AMOUNT PAYABLE</span>
-                  <span>₹{grandTotal.toFixed(2)}</span>
+              </tbody>
+              {invoices.length > 0 && (
+                <tfoot>
+                  <tr>
+                    <td colSpan={3} style={{ textAlign: "right" }}>
+                      Total Invoiced / Paid:
+                    </td>
+                    <td style={{ textAlign: "right" }}>{money(totalInvoiced)}</td>
+                    <td style={{ textAlign: "right" }}>{money(totalPaidInvoices)}</td>
+                    <td colSpan={3} />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+
+            <div className="sec-title">Payments Received</div>
+            <table className="data-tbl">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th style={{ textAlign: "right" }}>Amount</th>
+                  <th>Mode</th>
+                  <th>Reference</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invoice_payments.length === 0 ? (
+                  <EmptyRow colSpan={5} label="No payments recorded." />
+                ) : (
+                  invoice_payments.map((p: any, i: number) => (
+                    <tr key={i}>
+                      <td>{i + 1}</td>
+                      <td style={{ textAlign: "right", fontWeight: 700, color: "#065f46" }}>
+                        {money(p.amount)}
+                      </td>
+                      <td style={{ textTransform: "capitalize" }}>{p.payment_mode}</td>
+                      <td>{p.gateway_ref || "—"}</td>
+                      <td>{fmtDt(p.created_at)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+
+            {insurance_claims.length > 0 && (
+              <>
+                <div className="sec-title">Insurance Claims</div>
+                <table className="data-tbl">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Insurer</th>
+                      <th style={{ textAlign: "right" }}>Claimed</th>
+                      <th style={{ textAlign: "right" }}>Approved</th>
+                      <th>Submitted</th>
+                      <th style={{ textAlign: "center" }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {insurance_claims.map((c: any, i: number) => (
+                      <tr key={i}>
+                        <td>{i + 1}</td>
+                        <td style={{ fontWeight: 600 }}>{c.insurer_name}</td>
+                        <td style={{ textAlign: "right" }}>{money(c.claim_amount)}</td>
+                        <td style={{ textAlign: "right" }}>{money(c.approved_amount)}</td>
+                        <td>{fmt(c.submitted_at)}</td>
+                        <td style={{ textAlign: "center" }}>
+                          <StatusBadge status={c.claim_status} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+
+            {labs.length > 0 && (
+              <>
+                <div className="sec-title">Lab / Diagnostic Charges</div>
+                <table className="data-tbl">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Test</th>
+                      <th style={{ textAlign: "right" }}>Amount</th>
+                      <th>Date</th>
+                      <th style={{ textAlign: "center" }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {labs.map((lab: any, i: number) => (
+                      <tr key={i}>
+                        <td style={{ color: "#64748b" }}>{i + 1}</td>
+                        <td style={{ fontWeight: 600 }}>{lab.test_name}</td>
+                        <td style={{ textAlign: "right" }}>{money(lab.amount)}</td>
+                        <td>{fmt(lab.created_at)}</td>
+                        <td style={{ textAlign: "center" }}>
+                          <StatusBadge status={lab.status || "due"} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </div>
+
+          {/* ══════════════ AI SUMMARY ══════════════ */}
+          <div className={`tab-panel ${activeTab === "ai-summary" ? "active" : ""}`}>
+            <div className="sec-title">{aiTitle || "AI Clinical Summary"}</div>
+            {!aiSummary ? (
+              <div
+                className="no-print"
+                style={{
+                  border: "1px dashed #cbd5e1",
+                  borderRadius: "8px",
+                  padding: "24px",
+                  textAlign: "center",
+                  color: "#64748b",
+                }}
+              >
+                <p style={{ marginBottom: "12px" }}>
+                  No AI summary generated yet for this patient.
+                </p>
+                <Button onClick={handleGenerateAiSummary} disabled={aiLoading}>
+                  {aiLoading ? "Generating..." : "Generate AI Summary"}
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className="no-print ai-summary-editor" style={{ marginTop: "8px" }}>
+                  <Textarea
+                    value={aiSummary}
+                    onChange={(e) => setAiSummary(e.target.value)}
+                    rows={14}
+                  />
+                  <p className="muted" style={{ marginTop: "6px", fontSize: "12px" }}>
+                    You can edit this before sharing or printing.
+                  </p>
+                  <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+                    <Button
+                      variant="ghost"
+                      onClick={handleGenerateAiSummary}
+                      disabled={aiLoading}
+                    >
+                      {aiLoading ? "Regenerating..." : "Regenerate"}
+                    </Button>
+                    <Button onClick={handleShareWhatsapp} disabled={sharing}>
+                      {sharing ? "Sending..." : "Share via WhatsApp"}
+                    </Button>
+                  </div>
+                </div>
+                <div className="ai-summary-box" style={{ marginTop: "10px" }}>
+                  {aiSummary}
+                </div>
+              </>
+            )}
+
+            {certificates.length > 1 && (
+              <div className="no-print" style={{ marginTop: "18px" }}>
+                <div className="sec-title" style={{ marginTop: 0 }}>
+                  Previous Summaries &amp; Certificates
+                </div>
+                <div className="ai-cert-list">
+                  {certificates.slice(1).map((c: any) => (
+                    <div
+                      key={c.id}
+                      className="ai-cert-item"
+                      onClick={() => {
+                        setAiSummary(c.body);
+                        setAiTitle(c.title);
+                      }}
+                    >
+                      <strong>{c.title}</strong>
+                      <span style={{ color: "#64748b" }}>
+                        {" "}
+                        — {fmtDt(c.created_at)}
+                        {c.issued_by ? ` · ${c.issued_by}` : ""}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </>
-          )}
+            )}
+          </div>
 
           {/* ── FOOTER ── */}
           <div className="rpt-footer">
@@ -830,45 +1292,30 @@ export default function EmrPage({
           </div>
         </div>
 
-        {/* ══════════════ WHATSAPP MODAL ══════════════ */}
+        {/* ══════════════ MANUAL SHARE FALLBACK MODAL ══════════════ */}
         <Modal
-          open={showModal}
-          onClose={() => setShowModal(false)}
-          title="Share Patient Report via WhatsApp"
+          open={manualShareOpen}
+          onClose={() => setManualShareOpen(false)}
+          title="Share Manually via WhatsApp"
+          description={manualShareReason}
         >
           <div className="wa-modal-body">
-            <p
-              style={{
-                fontSize: "13.5px",
-                color: "#374151",
-                marginBottom: "16px",
-                lineHeight: 1.6,
-              }}
-            >
-              Clicking the button below will:
-              <br />
-              <strong>1.</strong> Automatically open the{" "}
-              <strong>Print / Save PDF dialog</strong> so you can save the
-              report
-              <br />
-              <strong>2.</strong> Open <strong>WhatsApp</strong> with a
-              personalised feedback message for{" "}
-              <strong>{data?.patient?.name}</strong>
+            <p style={{ fontSize: "13.5px", color: "#374151", marginBottom: "16px", lineHeight: 1.6 }}>
+              Clicking below will open the Print / Save PDF dialog so you can save the
+              summary, then open WhatsApp with a message for{" "}
+              <strong>{data?.patient?.name}</strong> to attach it to manually.
             </p>
-            <button className="wa-big-btn" onClick={handleWhatsApp}>
+            <button className="wa-big-btn" onClick={handleManualShare}>
               <svg viewBox="0 0 24 24" fill="currentColor">
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
                 <path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.126 1.532 5.859L.057 23.776l6.079-1.594A11.942 11.942 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.812 9.812 0 01-5.007-1.372l-.359-.214-3.717.976.993-3.623-.234-.373A9.816 9.816 0 012.182 12c0-5.424 4.394-9.818 9.818-9.818 5.424 0 9.818 4.394 9.818 9.818 0 5.424-4.394 9.818-9.818 9.818z" />
               </svg>
-              Send Report + Feedback Request on WhatsApp
+              Save PDF &amp; Open WhatsApp
             </button>
             <div className="wa-note">
-              ✅ The PDF print dialog will open automatically first.
+              ✅ The PDF print dialog opens automatically first.
               <br />
-              ✅ Save the PDF, then attach it to the WhatsApp message that
-              opens.
-              <br />✅ The message includes a personalised feedback request for
-              the patient.
+              ✅ Save the PDF, then attach it to the WhatsApp chat that opens.
             </div>
           </div>
         </Modal>

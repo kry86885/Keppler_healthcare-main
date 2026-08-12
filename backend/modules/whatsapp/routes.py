@@ -1,7 +1,13 @@
-from flask import Blueprint, request, jsonify, current_app, g
+from flask import Blueprint, request, jsonify, current_app, g, send_file
 from app import require_session, require_permissions
-from utils.database import get_connection, get_whatsapp_settings, save_whatsapp_settings
+from utils.database import (
+    get_connection,
+    get_whatsapp_media,
+    get_whatsapp_settings,
+    save_whatsapp_settings,
+)
 from core.secrets import encrypt_secret, encryption_configured
+import io
 import os
 import requests
 import json
@@ -51,6 +57,25 @@ def verify_webhook():
         else:
             return "Forbidden", 403
     return "OK", 200
+
+
+@whatsapp_bp.route("/media/<token>", methods=["GET"])
+def media(token):
+    """Serves a file previously stashed by store_whatsapp_media() so Twilio's
+    servers can fetch it as a message attachment. Deliberately unauthenticated
+    (no session cookie) -- Twilio can't send one -- security comes from the
+    token being an unguessable random UUID, same trust model as the webhook
+    routes above. This route was referenced (media_url construction in
+    patients/routes.py) but never actually registered, so WhatsApp document
+    attachments have been silently failing; this is the fix."""
+    content, mime_type = get_whatsapp_media(token)
+    if content is None:
+        return jsonify({"error": "Not found"}), 404
+    return send_file(
+        io.BytesIO(content),
+        mimetype=mime_type or "application/octet-stream",
+        as_attachment=False,
+    )
 
 
 @whatsapp_bp.route("/webhook", methods=["POST"])

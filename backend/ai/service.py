@@ -209,3 +209,110 @@ def patient_history_search(query: str, hospital_id, patient_id=None, k: int = 5)
             for m in matches
         ],
     }
+
+
+_PATIENT_SUMMARY_PROMPT = """You are a hospital clinical documentation assistant. Write a {kind} for the
+patient below, using ONLY the information given -- never invent a diagnosis, medication,
+finding, or instruction that isn't present in the data provided.
+
+Patient: {patient_name}, {age} yrs, {gender}
+{admission_line}
+
+Encounters:
+{encounters_block}
+
+Diagnoses:
+{diagnoses_block}
+
+Medications:
+{medications_block}
+
+Lab / diagnostic tests ordered:
+{labs_block}
+
+Clinical notes:
+{notes_block}
+
+Write the {kind} in exactly this structure, with each heading on its own line:
+**Chief Complaint / Reason for Visit**
+**Hospital Course / Summary**
+**Diagnosis**
+**Medications{discharge_meds_hint}**
+**Follow-up Instructions**
+**Condition at {condition_label}**
+
+Keep it concise and clinically accurate to only what's given above. If a section has
+nothing to go on, write "Not documented" for that section instead of guessing.
+"""
+
+
+def _summary_block(items, formatter, empty="None documented."):
+    if not items:
+        return empty
+    lines = []
+    for item in items[:20]:
+        try:
+            text = formatter(item)
+        except Exception:
+            continue
+        if text:
+            lines.append(f"- {text}")
+    return "\n".join(lines) if lines else empty
+
+
+def generate_patient_summary(
+    patient, admissions, encounters, diagnoses, prescriptions, labs, notes, is_discharge=False
+):
+    """Generates a discharge summary (is_discharge=True) or a mid-stay clinical
+    progress summary (is_discharge=False) from a patient's aggregated EMR
+    data, following the same _try_generate -> None-on-failure pattern as
+    every other generator in this module. Callers must treat None as "AI
+    isn't available right now", not a real summary."""
+    if not llm_provider.is_configured():
+        return None
+
+    patient_name = (
+        f"{patient.get('name') or ''} {patient.get('last_name') or ''}".strip()
+        or "Unknown"
+    )
+
+    admission_line = "No admission on record."
+    if admissions:
+        latest = admissions[0]
+        parts = [f"Admitted: {latest.get('admission_date') or '—'}"]
+        if latest.get("discharge_date"):
+            parts.append(f"Discharged: {latest['discharge_date']}")
+        if latest.get("notes"):
+            parts.append(f"Admission notes: {latest['notes']}")
+        admission_line = " | ".join(parts)
+
+    prompt = _PATIENT_SUMMARY_PROMPT.format(
+        kind="discharge summary" if is_discharge else "clinical progress summary",
+        patient_name=patient_name,
+        age=patient.get("age") or "—",
+        gender=patient.get("gender") or "—",
+        admission_line=admission_line,
+        encounters_block=_summary_block(
+            encounters,
+            lambda e: f"{e.get('encounter_type') or 'Encounter'} on {e.get('arrival_at') or e.get('created_at') or '—'} (status: {e.get('status') or '—'})",
+        ),
+        diagnoses_block=_summary_block(
+            diagnoses, lambda d: d.get("diagnosis_name") or "—"
+        ),
+        medications_block=_summary_block(
+            prescriptions,
+            lambda p: f"{p.get('medicine_name')}"
+            + (f" {p['dosage']}" if p.get("dosage") else "")
+            + (f" (qty {p['quantity']})" if p.get("quantity") else ""),
+        ),
+        labs_block=_summary_block(
+            labs, lambda l: f"{l.get('test_name')} (status: {l.get('status') or '—'})"
+        ),
+        notes_block=_summary_block(
+            notes,
+            lambda n: n.get("notes") or n.get("note") or n.get("chief_complaint") or "",
+        ),
+        discharge_meds_hint=" to Take Home" if is_discharge else "",
+        condition_label="Discharge" if is_discharge else "Today",
+    )
+    return _try_generate(prompt)
