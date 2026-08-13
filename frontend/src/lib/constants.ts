@@ -543,6 +543,15 @@ export const NAV_ITEMS: NavItem[] = [
     subtitle:
       "Audit trail, WhatsApp Business API key, and message templates.",
     group: "admin",
+    // Every other item in this "admin" group requires a specific permission;
+    // Settings was the one exception with none, so it showed for every
+    // logged-in user (including "normal" accounts with no module_access at
+    // all) even though the page itself only renders its WhatsApp/Templates/
+    // Audit tabs for admins -- a non-admin clicking in saw a bare "Overview"
+    // tab that didn't match this subtitle at all. admin.use matches how the
+    // page's own isAdmin/canReadAudit gates already treat it.
+    permission: "admin.use",
+    deniedHint: "Requires admin access.",
   },
 ];
 

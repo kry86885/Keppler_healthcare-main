@@ -599,7 +599,14 @@ function App() {
         return candidate;
       }
     }
-    return "settings";
+    // "settings" used to be a safe universal fallback because it had no
+    // permission gate at all; now that it's admin.use-gated like every
+    // other item in its group, an account with literally zero module_access
+    // (e.g. a brand-new employee not yet configured) would otherwise be
+    // routed to a page it immediately gets bounced back out of. "dashboard"
+    // is the first (and most universally granted) candidate above, so
+    // falling back to it here is consistent, not a new default.
+    return "dashboard";
   };
 
   const syncUrlForPage = (nextPage: string) => {
