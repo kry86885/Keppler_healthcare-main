@@ -40,19 +40,24 @@ USER_TYPES = ("admin", "normal")
 # backend blueprints are stub scaffolding (Phase A/E/F/G) with no real pages
 # behind them yet; there's nothing to protect there. "beds" (Phase H) is the
 # first of that batch to get a real page -- see modules/beds/routes.py.
+# Ordered to match the sidebar's visual grouping (Overview -> OP Management ->
+# Operations -> AI -> Finance -> Administration) so the RBAC checkbox list in
+# Employee Management reads in the same order an admin sees the modules laid
+# out in their own sidebar -- see MODULE_OPTIONS in frontend/src/lib/constants.ts,
+# which must be kept in this same order.
 ASSIGNABLE_MODULES = (
-    "dashboard",
-    "patients",
-    "op",
-    "beds",
-    "billing",
-    "pharmacy",
-    "hrms",
-    "accounts",
-    "reports",
-    "symptom_ai",
-    "employees",
-    "patient_experience",
+    "dashboard",  # Overview
+    "patients",  # OP Management
+    "op",  # Operations
+    "beds",  # Operations
+    "pharmacy",  # Operations
+    "symptom_ai",  # AI
+    "billing",  # Finance
+    "accounts",  # Finance
+    "reports",  # Finance
+    "hrms",  # Administration
+    "employees",  # Administration
+    "patient_experience",  # Administration
 )
 DEFAULT_NORMAL_MODULES = ("dashboard", "patients", "symptom_ai")
 
@@ -61,12 +66,12 @@ MODULE_BASE_PERMISSION = {
     "patients": "patients.read",
     "op": "op.read",
     "beds": "beds.read",
-    "billing": "billing.read",
     "pharmacy": "pharmacy.read",
-    "hrms": "hr.read",
+    "symptom_ai": "symptom_ai.use",
+    "billing": "billing.read",
     "accounts": "accounts.read",
     "reports": "reports.read",
-    "symptom_ai": "symptom_ai.use",
+    "hrms": "hr.read",
     "employees": "employees.read",
     "patient_experience": "patient_experience.read",
 }
@@ -131,16 +136,6 @@ SUB_MODULES = {
             "permissions": ["beds.write"],
         },
     },
-    "billing": {
-        "invoices": {
-            "label": "Invoices & Payments",
-            "permissions": ["billing.invoices.write"],
-        },
-        "claims": {
-            "label": "Insurance Claims",
-            "permissions": ["billing.claims.write"],
-        },
-    },
     "pharmacy": {
         "inventory": {
             "label": "Inventory",
@@ -160,14 +155,21 @@ SUB_MODULES = {
             "permissions": ["pharmacy.prescriptions.write"],
         },
     },
-    "hrms": {
-        "departments": {
-            "label": "Departments",
-            "permissions": ["hr.departments.write"],
+    "symptom_ai": {
+        "documents": {
+            "label": "Knowledge Vault Documents",
+            "permissions": ["symptom_ai.documents.write"],
         },
-        "attendance": {"label": "Attendance", "permissions": ["hr.attendance.write"]},
-        "payroll": {"label": "Payroll", "permissions": ["hr.payroll.write"]},
-        "leaves": {"label": "Leave Requests", "permissions": ["hr.leaves.write"]},
+    },
+    "billing": {
+        "invoices": {
+            "label": "Invoices & Payments",
+            "permissions": ["billing.invoices.write"],
+        },
+        "claims": {
+            "label": "Insurance Claims",
+            "permissions": ["billing.claims.write"],
+        },
     },
     "accounts": {
         "ledger": {"label": "Ledger", "permissions": ["accounts.ledger.write"]},
@@ -180,11 +182,14 @@ SUB_MODULES = {
             "permissions": ["accounts.doctors.write"],
         },
     },
-    "symptom_ai": {
-        "documents": {
-            "label": "Knowledge Vault Documents",
-            "permissions": ["symptom_ai.documents.write"],
+    "hrms": {
+        "departments": {
+            "label": "Departments",
+            "permissions": ["hr.departments.write"],
         },
+        "attendance": {"label": "Attendance", "permissions": ["hr.attendance.write"]},
+        "payroll": {"label": "Payroll", "permissions": ["hr.payroll.write"]},
+        "leaves": {"label": "Leave Requests", "permissions": ["hr.leaves.write"]},
     },
     "employees": {
         "profile": {

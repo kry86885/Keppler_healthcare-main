@@ -6307,7 +6307,7 @@ def get_reports_overview(hospital_id=None):
         )
 
         cursor.execute(
-            "SELECT COUNT(*) AS icu_patients FROM icu_monitoring WHERE ventilator_active = 1"
+            "SELECT COUNT(*) AS icu_patients FROM icu_monitoring WHERE ventilator_active = TRUE"
         )
         icu_critical = int(
             (cursor.fetchone() or {"icu_patients": 0})["icu_patients"] or 0

@@ -42,6 +42,8 @@ const DoctorPrescriptionPage = lazy(
 const EmrPage = lazy(() => import("./pages/EmrPage"));
 const RegistrationDeskPage = lazy(() => import("./pages/RegistrationDeskPage"));
 const BulkPatientAiPage = lazy(() => import("./pages/BulkPatientAiPage"));
+const AccountsPage = lazy(() => import("./pages/AccountsPage"));
+const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 import {
   API_BASE,
   EMPTY_STATS,
@@ -121,8 +123,6 @@ const NAV_ICON_MAP: Record<string, SidebarIconName> = {
   "billing-daily-monthly-reports": "billing",
   pharmacy: "pharmacy",
   hrms: "hrms",
-  accounts: "billing",
-  "accounts-overview": "billing",
   "accounts-ledger": "billing",
   "accounts-vendor-payments": "billing",
   "accounts-doctor-payouts": "billing",
@@ -560,6 +560,8 @@ function App() {
       "consent-desk",
       "insurance-desk",
       "op-desk",
+      "pharmacy",
+      "symptom-ai",
       "billing-aging",
       "billing-reconciliation",
       "billing-create-invoice",
@@ -571,15 +573,11 @@ function App() {
       "billing-payment-collection",
       "billing-revenue-reports",
       "billing-daily-monthly-reports",
-      "pharmacy",
-      "hrms",
-      "accounts",
-      "reports",
       "accounts-ledger",
       "accounts-vendor-payments",
       "accounts-doctor-payouts",
       "reports",
-      "symptom-ai",
+      "hrms",
       "employees",
       "settings",
     ];
@@ -1781,6 +1779,20 @@ function App() {
                   onNavigate={navigateToPage}
                 />
               )}
+            {page === "accounts-ledger" && hasPermission("accounts.read") && (
+              <AccountsPage setNotice={setNotice} view="ledger" />
+            )}
+            {page === "accounts-vendor-payments" &&
+              hasPermission("accounts.read") && (
+                <AccountsPage setNotice={setNotice} view="vendor-payments" />
+              )}
+            {page === "accounts-doctor-payouts" &&
+              hasPermission("accounts.read") && (
+                <AccountsPage setNotice={setNotice} view="doctor-payouts" />
+              )}
+            {page === "reports" && hasPermission("reports.read") && (
+              <ReportsPage setNotice={setNotice} />
+            )}
 
             {page === "beds" && hasPermission("beds.read") && (
               <BedManagementPage setNotice={setNotice} />

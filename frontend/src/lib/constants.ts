@@ -34,17 +34,25 @@ export const USER_TYPE_LABELS = USER_TYPE_OPTIONS.reduce<
   return acc;
 }, {});
 
+// Ordered to match the sidebar's own visual grouping (Overview -> OP
+// Management -> Operations -> AI -> Finance -> Administration), so the RBAC
+// checkbox list in Employee Management reads in the same order an admin sees
+// the modules laid out in their own sidebar. Mirrors
+// backend/core/auth.py's ASSIGNABLE_MODULES -- keep both in this same order.
 export const MODULE_OPTIONS: ModuleOption[] = [
+  // Overview
   {
     value: "dashboard",
     label: "Dashboard",
     description: "Hospital dashboard and analytics widgets.",
   },
+  // OP Management
   {
     value: "patients",
     label: "Patient Management",
     description: "Patient registration and treatment workflows.",
   },
+  // Operations
   {
     value: "op",
     label: "Doctor Scheduling",
@@ -56,19 +64,21 @@ export const MODULE_OPTIONS: ModuleOption[] = [
     description: "Room/bed layout, admitting and discharging patients.",
   },
   {
-    value: "billing",
-    label: "Billing",
-    description: "Invoices, collections, and payment workflows.",
-  },
-  {
     value: "pharmacy",
     label: "Pharmacy",
     description: "Inventory and pharmacy sales operations.",
   },
+  // AI
   {
-    value: "hrms",
-    label: "HRMS",
-    description: "Attendance, payroll, and leave operations.",
+    value: "symptom_ai",
+    label: "SymptoMap AI",
+    description: "AI symptom and OCR tools.",
+  },
+  // Finance
+  {
+    value: "billing",
+    label: "Billing",
+    description: "Invoices, collections, and payment workflows.",
   },
   {
     value: "accounts",
@@ -80,10 +90,11 @@ export const MODULE_OPTIONS: ModuleOption[] = [
     label: "Reports",
     description: "Cross-module operational and financial reporting.",
   },
+  // Administration
   {
-    value: "symptom_ai",
-    label: "SymptoMap AI",
-    description: "AI symptom and OCR tools.",
+    value: "hrms",
+    label: "HRMS",
+    description: "Attendance, payroll, and leave operations.",
   },
   {
     value: "employees",
@@ -97,11 +108,12 @@ export const MODULE_OPTIONS: ModuleOption[] = [
   },
 ];
 
-// Mirrors backend/core/auth.py's SUB_MODULES. Selecting a module alone grants
-// full access to everything under it (all its sub-items); unchecking a
-// specific sub-item narrows that down without removing the module entirely.
-// A module with no entry here (dashboard, reports) has no finer-grained
-// sub-items -- checking it is all-or-nothing, matching how it always worked.
+// Mirrors backend/core/auth.py's SUB_MODULES (same order, too). Selecting a
+// module alone grants full access to everything under it (all its
+// sub-items); unchecking a specific sub-item narrows that down without
+// removing the module entirely. A module with no entry here (dashboard,
+// reports) has no finer-grained sub-items -- checking it is all-or-nothing,
+// matching how it always worked.
 export const SUB_MODULES: Partial<Record<ModuleId, SubModuleOption[]>> = {
   patients: [
     { value: "directory", label: "Patient Directory (edit/delete)" },
@@ -126,10 +138,6 @@ export const SUB_MODULES: Partial<Record<ModuleId, SubModuleOption[]>> = {
       label: "Add/Edit Beds & Admit/Discharge Patients",
     },
   ],
-  billing: [
-    { value: "invoices", label: "Invoices & Payments" },
-    { value: "claims", label: "Insurance Claims" },
-  ],
   pharmacy: [
     { value: "inventory", label: "Inventory" },
     { value: "sales", label: "Sales" },
@@ -137,18 +145,22 @@ export const SUB_MODULES: Partial<Record<ModuleId, SubModuleOption[]>> = {
     { value: "purchases", label: "Purchases" },
     { value: "prescriptions", label: "Prescriptions" },
   ],
-  hrms: [
-    { value: "departments", label: "Departments" },
-    { value: "attendance", label: "Attendance" },
-    { value: "payroll", label: "Payroll" },
-    { value: "leaves", label: "Leave Requests" },
+  symptom_ai: [{ value: "documents", label: "Knowledge Vault Documents" }],
+  billing: [
+    { value: "invoices", label: "Invoices & Payments" },
+    { value: "claims", label: "Insurance Claims" },
   ],
   accounts: [
     { value: "ledger", label: "Ledger" },
     { value: "vendor_payments", label: "Vendor Payments" },
     { value: "doctor_payouts", label: "Doctor Payouts" },
   ],
-  symptom_ai: [{ value: "documents", label: "Knowledge Vault Documents" }],
+  hrms: [
+    { value: "departments", label: "Departments" },
+    { value: "attendance", label: "Attendance" },
+    { value: "payroll", label: "Payroll" },
+    { value: "leaves", label: "Leave Requests" },
+  ],
   employees: [
     { value: "profile", label: "Edit Profile Fields" },
     { value: "access", label: "Manage Roles & Module Access" },
@@ -481,7 +493,10 @@ export const NAV_ITEMS: NavItem[] = [
     module: "patients",
   },
 
-  // Finance: Simplified to 3 modules as per request.
+  // Finance: Billing first (day-to-day collections), then Accounts (ledger/
+  // vendor/doctor money movement), then cross-module Reports last -- matches
+  // MODULE_OPTIONS/ASSIGNABLE_MODULES order so the RBAC checkboxes and this
+  // sidebar group read the same way.
   {
     id: "billing-payment-collection",
     label: "Payment Collection",
@@ -508,6 +523,42 @@ export const NAV_ITEMS: NavItem[] = [
     permission: "billing.read",
     deniedHint: "Requires billing access.",
     module: "billing",
+  },
+  {
+    id: "accounts-ledger",
+    label: "Accounts Ledger",
+    subtitle: "Track hospital income and expense entries.",
+    group: "finance",
+    permission: "accounts.read",
+    deniedHint: "Requires accounts access.",
+    module: "accounts",
+  },
+  {
+    id: "accounts-vendor-payments",
+    label: "Vendor Payments",
+    subtitle: "Record and track payments made to vendors and suppliers.",
+    group: "finance",
+    permission: "accounts.read",
+    deniedHint: "Requires accounts access.",
+    module: "accounts",
+  },
+  {
+    id: "accounts-doctor-payouts",
+    label: "Doctor Payouts",
+    subtitle: "Track monthly doctor payout amounts and dues.",
+    group: "finance",
+    permission: "accounts.read",
+    deniedHint: "Requires accounts access.",
+    module: "accounts",
+  },
+  {
+    id: "reports",
+    label: "Reports",
+    subtitle: "Cross-module operational and financial overview, with CSV/PDF/Word export.",
+    group: "finance",
+    permission: "reports.read",
+    deniedHint: "Requires reports access.",
+    module: "reports",
   },
 
   // Administration: manage employees before managing their HR operations (attendance/payroll/leave).
