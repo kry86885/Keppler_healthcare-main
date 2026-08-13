@@ -422,8 +422,6 @@ function App() {
     item: (typeof NAV_ITEMS)[0],
     permission?: string,
   ) => {
-    if (item.id === "employees") return isAdmin;
-
     // Clinicians should only see a restricted set of pages WITHIN the patients and symptom_ai modules.
     // If the admin gives them access to other modules (like pharmacy or lab), they will see those pages.
     if (isClinicianUser) {
@@ -456,8 +454,16 @@ function App() {
     }
 
     // Normal users must explicitly have the module in their module_access array (if the nav item belongs to a module).
+    // An entry can be the bare module key (full access) OR a dotted "module.subitem"
+    // key that narrows access to just one sub-item (see SUB_MODULES/core/auth.py) --
+    // a user granted only e.g. "patients.registration" still needs every patients-module
+    // nav item to pass this check, since the sub-item implies module visibility.
     if (user?.user_type !== "admin") {
-      if (item.module && !(user?.module_access || []).includes(item.module)) {
+      const moduleAccess = user?.module_access || [];
+      const hasModuleEntry = moduleAccess.some(
+        (entry) => entry === item.module || entry.startsWith(`${item.module}.`),
+      );
+      if (item.module && !hasModuleEntry) {
         return false;
       }
     }
@@ -585,14 +591,14 @@ function App() {
       // which might be stale during login, so we re-evaluate it with currentUser.
 
       let hasAccess = false;
-      const isAdminCheck =
-        resolvePermissions(currentUser).includes("admin.use");
-      if (navItem.id === "employees") {
-        hasAccess = isAdminCheck;
-      } else if (
+      const moduleAccess = currentUser?.module_access || [];
+      const hasModuleEntry = moduleAccess.some(
+        (entry) => entry === navItem.module || entry.startsWith(`${navItem.module}.`),
+      );
+      if (
         currentUser?.user_type !== "admin" &&
         navItem.module &&
-        !(currentUser?.module_access || []).includes(navItem.module)
+        !hasModuleEntry
       ) {
         hasAccess = false;
       } else {
