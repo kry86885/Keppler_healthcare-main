@@ -38,6 +38,7 @@ For deployment on a remote server, ensure the following are properly set in `.en
 - `SESSION_PEPPER`, `ADMIN_ROUTE_AUTH_SECRET`, `ADMIN_ROUTE_PASSWORD`: Random cryptographic secrets -- rotate the defaults before going live.
 - `VLLM_BASE_URL` / `VLLM_MODEL` / `VLLM_API_KEY`: Point these at your local vLLM server -- every AI feature (OCR, document RAG-chat, Symptom AI) runs on it. No cloud LLM API key is used anywhere in this app.
 - `VITE_API_BASE` / `VITE_SYMPTOM_API_BASE`: Must reflect the domain names where your API and Symptom AI service are hosted if placed behind a reverse proxy (like Nginx or Traefik); leave blank for same-origin relative API calls.
+- `PUBLIC_BASE_URL`: Your backend's own publicly reachable HTTPS origin. Required for WhatsApp messages that attach a PDF (prescription notifications, EMR sharing) -- without it, those fall back to text-only sends.
 
 ## Maintenance & Development
 - PostgreSQL database backups should target the bound `volumes/pg_data` directory.
