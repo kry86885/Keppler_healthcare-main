@@ -53,8 +53,6 @@ ASSIGNABLE_MODULES = (
     "pharmacy",  # Operations
     "symptom_ai",  # AI
     "billing",  # Finance
-    "accounts",  # Finance
-    "reports",  # Finance
     "hrms",  # Administration
     "employees",  # Administration
     "patient_experience",  # Administration
@@ -69,8 +67,6 @@ MODULE_BASE_PERMISSION = {
     "pharmacy": "pharmacy.read",
     "symptom_ai": "symptom_ai.use",
     "billing": "billing.read",
-    "accounts": "accounts.read",
-    "reports": "reports.read",
     "hrms": "hr.read",
     "employees": "employees.read",
     "patient_experience": "patient_experience.read",
@@ -169,17 +165,6 @@ SUB_MODULES = {
         "claims": {
             "label": "Insurance Claims",
             "permissions": ["billing.claims.write"],
-        },
-    },
-    "accounts": {
-        "ledger": {"label": "Ledger", "permissions": ["accounts.ledger.write"]},
-        "vendor_payments": {
-            "label": "Vendor Payments",
-            "permissions": ["accounts.vendors.write"],
-        },
-        "doctor_payouts": {
-            "label": "Doctor Payouts",
-            "permissions": ["accounts.doctors.write"],
         },
     },
     "hrms": {

@@ -80,16 +80,6 @@ export const MODULE_OPTIONS: ModuleOption[] = [
     label: "Billing",
     description: "Invoices, collections, and payment workflows.",
   },
-  {
-    value: "accounts",
-    label: "Accounts",
-    description: "Ledger, vendor payments, and doctor payouts.",
-  },
-  {
-    value: "reports",
-    label: "Reports",
-    description: "Cross-module operational and financial reporting.",
-  },
   // Administration
   {
     value: "hrms",
@@ -111,9 +101,9 @@ export const MODULE_OPTIONS: ModuleOption[] = [
 // Mirrors backend/core/auth.py's SUB_MODULES (same order, too). Selecting a
 // module alone grants full access to everything under it (all its
 // sub-items); unchecking a specific sub-item narrows that down without
-// removing the module entirely. A module with no entry here (dashboard,
-// reports) has no finer-grained sub-items -- checking it is all-or-nothing,
-// matching how it always worked.
+// removing the module entirely. A module with no entry here (dashboard)
+// has no finer-grained sub-items -- checking it is all-or-nothing, matching
+// how it always worked.
 export const SUB_MODULES: Partial<Record<ModuleId, SubModuleOption[]>> = {
   patients: [
     { value: "directory", label: "Patient Directory (edit/delete)" },
@@ -149,11 +139,6 @@ export const SUB_MODULES: Partial<Record<ModuleId, SubModuleOption[]>> = {
   billing: [
     { value: "invoices", label: "Invoices & Payments" },
     { value: "claims", label: "Insurance Claims" },
-  ],
-  accounts: [
-    { value: "ledger", label: "Ledger" },
-    { value: "vendor_payments", label: "Vendor Payments" },
-    { value: "doctor_payouts", label: "Doctor Payouts" },
   ],
   hrms: [
     { value: "departments", label: "Departments" },
@@ -493,10 +478,7 @@ export const NAV_ITEMS: NavItem[] = [
     module: "patients",
   },
 
-  // Finance: Billing first (day-to-day collections), then Accounts (ledger/
-  // vendor/doctor money movement), then cross-module Reports last -- matches
-  // MODULE_OPTIONS/ASSIGNABLE_MODULES order so the RBAC checkboxes and this
-  // sidebar group read the same way.
+  // Finance: 3 modules only.
   {
     id: "billing-payment-collection",
     label: "Payment Collection",
@@ -523,42 +505,6 @@ export const NAV_ITEMS: NavItem[] = [
     permission: "billing.read",
     deniedHint: "Requires billing access.",
     module: "billing",
-  },
-  {
-    id: "accounts-ledger",
-    label: "Accounts Ledger",
-    subtitle: "Track hospital income and expense entries.",
-    group: "finance",
-    permission: "accounts.read",
-    deniedHint: "Requires accounts access.",
-    module: "accounts",
-  },
-  {
-    id: "accounts-vendor-payments",
-    label: "Vendor Payments",
-    subtitle: "Record and track payments made to vendors and suppliers.",
-    group: "finance",
-    permission: "accounts.read",
-    deniedHint: "Requires accounts access.",
-    module: "accounts",
-  },
-  {
-    id: "accounts-doctor-payouts",
-    label: "Doctor Payouts",
-    subtitle: "Track monthly doctor payout amounts and dues.",
-    group: "finance",
-    permission: "accounts.read",
-    deniedHint: "Requires accounts access.",
-    module: "accounts",
-  },
-  {
-    id: "reports",
-    label: "Reports",
-    subtitle: "Cross-module operational and financial overview, with CSV/PDF/Word export.",
-    group: "finance",
-    permission: "reports.read",
-    deniedHint: "Requires reports access.",
-    module: "reports",
   },
 
   // Administration: manage employees before managing their HR operations (attendance/payroll/leave).
