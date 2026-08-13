@@ -77,8 +77,9 @@ export const MODULE_OPTIONS: ModuleOption[] = [
   // Finance
   {
     value: "billing",
-    label: "Billing",
-    description: "Invoices, collections, and payment workflows.",
+    label: "Finance",
+    description:
+      "Payment Collection, Revenue Reports, and Daily/Monthly Reports (sidebar's Finance section).",
   },
   // Administration
   {
