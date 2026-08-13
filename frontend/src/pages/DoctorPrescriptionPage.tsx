@@ -490,6 +490,7 @@ export default function DoctorPrescriptionPage({
     id: string;
     name: string;
     doctorName?: string;
+    mode?: "ocr" | "manual";
   } | null>(null);
 
   /* — active tab — */
@@ -1620,7 +1621,7 @@ export default function DoctorPrescriptionPage({
                                   <div
                                     style={{
                                       display: "grid",
-                                      gridTemplateColumns: "1fr 1fr",
+                                      gridTemplateColumns: "1fr 1fr 1fr",
                                       gap: "0.8rem",
                                     }}
                                   >
@@ -1633,6 +1634,22 @@ export default function DoctorPrescriptionPage({
                                           name: appt.patient_name,
                                           doctorName:
                                             appt.doctor_name ?? undefined,
+                                          mode: "manual",
+                                        })
+                                      }
+                                    >
+                                      ✏️ Write Prescription
+                                    </Btn>
+                                    <Btn
+                                      variant="secondary"
+                                      style={{ justifyContent: "center" }}
+                                      onClick={() =>
+                                        setUploadTarget({
+                                          id: String(appt.patient_id),
+                                          name: appt.patient_name,
+                                          doctorName:
+                                            appt.doctor_name ?? undefined,
+                                          mode: "ocr",
                                         })
                                       }
                                     >
@@ -2326,21 +2343,44 @@ export default function DoctorPrescriptionPage({
                             }}
                           >
                             {activeAppt && (
-                              <Btn
-                                variant="primary"
-                                size="sm"
-                                style={{ alignSelf: "flex-start" }}
-                                onClick={() =>
-                                  setUploadTarget({
-                                    id: String(activeAppt.patient_id),
-                                    name: activeAppt.patient_name,
-                                    doctorName:
-                                      activeAppt.doctor_name ?? undefined,
-                                  })
-                                }
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: "0.5rem",
+                                  flexWrap: "wrap",
+                                }}
                               >
-                                <FiPlus size={13} /> Upload New Prescription
-                              </Btn>
+                                <Btn
+                                  variant="primary"
+                                  size="sm"
+                                  onClick={() =>
+                                    setUploadTarget({
+                                      id: String(activeAppt.patient_id),
+                                      name: activeAppt.patient_name,
+                                      doctorName:
+                                        activeAppt.doctor_name ?? undefined,
+                                      mode: "manual",
+                                    })
+                                  }
+                                >
+                                  ✏️ Write Prescription
+                                </Btn>
+                                <Btn
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() =>
+                                    setUploadTarget({
+                                      id: String(activeAppt.patient_id),
+                                      name: activeAppt.patient_name,
+                                      doctorName:
+                                        activeAppt.doctor_name ?? undefined,
+                                      mode: "ocr",
+                                    })
+                                  }
+                                >
+                                  <FiPlus size={13} /> Upload Scanned Prescription
+                                </Btn>
+                              </div>
                             )}
                             {(chartData?.prescriptions ?? []).length === 0 ? (
                               <EmptyState
@@ -2724,10 +2764,24 @@ export default function DoctorPrescriptionPage({
                           id: String(activeAppt.patient_id),
                           name: activeAppt.patient_name,
                           doctorName: activeAppt.doctor_name ?? undefined,
+                          mode: "manual",
                         })
                       }
                     >
-                      <FiUploadCloud size={14} /> Prescription
+                      ✏️ Write Prescription
+                    </Btn>
+                    <Btn
+                      variant="secondary"
+                      onClick={() =>
+                        setUploadTarget({
+                          id: String(activeAppt.patient_id),
+                          name: activeAppt.patient_name,
+                          doctorName: activeAppt.doctor_name ?? undefined,
+                          mode: "ocr",
+                        })
+                      }
+                    >
+                      <FiUploadCloud size={14} /> Scan Prescription
                     </Btn>
                   </div>
 
@@ -3079,6 +3133,7 @@ export default function DoctorPrescriptionPage({
           patientId={uploadTarget.id}
           patientName={uploadTarget.name}
           doctorName={uploadTarget.doctorName}
+          mode={uploadTarget.mode}
           setNotice={setNotice}
           onClose={() => setUploadTarget(null)}
         />

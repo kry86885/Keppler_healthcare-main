@@ -582,7 +582,6 @@ function PatientDetail({
   const [careTab, setCareTab] = useState("encounters");
   const [addingMovement, setAddingMovement] = useState(false);
   const [savingEncounter, setSavingEncounter] = useState(false);
-  const [savingBed, setSavingBed] = useState(false);
   const [savingMedication, setSavingMedication] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [savingCertificate, setSavingCertificate] = useState(false);
@@ -601,13 +600,6 @@ function PatientDetail({
     referral_source: "",
     referral_name: "",
     is_accident: false,
-  });
-  const [bedForm, setBedForm] = useState({
-    admission_id: "",
-    ward: "",
-    room_no: "",
-    bed_no: "",
-    status: "active",
   });
   const [medicationForm, setMedicationForm] = useState({
     medicine_name: "",
@@ -1041,53 +1033,6 @@ function PatientDetail({
       );
     } finally {
       setSavingEncounter(false);
-    }
-  };
-
-  const handleAssignBed = async () => {
-    if (!patient) return;
-    if (
-      !bedForm.admission_id ||
-      !bedForm.ward.trim() ||
-      !bedForm.room_no.trim() ||
-      !bedForm.bed_no.trim()
-    ) {
-      setNotice({
-        type: "warning",
-        message: "Admission, ward, room, and bed are required.",
-      });
-      return;
-    }
-    setSavingBed(true);
-    try {
-      await apiFetch(`/api/patients/${patient.patient_id}/beds`, {
-        method: "POST",
-        body: JSON.stringify({
-          admission_id: Number(bedForm.admission_id),
-          ward: bedForm.ward.trim(),
-          room_no: bedForm.room_no.trim(),
-          bed_no: bedForm.bed_no.trim(),
-          status: bedForm.status,
-        }),
-      });
-      setBedForm({
-        admission_id: "",
-        ward: "",
-        room_no: "",
-        bed_no: "",
-        status: "active",
-      });
-      await loadData();
-      await onPatientUpdated(patient.patient_id);
-      setNotice({ type: "success", message: "Bed assignment saved." });
-    } catch (error) {
-      reportError(
-        setNotice,
-        error as { message?: string; status?: number },
-        "Unable to assign bed.",
-      );
-    } finally {
-      setSavingBed(false);
     }
   };
 
@@ -1759,80 +1704,13 @@ function PatientDetail({
           )}
           {careTab === "beds" && (
             <div className="care-panel-grid">
-              {canEdit && (
-                <div className="care-entry panel">
-                  <h4>Assign Bed</h4>
-                  <div className="form-actions stacked-actions">
-                    <Select
-                      value={bedForm.admission_id}
-                      onChange={(event) =>
-                        setBedForm((prev) => ({
-                          ...prev,
-                          admission_id: event.target.value,
-                        }))
-                      }
-                    >
-                      <option value="">Select Admission</option>
-                      {admissions.map((adm) => (
-                        <option key={adm.id} value={adm.id}>
-                          Admission #{adm.id}
-                        </option>
-                      ))}
-                    </Select>
-                    <Input
-                      placeholder="Ward"
-                      value={bedForm.ward}
-                      onChange={(event) =>
-                        setBedForm((prev) => ({
-                          ...prev,
-                          ward: event.target.value,
-                        }))
-                      }
-                    />
-                    <Input
-                      placeholder="Room No."
-                      value={bedForm.room_no}
-                      onChange={(event) =>
-                        setBedForm((prev) => ({
-                          ...prev,
-                          room_no: event.target.value,
-                        }))
-                      }
-                    />
-                    <Input
-                      placeholder="Bed No."
-                      value={bedForm.bed_no}
-                      onChange={(event) =>
-                        setBedForm((prev) => ({
-                          ...prev,
-                          bed_no: event.target.value,
-                        }))
-                      }
-                    />
-                    <Select
-                      value={bedForm.status}
-                      onChange={(event) =>
-                        setBedForm((prev) => ({
-                          ...prev,
-                          status: event.target.value,
-                        }))
-                      }
-                    >
-                      <option value="active">Active</option>
-                      <option value="released">Released</option>
-                    </Select>
-                    <Button
-                      variant="secondary"
-                      onClick={() => void handleAssignBed()}
-                      disabled={savingBed}
-                    >
-                      {savingBed ? "Saving..." : "Assign Bed"}
-                    </Button>
-                  </div>
-                </div>
-              )}
               <div className="care-entry panel">
                 <h4>Bed Allocation History</h4>
+                <p className="muted">
+                  Admitting, transferring, or discharging this patient is done
+                  from the Bed Management page, which keeps ward occupancy in
+                  sync -- this is a read-only history of their stays.
+                </p>
                 {beds.length === 0 ? (
                   <p className="muted">No bed allocations recorded yet.</p>
                 ) : (

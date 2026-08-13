@@ -1,15 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { FaBed } from "react-icons/fa";
 import {
+  FiAlertTriangle,
   FiCheckCircle,
   FiPlus,
+  FiRepeat,
   FiSearch,
   FiTool,
   FiUser,
   FiX,
 } from "react-icons/fi";
 import StatCard from "../components/StatCard";
-import { Button, Input, Label, Modal, Textarea } from "../components/ui";
+import {
+  Button,
+  Input,
+  Label,
+  Modal,
+  Table,
+  TableCell,
+  TableHead,
+  TableRow,
+  Textarea,
+} from "../components/ui";
 import { apiFetch, reportError } from "../lib/api";
 import { formatDateTimeIST } from "../lib/format";
 import type { Notice, Patient } from "../types";
@@ -27,9 +40,12 @@ type Bed = {
   bed_no: string;
   bed_type: string;
   status: BedStatus;
+  daily_rate: number | null;
   allocation_id: number | null;
   admission_id: number | null;
   allocated_at: string | null;
+  admission_date: string | null;
+  expected_discharge_date: string | null;
   patient_id: string | null;
   patient_name: string | null;
   patient_last_name: string | null;
@@ -37,6 +53,16 @@ type Bed = {
   patient_age: number | null;
   patient_gender: string | null;
   admission_notes: string | null;
+  room_charges_so_far: number | null;
+};
+
+type RoomChargeSegment = {
+  ward: string;
+  room_no: string;
+  bed_no: string;
+  days: number;
+  daily_rate: number;
+  amount: number;
 };
 
 type Summary = {
@@ -46,15 +72,44 @@ type Summary = {
   maintenance: number;
 };
 
+type DischargeChecklist = {
+  billing: { ok: boolean; pending_invoices: { invoice_no: string; due_amount: number }[] };
+  prescriptions: { ok: boolean; pending_count: number };
+  documents: { count: number };
+  room_charges: { segments: RoomChargeSegment[]; total: number };
+  clear: boolean;
+};
+
 const BED_TYPES = ["General", "ICU", "Private", "Semi-Private"];
 
-const EMPTY_NEW_BED = { ward: "", room_no: "", bed_no: "", bed_type: "General" };
+// Starting per-day room rates by bed type -- mirrors
+// BED_TYPE_DEFAULT_DAILY_RATE in backend/utils/database.py. Just a seed for
+// the Add Bed form; every bed's rate is freely editable afterward.
+const BED_TYPE_DEFAULT_DAILY_RATE: Record<string, number> = {
+  General: 1500,
+  "Semi-Private": 2500,
+  Private: 4000,
+  ICU: 8000,
+};
+
+function formatINR(amount: number) {
+  return `₹${Math.round(amount || 0).toLocaleString("en-IN")}`;
+}
+
+const EMPTY_NEW_BED = {
+  ward: "",
+  room_no: "",
+  bed_no: "",
+  bed_type: "General",
+  daily_rate: String(BED_TYPE_DEFAULT_DAILY_RATE.General),
+};
 const EMPTY_BED_RANGE = {
   ward: "",
   room_no: "",
   from_bed: "",
   to_bed: "",
   bed_type: "General",
+  daily_rate: String(BED_TYPE_DEFAULT_DAILY_RATE.General),
 };
 
 function bedOccupantName(bed: Bed) {
@@ -69,6 +124,38 @@ function statusCounts(bedsInGroup: Bed[]) {
   };
 }
 
+// Length-of-stay progress, derived purely from admission_date/expected_discharge_date
+// so the "day X of N" figure can never drift out of sync with a separately-stored
+// day count -- there isn't one, the date is the only source of truth.
+function losProgress(bed: Bed) {
+  if (!bed.admission_date) return null;
+  const start = new Date(bed.admission_date);
+  const today = new Date();
+  const dayNum = Math.max(
+    1,
+    Math.floor((today.getTime() - start.getTime()) / 86400000) + 1,
+  );
+  if (!bed.expected_discharge_date) return { dayNum, totalDays: null, overdue: false, pct: null };
+  const end = new Date(bed.expected_discharge_date);
+  const totalDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000));
+  const overdue = today.getTime() > end.getTime();
+  const pct = Math.min(100, Math.round((dayNum / totalDays) * 100));
+  return { dayNum, totalDays, overdue, pct };
+}
+
+function bedTypeStyle(bedType: string): CSSProperties {
+  if (bedType === "ICU") {
+    return { background: "#ede9fe", color: "#5b21b6", border: "1px solid #c4b5fd" };
+  }
+  if (bedType === "Private") {
+    return { background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd" };
+  }
+  if (bedType === "Semi-Private") {
+    return { background: "#f0fdf4", color: "#166534", border: "1px solid #86efac" };
+  }
+  return { background: "#f1f5f9", color: "#334155", border: "1px solid #cbd5e1" };
+}
+
 export default function BedManagementPage({ setNotice }: Props) {
   const [beds, setBeds] = useState<Bed[]>([]);
   const [summary, setSummary] = useState<Summary>({
@@ -79,9 +166,9 @@ export default function BedManagementPage({ setNotice }: Props) {
   });
   const [loading, setLoading] = useState(true);
   const [filterText, setFilterText] = useState("");
+  const [selectedWard, setSelectedWard] = useState("all");
 
   const [selectedBed, setSelectedBed] = useState<Bed | null>(null);
-  const [confirmingRelease, setConfirmingRelease] = useState(false);
   const [editingBedDetails, setEditingBedDetails] = useState(false);
   const [editBedForm, setEditBedForm] = useState(EMPTY_NEW_BED);
   const [savingBedEdit, setSavingBedEdit] = useState(false);
@@ -90,12 +177,29 @@ export default function BedManagementPage({ setNotice }: Props) {
   const [patientResults, setPatientResults] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [assignNotes, setAssignNotes] = useState("");
+  const [expectedLosDays, setExpectedLosDays] = useState("");
   const [assigning, setAssigning] = useState(false);
   const [releasing, setReleasing] = useState(false);
 
   const [addBedOpen, setAddBedOpen] = useState(false);
   const [newBedRange, setNewBedRange] = useState(EMPTY_BED_RANGE);
   const [addingBed, setAddingBed] = useState(false);
+
+  // Transfer (ward change / shift to ICU) -- moves the patient to a different
+  // bed while keeping the same admission, unlike release-then-reassign.
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferFilter, setTransferFilter] = useState("");
+  const [transferTargetId, setTransferTargetId] = useState<number | null>(null);
+  const [transferReason, setTransferReason] = useState("");
+  const [transferring, setTransferring] = useState(false);
+
+  // Discharge checklist -- warns about pending dues/prescriptions but never
+  // blocks; staff can confirm anyway with a reason (discharge-against-advice).
+  const [dischargeOpen, setDischargeOpen] = useState(false);
+  const [checklist, setChecklist] = useState<DischargeChecklist | null>(null);
+  const [checklistLoading, setChecklistLoading] = useState(false);
+  const [dischargeReason, setDischargeReason] = useState("");
+  const [roomChargeSegments, setRoomChargeSegments] = useState<RoomChargeSegment[]>([]);
 
   const loadBeds = async () => {
     setLoading(true);
@@ -142,34 +246,70 @@ export default function BedManagementPage({ setNotice }: Props) {
 
   const resetSelection = () => {
     setSelectedBed(null);
-    setConfirmingRelease(false);
     setEditingBedDetails(false);
     setPatientQuery("");
     setPatientResults([]);
     setSelectedPatient(null);
     setAssignNotes("");
+    setExpectedLosDays("");
+    setTransferOpen(false);
+    setTransferFilter("");
+    setTransferTargetId(null);
+    setTransferReason("");
+    setDischargeOpen(false);
+    setChecklist(null);
+    setDischargeReason("");
+    setRoomChargeSegments([]);
   };
 
   const openBed = (bed: Bed) => {
     setSelectedBed(bed);
-    setConfirmingRelease(false);
     setEditingBedDetails(false);
     setEditBedForm({
       ward: bed.ward,
       room_no: bed.room_no,
       bed_no: bed.bed_no,
       bed_type: bed.bed_type,
+      daily_rate: String(
+        bed.daily_rate ?? BED_TYPE_DEFAULT_DAILY_RATE[bed.bed_type] ?? BED_TYPE_DEFAULT_DAILY_RATE.General,
+      ),
     });
     setPatientQuery("");
     setPatientResults([]);
     setSelectedPatient(null);
     setAssignNotes("");
+    setExpectedLosDays("");
+    setTransferOpen(false);
+    setDischargeOpen(false);
+    setChecklist(null);
+    setRoomChargeSegments([]);
   };
+
+  // All ward names, independent of the current search text or ward selection,
+  // so the dropdown always lists every ward that exists.
+  const wardOptions = useMemo(() => {
+    const names = new Set(beds.map((bed) => bed.ward || "Unassigned Ward"));
+    return Array.from(names).sort();
+  }, [beds]);
+
+  const wardScopedBeds = useMemo(() => {
+    if (selectedWard === "all") return beds;
+    return beds.filter((bed) => (bed.ward || "Unassigned Ward") === selectedWard);
+  }, [beds, selectedWard]);
+
+  // Stat cards reflect the selected ward (scope) but not the free-text search
+  // (a further narrowing within that scope) -- same principle as before, just
+  // now scoped to one ward at a time instead of always being hospital-wide.
+  const displaySummary = useMemo(() => {
+    if (selectedWard === "all") return summary;
+    const counts = statusCounts(wardScopedBeds);
+    return { total: wardScopedBeds.length, ...counts };
+  }, [selectedWard, summary, wardScopedBeds]);
 
   const filteredBeds = useMemo(() => {
     const text = filterText.trim().toLowerCase();
-    if (!text) return beds;
-    return beds.filter((bed) =>
+    if (!text) return wardScopedBeds;
+    return wardScopedBeds.filter((bed) =>
       [
         bed.ward,
         bed.room_no,
@@ -181,7 +321,7 @@ export default function BedManagementPage({ setNotice }: Props) {
         .filter(Boolean)
         .some((field) => (field as string).toLowerCase().includes(text)),
     );
-  }, [beds, filterText]);
+  }, [wardScopedBeds, filterText]);
 
   const groupedByWard = useMemo(() => {
     const wards = new Map<string, Map<string, Bed[]>>();
@@ -196,6 +336,18 @@ export default function BedManagementPage({ setNotice }: Props) {
     return wards;
   }, [filteredBeds]);
 
+  const otherAvailableBeds = useMemo(() => {
+    const text = transferFilter.trim().toLowerCase();
+    return beds
+      .filter((b) => b.status === "Available" && b.id !== selectedBed?.id)
+      .filter((b) => {
+        if (!text) return true;
+        return [b.ward, b.room_no, b.bed_no, b.bed_type]
+          .filter(Boolean)
+          .some((field) => (field as string).toLowerCase().includes(text));
+      });
+  }, [beds, transferFilter, selectedBed]);
+
   const handleAssign = async () => {
     if (!selectedBed || !selectedPatient) return;
     setAssigning(true);
@@ -205,6 +357,7 @@ export default function BedManagementPage({ setNotice }: Props) {
         body: JSON.stringify({
           patient_id: selectedPatient.patient_id,
           notes: assignNotes.trim(),
+          expected_los_days: expectedLosDays.trim() || undefined,
         }),
       });
       setNotice({
@@ -224,16 +377,88 @@ export default function BedManagementPage({ setNotice }: Props) {
     }
   };
 
+  const openTransfer = () => {
+    setTransferOpen(true);
+    setTransferFilter("");
+    setTransferTargetId(null);
+    setTransferReason("");
+  };
+
+  const handleTransfer = async () => {
+    if (!selectedBed || !transferTargetId) return;
+    setTransferring(true);
+    try {
+      await apiFetch(`/api/beds/${selectedBed.id}/transfer`, {
+        method: "POST",
+        body: JSON.stringify({
+          to_bed_id: transferTargetId,
+          reason: transferReason.trim(),
+        }),
+      });
+      const target = beds.find((b) => b.id === transferTargetId);
+      setNotice({
+        type: "success",
+        message: target
+          ? `${bedOccupantName(selectedBed)} transferred to ${target.ward} / Room ${target.room_no} / Bed ${target.bed_no}.`
+          : "Patient transferred.",
+      });
+      resetSelection();
+      await loadBeds();
+    } catch (error) {
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to transfer this patient.",
+      );
+    } finally {
+      setTransferring(false);
+    }
+  };
+
+  const openDischarge = async () => {
+    if (!selectedBed) return;
+    setDischargeOpen(true);
+    setChecklistLoading(true);
+    setDischargeReason("");
+    try {
+      const data = await apiFetch<DischargeChecklist>(
+        `/api/beds/${selectedBed.id}/discharge-checklist`,
+      );
+      setChecklist(data);
+      setRoomChargeSegments(data.room_charges?.segments || []);
+    } catch (error) {
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to load the discharge checklist.",
+      );
+      setChecklist(null);
+    } finally {
+      setChecklistLoading(false);
+    }
+  };
+
   const handleRelease = async () => {
     if (!selectedBed) return;
     setReleasing(true);
     try {
+      const roomChargeTotal = roomChargeSegments.reduce(
+        (sum, s) => sum + s.days * s.daily_rate,
+        0,
+      );
       await apiFetch(`/api/beds/${selectedBed.id}/release`, {
         method: "POST",
+        body: JSON.stringify({
+          discharge_override_reason: dischargeReason.trim() || undefined,
+          room_charge_total: roomChargeSegments.length > 0 ? roomChargeTotal : undefined,
+        }),
       });
       setNotice({
         type: "success",
-        message: `Bed ${selectedBed.bed_no} released and patient discharged.`,
+        message:
+          roomChargeSegments.length > 0
+            ? `Bed ${selectedBed.bed_no} released. Room charges bill: ${formatINR(roomChargeTotal)}.`
+            : `Bed ${selectedBed.bed_no} released and patient discharged.`,
       });
       resetSelection();
       await loadBeds();
@@ -329,6 +554,7 @@ export default function BedManagementPage({ setNotice }: Props) {
           bed_type: newBedRange.bed_type,
           from_bed: fromBed,
           to_bed: toBed,
+          daily_rate: newBedRange.daily_rate || undefined,
         }),
       });
       const parts = [
@@ -363,8 +589,7 @@ export default function BedManagementPage({ setNotice }: Props) {
       <div className="module-panel-head">
         <p className="muted">
           A room-by-room, bed-by-bed view of the ward -- click any bed to
-          admit a patient into it, see who's currently in it, or discharge
-          them and free it up.
+          admit a patient into it, transfer or discharge them, or free it up.
         </p>
         <Button onClick={() => setAddBedOpen(true)}>
           <FiPlus aria-hidden /> Add Bed
@@ -372,19 +597,35 @@ export default function BedManagementPage({ setNotice }: Props) {
       </div>
 
       <div className="stat-grid">
-        <StatCard label="Total Beds" value={summary.total} />
-        <StatCard label="Available" value={summary.available} />
-        <StatCard label="Occupied" value={summary.occupied} />
-        <StatCard label="Maintenance" value={summary.maintenance} />
+        <StatCard
+          label={selectedWard === "all" ? "Total Beds" : `${selectedWard} — Beds`}
+          value={displaySummary.total}
+        />
+        <StatCard label="Available" value={displaySummary.available} />
+        <StatCard label="Occupied" value={displaySummary.occupied} />
+        <StatCard label="Maintenance" value={displaySummary.maintenance} />
       </div>
 
       <div className="panel">
         <div className="bed-map-toolbar">
+          <select
+            className="ui-input bed-ward-select"
+            aria-label="Filter by ward"
+            value={selectedWard}
+            onChange={(event) => setSelectedWard(event.target.value)}
+          >
+            <option value="all">All Wards</option>
+            {wardOptions.map((ward) => (
+              <option key={ward} value={ward}>
+                {ward}
+              </option>
+            ))}
+          </select>
           <div className="ai-search-bar" style={{ maxWidth: "420px" }}>
             <FiSearch className="ai-search-icon" aria-hidden />
             <Input
               className="ai-search-input"
-              placeholder="Filter by ward, room, bed number, or patient name"
+              placeholder="Filter by room, bed number, or patient name"
               value={filterText}
               onChange={(event) => setFilterText(event.target.value)}
             />
@@ -399,6 +640,9 @@ export default function BedManagementPage({ setNotice }: Props) {
             <span className="bed-legend-item">
               <FaBed className="bed-status-Maintenance" /> Maintenance
             </span>
+            <span className="bed-legend-item">
+              <span className="bed-legend-swatch bed-legend-swatch-icu" /> ICU
+            </span>
           </div>
         </div>
 
@@ -412,11 +656,16 @@ export default function BedManagementPage({ setNotice }: Props) {
             </p>
           </div>
         ) : filteredBeds.length === 0 ? (
-          <p className="muted">No beds match "{filterText}".</p>
+          <p className="muted">
+            {filterText
+              ? `No beds match "${filterText}".`
+              : `No beds in ${selectedWard}.`}
+          </p>
         ) : (
           Array.from(groupedByWard.entries()).map(([ward, rooms]) => {
             const wardBeds = Array.from(rooms.values()).flat();
             const wardCounts = statusCounts(wardBeds);
+            const total = wardBeds.length || 1;
             return (
               <div className="bed-ward-block" key={ward}>
                 <div className="bed-ward-header">
@@ -444,27 +693,123 @@ export default function BedManagementPage({ setNotice }: Props) {
                     )}
                   </div>
                 </div>
+                <div
+                  className="bed-occupancy-bar"
+                  title={`${wardCounts.available} available, ${wardCounts.occupied} occupied, ${wardCounts.maintenance} maintenance`}
+                >
+                  {wardCounts.available > 0 && (
+                    <span
+                      className="bed-occupancy-segment bed-occupancy-segment-available"
+                      style={{ width: `${(wardCounts.available / total) * 100}%` }}
+                    />
+                  )}
+                  {wardCounts.occupied > 0 && (
+                    <span
+                      className="bed-occupancy-segment bed-occupancy-segment-occupied"
+                      style={{ width: `${(wardCounts.occupied / total) * 100}%` }}
+                    />
+                  )}
+                  {wardCounts.maintenance > 0 && (
+                    <span
+                      className="bed-occupancy-segment bed-occupancy-segment-maintenance"
+                      style={{ width: `${(wardCounts.maintenance / total) * 100}%` }}
+                    />
+                  )}
+                </div>
                 {Array.from(rooms.entries()).map(([room, roomBeds]) => (
                   <div className="bed-room-block" key={room}>
                     <p className="bed-room-title">Room {room}</p>
-                    <div className="bed-icon-grid">
-                      {roomBeds.map((bed) => (
-                        <button
-                          key={bed.id}
-                          type="button"
-                          className="bed-icon-tile"
-                          onClick={() => openBed(bed)}
-                          title={`${bed.bed_type} bed -- ${bed.status}`}
-                        >
-                          <FaBed className={`bed-icon bed-status-${bed.status}`} />
-                          <span className="bed-icon-number">{bed.bed_no}</span>
-                          {bed.status === "Occupied" && (
-                            <span className="bed-icon-occupant">
-                              {bed.patient_name || bedOccupantName(bed)}
-                            </span>
-                          )}
-                        </button>
-                      ))}
+                    <div className="bed-card-grid">
+                      {roomBeds.map((bed) => {
+                        const los = bed.status === "Occupied" ? losProgress(bed) : null;
+                        return (
+                          <div
+                            key={bed.id}
+                            className={`bed-card bed-card-${bed.status}${bed.bed_type === "ICU" ? " bed-card-icu" : ""}`}
+                          >
+                            <button
+                              type="button"
+                              className="bed-card-main"
+                              onClick={() => openBed(bed)}
+                              title={`${bed.bed_type} bed -- ${bed.status}`}
+                            >
+                              <div className="bed-card-top">
+                                <span className="bed-card-number">
+                                  <FaBed className={`bed-icon bed-status-${bed.status}`} />
+                                  Bed {bed.bed_no}
+                                </span>
+                                <span
+                                  className="bed-card-type-badge"
+                                  style={bedTypeStyle(bed.bed_type)}
+                                >
+                                  {bed.bed_type}
+                                </span>
+                              </div>
+                              {bed.status === "Occupied" ? (
+                                <div className="bed-card-occupant">
+                                  <span className="bed-card-occupant-name">
+                                    {bedOccupantName(bed)}
+                                  </span>
+                                  {los && (
+                                    <>
+                                      <span className="bed-card-los-label">
+                                        Day {los.dayNum}
+                                        {los.totalDays ? ` of ${los.totalDays}` : ""}
+                                        {los.overdue ? " — overdue" : ""}
+                                      </span>
+                                      {los.pct !== null && (
+                                        <div className="bed-los-bar">
+                                          <div
+                                            className={`bed-los-bar-fill${los.overdue ? " bed-los-bar-fill-warning" : ""}`}
+                                            style={{ width: `${los.pct}%` }}
+                                          />
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                  {!!bed.room_charges_so_far && (
+                                    <span className="bed-card-charges-label">
+                                      {formatINR(bed.room_charges_so_far)} so far
+                                    </span>
+                                  )}
+                                </div>
+                              ) : bed.status === "Maintenance" ? (
+                                <span className="bed-card-status-text">
+                                  <FiTool aria-hidden /> Under maintenance
+                                </span>
+                              ) : (
+                                <span className="bed-card-status-text bed-card-status-available">
+                                  Available
+                                </span>
+                              )}
+                            </button>
+                            {bed.status === "Occupied" && (
+                              <div className="bed-card-actions">
+                                <button
+                                  type="button"
+                                  className="bed-card-action-btn"
+                                  onClick={() => {
+                                    openBed(bed);
+                                    openTransfer();
+                                  }}
+                                >
+                                  <FiRepeat aria-hidden /> Transfer
+                                </button>
+                                <button
+                                  type="button"
+                                  className="bed-card-action-btn bed-card-action-btn-danger"
+                                  onClick={() => {
+                                    openBed(bed);
+                                    void openDischarge();
+                                  }}
+                                >
+                                  Discharge
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
@@ -532,7 +877,11 @@ export default function BedManagementPage({ setNotice }: Props) {
               className="ui-input"
               value={newBedRange.bed_type}
               onChange={(e) =>
-                setNewBedRange({ ...newBedRange, bed_type: e.target.value })
+                setNewBedRange({
+                  ...newBedRange,
+                  bed_type: e.target.value,
+                  daily_rate: String(BED_TYPE_DEFAULT_DAILY_RATE[e.target.value] ?? BED_TYPE_DEFAULT_DAILY_RATE.General),
+                })
               }
             >
               {BED_TYPES.map((type) => (
@@ -541,6 +890,18 @@ export default function BedManagementPage({ setNotice }: Props) {
                 </option>
               ))}
             </select>
+          </Label>
+          <Label>
+            Daily Rate (₹)
+            <Input
+              type="number"
+              min={0}
+              value={newBedRange.daily_rate}
+              onChange={(e) =>
+                setNewBedRange({ ...newBedRange, daily_rate: e.target.value })
+              }
+              placeholder="Room charge per day"
+            />
           </Label>
         </div>
         <div className="ui-modal-actions" style={{ marginTop: "1rem" }}>
@@ -566,7 +927,7 @@ export default function BedManagementPage({ setNotice }: Props) {
         </div>
       </Modal>
 
-      {/* Bed detail / assign / release */}
+      {/* Bed detail / assign / transfer / discharge */}
       <Modal
         open={!!selectedBed}
         onClose={resetSelection}
@@ -577,7 +938,7 @@ export default function BedManagementPage({ setNotice }: Props) {
         }
         description={selectedBed ? `${selectedBed.bed_type} bed` : undefined}
       >
-        {selectedBed && selectedBed.status === "Occupied" && (
+        {selectedBed && selectedBed.status === "Occupied" && !transferOpen && !dischargeOpen && (
           <>
             <div className="bed-detail-patient">
               <FiUser aria-hidden />
@@ -598,46 +959,251 @@ export default function BedManagementPage({ setNotice }: Props) {
                 Admitted {formatDateTimeIST(selectedBed.allocated_at)}
               </p>
             )}
+            {(() => {
+              const los = losProgress(selectedBed);
+              return los ? (
+                <p className="muted">
+                  Day {los.dayNum}
+                  {los.totalDays ? ` of ${los.totalDays} expected` : " (no expected discharge date set)"}
+                  {los.overdue ? " — past expected discharge date" : ""}
+                </p>
+              ) : null;
+            })()}
             {selectedBed.admission_notes && (
               <p style={{ marginTop: "0.5rem" }}>{selectedBed.admission_notes}</p>
             )}
 
-            {!confirmingRelease ? (
-              <div className="ui-modal-actions" style={{ marginTop: "1rem" }}>
-                <Button variant="ghost" onClick={resetSelection}>
-                  Close
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => setConfirmingRelease(true)}
-                >
-                  Discharge &amp; Release Bed
-                </Button>
-              </div>
-            ) : (
-              <div className="bed-release-confirm">
-                <p>
-                  This discharges {bedOccupantName(selectedBed)} and marks the
-                  bed Available. Are you sure?
+            <div className="ui-modal-actions" style={{ marginTop: "1rem" }}>
+              <Button variant="ghost" onClick={resetSelection}>
+                Close
+              </Button>
+              <Button variant="ghost" onClick={openTransfer}>
+                <FiRepeat aria-hidden /> Transfer
+              </Button>
+              <Button variant="destructive" onClick={() => void openDischarge()}>
+                Discharge
+              </Button>
+            </div>
+          </>
+        )}
+
+        {/* Transfer panel */}
+        {selectedBed && transferOpen && (
+          <>
+            <p className="muted">
+              Move {bedOccupantName(selectedBed)} to a different bed -- e.g. a
+              room change, or shifting them to ICU. This keeps the same
+              admission and bed history intact.
+            </p>
+            <Label style={{ marginTop: "0.5rem" }}>
+              Find an Available Bed
+              <Input
+                value={transferFilter}
+                onChange={(e) => setTransferFilter(e.target.value)}
+                placeholder="Search by ward, room, bed number, or type (try 'ICU')"
+              />
+            </Label>
+            <div className="bed-transfer-target-list">
+              {otherAvailableBeds.length === 0 ? (
+                <p className="muted" style={{ padding: "0.5rem 0" }}>
+                  No available beds match.
                 </p>
-                <div className="ui-modal-actions">
-                  <Button
-                    variant="ghost"
-                    onClick={() => setConfirmingRelease(false)}
-                    disabled={releasing}
+              ) : (
+                otherAvailableBeds.map((bed) => (
+                  <button
+                    type="button"
+                    key={bed.id}
+                    className={`bed-transfer-target${transferTargetId === bed.id ? " bed-transfer-target-selected" : ""}`}
+                    onClick={() => setTransferTargetId(bed.id)}
                   >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={handleRelease}
-                    disabled={releasing}
-                  >
-                    {releasing ? "Releasing..." : "Yes, Discharge & Release"}
-                  </Button>
+                    <span>
+                      {bed.ward} / Room {bed.room_no} / Bed {bed.bed_no}
+                    </span>
+                    <span
+                      className="bed-card-type-badge"
+                      style={bedTypeStyle(bed.bed_type)}
+                    >
+                      {bed.bed_type}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+            <Label style={{ marginTop: "0.75rem" }}>
+              Reason for Transfer
+              <Textarea
+                rows={2}
+                value={transferReason}
+                onChange={(e) => setTransferReason(e.target.value)}
+                placeholder="e.g. Condition worsened, requires ICU monitoring"
+              />
+            </Label>
+            <div className="ui-modal-actions" style={{ marginTop: "1rem" }}>
+              <Button
+                variant="ghost"
+                onClick={() => setTransferOpen(false)}
+                disabled={transferring}
+              >
+                Back
+              </Button>
+              <Button
+                onClick={handleTransfer}
+                disabled={transferring || !transferTargetId || !transferReason.trim()}
+              >
+                {transferring ? "Transferring..." : "Confirm Transfer"}
+              </Button>
+            </div>
+          </>
+        )}
+
+        {/* Discharge checklist panel */}
+        {selectedBed && dischargeOpen && (
+          <>
+            <p className="muted">
+              Review before discharging {bedOccupantName(selectedBed)}. Pending
+              items are shown as a warning -- you can still discharge if
+              needed (e.g. discharge against medical advice).
+            </p>
+            {checklistLoading ? (
+              <p className="muted" style={{ padding: "0.75rem 0" }}>
+                Loading checklist...
+              </p>
+            ) : checklist ? (
+              <div className="discharge-checklist">
+                <div
+                  className={`discharge-checklist-row${checklist.billing.ok ? " discharge-checklist-row-ok" : " discharge-checklist-row-warn"}`}
+                >
+                  <span>
+                    {checklist.billing.ok ? (
+                      <FiCheckCircle aria-hidden />
+                    ) : (
+                      <FiAlertTriangle aria-hidden />
+                    )}{" "}
+                    Billing
+                  </span>
+                  <span>
+                    {checklist.billing.ok
+                      ? "All invoices settled"
+                      : `${checklist.billing.pending_invoices.length} invoice(s) with dues`}
+                  </span>
+                </div>
+                <div
+                  className={`discharge-checklist-row${checklist.prescriptions.ok ? " discharge-checklist-row-ok" : " discharge-checklist-row-warn"}`}
+                >
+                  <span>
+                    {checklist.prescriptions.ok ? (
+                      <FiCheckCircle aria-hidden />
+                    ) : (
+                      <FiAlertTriangle aria-hidden />
+                    )}{" "}
+                    Prescriptions
+                  </span>
+                  <span>
+                    {checklist.prescriptions.ok
+                      ? "All fulfilled"
+                      : `${checklist.prescriptions.pending_count} pending`}
+                  </span>
+                </div>
+                <div className="discharge-checklist-row discharge-checklist-row-info">
+                  <span>Documents</span>
+                  <span>{checklist.documents.count} on file for this stay</span>
                 </div>
               </div>
+            ) : (
+              <p className="muted" style={{ padding: "0.75rem 0" }}>
+                Couldn't load the checklist -- you can still discharge below.
+              </p>
             )}
+
+            {roomChargeSegments.length > 0 && (
+              <>
+                <p className="muted" style={{ marginTop: "1rem" }}>
+                  Room charges for this stay -- one line per ward/bed the
+                  patient occupied. Rates are editable before billing.
+                </p>
+                <div className="table-responsive">
+                  <Table>
+                    <TableHead>
+                      <TableCell>Ward / Room / Bed</TableCell>
+                      <TableCell>Days</TableCell>
+                      <TableCell>Rate / Day</TableCell>
+                      <TableCell>Amount</TableCell>
+                    </TableHead>
+                    {roomChargeSegments.map((segment, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell>
+                          {segment.ward} / Room {segment.room_no} / Bed {segment.bed_no}
+                        </TableCell>
+                        <TableCell>{segment.days}</TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            min={0}
+                            style={{ width: "90px" }}
+                            value={segment.daily_rate}
+                            aria-label={`Daily rate for ${segment.ward} segment`}
+                            onChange={(e) => {
+                              const next = [...roomChargeSegments];
+                              next[idx] = {
+                                ...next[idx],
+                                daily_rate: Number(e.target.value) || 0,
+                              };
+                              setRoomChargeSegments(next);
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell style={{ fontWeight: 600 }}>
+                          {formatINR(segment.days * segment.daily_rate)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </Table>
+                </div>
+                <div className="module-panel-head" style={{ marginTop: "0.75rem" }}>
+                  <h3>
+                    Room Charges Total:{" "}
+                    {formatINR(
+                      roomChargeSegments.reduce((sum, s) => sum + s.days * s.daily_rate, 0),
+                    )}
+                  </h3>
+                </div>
+              </>
+            )}
+
+            {checklist && !checklist.clear && (
+              <Label style={{ marginTop: "0.75rem" }}>
+                Reason for discharging despite pending items
+                <Textarea
+                  rows={2}
+                  value={dischargeReason}
+                  onChange={(e) => setDischargeReason(e.target.value)}
+                  placeholder="e.g. Discharge against medical advice, dues to be settled later"
+                />
+              </Label>
+            )}
+            <div className="ui-modal-actions" style={{ marginTop: "1rem" }}>
+              <Button
+                variant="ghost"
+                onClick={() => setDischargeOpen(false)}
+                disabled={releasing}
+              >
+                Back
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleRelease}
+                disabled={
+                  releasing ||
+                  (!!checklist && !checklist.clear && !dischargeReason.trim())
+                }
+              >
+                {releasing
+                  ? "Discharging..."
+                  : checklist && !checklist.clear
+                    ? "Discharge Anyway"
+                    : "Confirm Discharge"}
+              </Button>
+            </div>
           </>
         )}
 
@@ -705,6 +1271,16 @@ export default function BedManagementPage({ setNotice }: Props) {
                     </div>
                   )
                 )}
+                <Label style={{ marginTop: "0.75rem" }}>
+                  Expected Length of Stay (days, optional)
+                  <Input
+                    type="number"
+                    min={1}
+                    value={expectedLosDays}
+                    onChange={(e) => setExpectedLosDays(e.target.value)}
+                    placeholder="e.g. 3"
+                  />
+                </Label>
                 <Label style={{ marginTop: "0.75rem" }}>
                   Admission Notes (optional)
                   <Textarea
@@ -799,6 +1375,18 @@ export default function BedManagementPage({ setNotice }: Props) {
                     </option>
                   ))}
                 </select>
+              </Label>
+              <Label>
+                Daily Rate (₹)
+                <Input
+                  type="number"
+                  min={0}
+                  value={editBedForm.daily_rate}
+                  onChange={(e) =>
+                    setEditBedForm({ ...editBedForm, daily_rate: e.target.value })
+                  }
+                  placeholder="Room charge per day"
+                />
               </Label>
             </div>
             <div className="ui-modal-actions" style={{ marginTop: "1rem" }}>

@@ -504,7 +504,9 @@ export default function PharmacyPage({ setNotice }: Props) {
       meds = JSON.parse(presc.medicines_json);
     } catch (e) {}
 
-    // Auto-fill unit prices from inventory
+    // Auto-fill unit prices and current stock from inventory (case-insensitive,
+    // matching how the backend now matches medicine names when it decrements
+    // stock on dispense) so staff can see a shortage before billing, not after.
     const enrichedMeds = meds.map((m: any) => {
       const mName = m.name || m.medicine_name || m.medicine || "";
       const inv = items.find(
@@ -513,7 +515,9 @@ export default function PharmacyPage({ setNotice }: Props) {
       return {
         ...m,
         name: mName,
+        quantity: Number(m.quantity) || 1,
         unit_price: inv ? inv.unit_price : 0,
+        available_stock: inv ? Number(inv.quantity || 0) : null,
       };
     });
 
@@ -1195,6 +1199,9 @@ export default function PharmacyPage({ setNotice }: Props) {
     (acc, m) => acc + m.quantity * (m.unit_price || 0),
     0,
   );
+  const fulfillShortages = fulfillMedicines.filter(
+    (m) => m.available_stock != null && m.quantity > m.available_stock,
+  );
   const fulfillPrescriptionModal = (
     <Modal
       open={Boolean(fulfillModal)}
@@ -1210,42 +1217,82 @@ export default function PharmacyPage({ setNotice }: Props) {
         <Table>
           <TableHead>
             <TableCell>Medicine</TableCell>
-            <TableCell>Qty</TableCell>
+            <TableCell>In Stock</TableCell>
+            <TableCell>Qty to Dispense</TableCell>
             <TableCell>Unit Cost</TableCell>
             <TableCell>Total</TableCell>
           </TableHead>
-          {fulfillMedicines.map((m, idx) => (
-            <TableRow key={idx}>
-              <TableCell>
-                {m.name}
-                {m.dosage ? (
-                  <div className="muted" style={{ fontSize: "0.75rem" }}>
-                    {m.dosage}
-                  </div>
-                ) : null}
-              </TableCell>
-              <TableCell>{m.quantity}</TableCell>
-              <TableCell>
-                <Input
-                  type="number"
-                  style={{ width: "90px" }}
-                  value={m.unit_price === 0 ? "" : m.unit_price}
-                  placeholder="0"
-                  aria-label={`Unit cost for ${m.name}`}
-                  onChange={(e) => {
-                    const newMeds = [...fulfillMedicines];
-                    newMeds[idx].unit_price = Number(e.target.value) || 0;
-                    setFulfillMedicines(newMeds);
-                  }}
-                />
-              </TableCell>
-              <TableCell style={{ fontWeight: 600 }}>
-                {formatCurrency(m.quantity * (m.unit_price || 0))}
-              </TableCell>
-            </TableRow>
-          ))}
+          {fulfillMedicines.map((m, idx) => {
+            const short = m.available_stock != null && m.quantity > m.available_stock;
+            return (
+              <TableRow key={idx}>
+                <TableCell>
+                  {m.name}
+                  {m.dosage ? (
+                    <div className="muted" style={{ fontSize: "0.75rem" }}>
+                      {m.dosage}
+                    </div>
+                  ) : null}
+                </TableCell>
+                <TableCell>
+                  {m.available_stock == null ? (
+                    <span className="pharmacy-badge pharmacy-badge-warning">
+                      Not in inventory
+                    </span>
+                  ) : short ? (
+                    <span className="pharmacy-badge pharmacy-badge-danger">
+                      {m.available_stock} left
+                    </span>
+                  ) : (
+                    <span className="pharmacy-badge pharmacy-badge-success">
+                      {m.available_stock} left
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Input
+                    type="number"
+                    min={1}
+                    style={{ width: "80px" }}
+                    value={m.quantity}
+                    aria-label={`Quantity to dispense for ${m.name}`}
+                    onChange={(e) => {
+                      const newMeds = [...fulfillMedicines];
+                      newMeds[idx].quantity = Math.max(1, Number(e.target.value) || 1);
+                      setFulfillMedicines(newMeds);
+                    }}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Input
+                    type="number"
+                    style={{ width: "90px" }}
+                    value={m.unit_price === 0 ? "" : m.unit_price}
+                    placeholder="0"
+                    aria-label={`Unit cost for ${m.name}`}
+                    onChange={(e) => {
+                      const newMeds = [...fulfillMedicines];
+                      newMeds[idx].unit_price = Number(e.target.value) || 0;
+                      setFulfillMedicines(newMeds);
+                    }}
+                  />
+                </TableCell>
+                <TableCell style={{ fontWeight: 600 }}>
+                  {formatCurrency(m.quantity * (m.unit_price || 0))}
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </Table>
       </div>
+      {fulfillShortages.length > 0 ? (
+        <Alert variant="warning" style={{ marginTop: "0.75rem" }}>
+          <strong>Insufficient stock:</strong>{" "}
+          {fulfillShortages.map((m) => m.name).join(", ")} — dispensing anyway
+          will take that item's stock below zero (clamped to 0). Adjust the
+          quantity or restock before billing.
+        </Alert>
+      ) : null}
       <div className="module-panel-head" style={{ marginTop: "1rem" }}>
         <h3>Total Bill: {formatCurrency(fulfillTotal)}</h3>
         <div className="module-inline-actions">

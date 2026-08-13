@@ -12,9 +12,11 @@ from utils.database import (
     delete_bed,
     find_active_bed_for_patient,
     get_bed,
+    get_discharge_checklist,
     list_beds,
     assign_patient_to_bed,
     release_bed,
+    transfer_bed,
     update_bed,
 )
 
@@ -60,6 +62,11 @@ def beds_create():
     bed_type = (payload.get("bed_type") or "General").strip()
     if bed_type not in BED_TYPES:
         bed_type = "General"
+    daily_rate = payload.get("daily_rate")
+    try:
+        daily_rate = float(daily_rate) if daily_rate not in (None, "") else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "daily_rate must be a number"}), 400
 
     hospital_id = current_hospital_id()
     try:
@@ -69,6 +76,7 @@ def beds_create():
             payload["room_no"].strip(),
             payload["bed_no"].strip(),
             bed_type,
+            daily_rate=daily_rate,
         )
     except Exception as exc:
         # Almost always the (hospital_id, ward, room_no, bed_no) unique index --
@@ -119,6 +127,11 @@ def beds_bulk_create():
     bed_type = (payload.get("bed_type") or "General").strip()
     if bed_type not in BED_TYPES:
         bed_type = "General"
+    daily_rate = payload.get("daily_rate")
+    try:
+        daily_rate = float(daily_rate) if daily_rate not in (None, "") else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "daily_rate must be a number"}), 400
 
     hospital_id = current_hospital_id()
     result = create_beds_range(
@@ -128,6 +141,7 @@ def beds_bulk_create():
         bed_type,
         from_bed,
         to_bed,
+        daily_rate=daily_rate,
     )
     log_audit_event(
         "create",
@@ -164,6 +178,11 @@ def beds_update(bed_id):
             fields[key] = payload[key].strip()
     if payload.get("bed_type") and payload["bed_type"] in BED_TYPES:
         fields["bed_type"] = payload["bed_type"]
+    if payload.get("daily_rate") not in (None, ""):
+        try:
+            fields["daily_rate"] = float(payload["daily_rate"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "daily_rate must be a number"}), 400
     if payload.get("status") in ("Available", "Maintenance"):
         # "Occupied" is only ever set by /assign -- setting it directly here
         # would desync bed_master from the bed_allocations row that's
@@ -226,9 +245,19 @@ def beds_assign(bed_id):
             409,
         )
 
+    expected_los_days = payload.get("expected_los_days")
+    try:
+        expected_los_days = int(expected_los_days) if expected_los_days else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "expected_los_days must be a number"}), 400
+
     try:
         result = assign_patient_to_bed(
-            hospital_id, bed_id, patient_id, (payload.get("notes") or "").strip()
+            hospital_id,
+            bed_id,
+            patient_id,
+            (payload.get("notes") or "").strip(),
+            expected_los_days=expected_los_days,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 409
@@ -242,11 +271,74 @@ def beds_assign(bed_id):
     return jsonify(result), 201
 
 
+@beds_bp.post("/api/beds/<int:bed_id>/transfer")
+@require_permissions("beds.write")
+def beds_transfer(bed_id):
+    """Moves the current occupant of bed_id to another available bed (e.g.
+    ward -> ICU or a plain room change) while preserving the same admission --
+    the point of this endpoint vs. release-then-assign is that it keeps one
+    continuous admission/bed history instead of creating a disconnected new
+    stay."""
+    hospital_id = current_hospital_id()
+    payload = request.get_json(silent=True) or {}
+    error = validate_required_fields(payload, ["to_bed_id"])
+    if error:
+        return error
+
+    try:
+        to_bed_id = int(payload["to_bed_id"])
+    except (TypeError, ValueError):
+        return jsonify({"error": "to_bed_id must be a number"}), 400
+
+    try:
+        result = transfer_bed(
+            hospital_id, bed_id, to_bed_id, (payload.get("reason") or "").strip() or None
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 409
+
+    log_audit_event(
+        "transfer", "bed_allocations", str(result["allocation_id"]),
+        {"from_bed_id": bed_id, "to_bed_id": to_bed_id, "admission_id": result["admission_id"]},
+    )
+    return jsonify(result), 201
+
+
+@beds_bp.get("/api/beds/<int:bed_id>/discharge-checklist")
+@require_permissions("beds.read")
+def beds_discharge_checklist(bed_id):
+    """Read-only preview of pending dues/prescriptions for the patient
+    currently in this bed -- shown before discharge. Never blocks discharge
+    on its own (the /release endpoint still succeeds even if this reports
+    pending items); it's informational so staff can make the call, matching
+    real-world discharge-against-medical-advice cases."""
+    hospital_id = current_hospital_id()
+    checklist = get_discharge_checklist(hospital_id, bed_id)
+    if checklist is None:
+        return jsonify({"error": "This bed doesn't have an active patient assigned."}), 400
+    return jsonify(checklist)
+
+
 @beds_bp.post("/api/beds/<int:bed_id>/release")
 @require_permissions("beds.write")
 def beds_release(bed_id):
     hospital_id = current_hospital_id()
-    released = release_bed(hospital_id, bed_id)
+    payload = request.get_json(silent=True) or {}
+    discharge_override_reason = (payload.get("discharge_override_reason") or "").strip() or None
+
+    room_charge_total = payload.get("room_charge_total")
+    try:
+        room_charge_total = float(room_charge_total) if room_charge_total not in (None, "") else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "room_charge_total must be a number"}), 400
+
+    released = release_bed(
+        hospital_id,
+        bed_id,
+        discharge_override_reason=discharge_override_reason,
+        room_charge_total=room_charge_total,
+        created_by=g.current_user.get("username"),
+    )
     if not released:
         return jsonify({"error": "This bed doesn't have an active patient assigned."}), 400
     log_audit_event("release", "bed_allocations", str(bed_id))
