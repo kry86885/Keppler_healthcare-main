@@ -34,17 +34,25 @@ export const USER_TYPE_LABELS = USER_TYPE_OPTIONS.reduce<
   return acc;
 }, {});
 
+// Ordered to match the sidebar's own visual grouping (Overview -> OP
+// Management -> Operations -> AI -> Finance -> Administration), so the RBAC
+// checkbox list in Employee Management reads in the same order an admin sees
+// the modules laid out in their own sidebar. Mirrors
+// backend/core/auth.py's ASSIGNABLE_MODULES -- keep both in this same order.
 export const MODULE_OPTIONS: ModuleOption[] = [
+  // Overview
   {
     value: "dashboard",
     label: "Dashboard",
     description: "Hospital dashboard and analytics widgets.",
   },
+  // OP Management
   {
     value: "patients",
     label: "Patient Management",
     description: "Patient registration and treatment workflows.",
   },
+  // Operations
   {
     value: "op",
     label: "Doctor Scheduling",
@@ -61,34 +69,28 @@ export const MODULE_OPTIONS: ModuleOption[] = [
     description: "ER registration, triage, treatment, and disposition workflows.",
   },
   {
-    value: "billing",
-    label: "Billing",
-    description: "Invoices, collections, and payment workflows.",
-  },
-  {
     value: "pharmacy",
     label: "Pharmacy",
     description: "Inventory and pharmacy sales operations.",
   },
-  {
-    value: "hrms",
-    label: "HRMS",
-    description: "Attendance, payroll, and leave operations.",
-  },
-  {
-    value: "accounts",
-    label: "Accounts",
-    description: "Ledger, vendor payments, and doctor payouts.",
-  },
-  {
-    value: "reports",
-    label: "Reports",
-    description: "Cross-module operational and financial reporting.",
-  },
+  // AI
   {
     value: "symptom_ai",
     label: "SymptoMap AI",
     description: "AI symptom and OCR tools.",
+  },
+  // Finance
+  {
+    value: "billing",
+    label: "Finance",
+    description:
+      "Payment Collection, Revenue Reports, and Daily/Monthly Reports (sidebar's Finance section).",
+  },
+  // Administration
+  {
+    value: "hrms",
+    label: "HRMS",
+    description: "Attendance, payroll, and leave operations.",
   },
   {
     value: "employees",
@@ -102,11 +104,12 @@ export const MODULE_OPTIONS: ModuleOption[] = [
   },
 ];
 
-// Mirrors backend/core/auth.py's SUB_MODULES. Selecting a module alone grants
-// full access to everything under it (all its sub-items); unchecking a
-// specific sub-item narrows that down without removing the module entirely.
-// A module with no entry here (dashboard, reports) has no finer-grained
-// sub-items -- checking it is all-or-nothing, matching how it always worked.
+// Mirrors backend/core/auth.py's SUB_MODULES (same order, too). Selecting a
+// module alone grants full access to everything under it (all its
+// sub-items); unchecking a specific sub-item narrows that down without
+// removing the module entirely. A module with no entry here (dashboard)
+// has no finer-grained sub-items -- checking it is all-or-nothing, matching
+// how it always worked.
 export const SUB_MODULES: Partial<Record<ModuleId, SubModuleOption[]>> = {
   patients: [
     { value: "directory", label: "Patient Directory (edit/delete)" },
@@ -143,10 +146,6 @@ export const SUB_MODULES: Partial<Record<ModuleId, SubModuleOption[]>> = {
     { value: "disposition", label: "Disposition Decision" },
     { value: "config", label: "Triage Category Configuration" },
   ],
-  billing: [
-    { value: "invoices", label: "Invoices & Payments" },
-    { value: "claims", label: "Insurance Claims" },
-  ],
   pharmacy: [
     { value: "inventory", label: "Inventory" },
     { value: "sales", label: "Sales" },
@@ -154,18 +153,17 @@ export const SUB_MODULES: Partial<Record<ModuleId, SubModuleOption[]>> = {
     { value: "purchases", label: "Purchases" },
     { value: "prescriptions", label: "Prescriptions" },
   ],
+  symptom_ai: [{ value: "documents", label: "Knowledge Vault Documents" }],
+  billing: [
+    { value: "invoices", label: "Invoices & Payments" },
+    { value: "claims", label: "Insurance Claims" },
+  ],
   hrms: [
     { value: "departments", label: "Departments" },
     { value: "attendance", label: "Attendance" },
     { value: "payroll", label: "Payroll" },
     { value: "leaves", label: "Leave Requests" },
   ],
-  accounts: [
-    { value: "ledger", label: "Ledger" },
-    { value: "vendor_payments", label: "Vendor Payments" },
-    { value: "doctor_payouts", label: "Doctor Payouts" },
-  ],
-  symptom_ai: [{ value: "documents", label: "Knowledge Vault Documents" }],
   employees: [
     { value: "profile", label: "Edit Profile Fields" },
     { value: "access", label: "Manage Roles & Module Access" },
@@ -531,7 +529,7 @@ export const NAV_ITEMS: NavItem[] = [
     module: "patients",
   },
 
-  // Finance: Simplified to 3 modules as per request.
+  // Finance: 3 modules only.
   {
     id: "billing-payment-collection",
     label: "Payment Collection",
@@ -595,6 +593,15 @@ export const NAV_ITEMS: NavItem[] = [
     subtitle:
       "Audit trail, WhatsApp Business API key, and message templates.",
     group: "admin",
+    // Every other item in this "admin" group requires a specific permission;
+    // Settings was the one exception with none, so it showed for every
+    // logged-in user (including "normal" accounts with no module_access at
+    // all) even though the page itself only renders its WhatsApp/Templates/
+    // Audit tabs for admins -- a non-admin clicking in saw a bare "Overview"
+    // tab that didn't match this subtitle at all. admin.use matches how the
+    // page's own isAdmin/canReadAudit gates already treat it.
+    permission: "admin.use",
+    deniedHint: "Requires admin access.",
   },
 ];
 

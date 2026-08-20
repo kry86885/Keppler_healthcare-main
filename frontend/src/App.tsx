@@ -124,12 +124,6 @@ const NAV_ICON_MAP: Record<string, SidebarIconName> = {
   "billing-daily-monthly-reports": "billing",
   pharmacy: "pharmacy",
   hrms: "hrms",
-  accounts: "billing",
-  "accounts-overview": "billing",
-  "accounts-ledger": "billing",
-  "accounts-vendor-payments": "billing",
-  "accounts-doctor-payouts": "billing",
-  reports: "dashboard",
   "symptom-ai": "symptom",
   "bulk-ai": "symptom",
   employees: "employees",
@@ -444,8 +438,6 @@ function App() {
     item: (typeof NAV_ITEMS)[0],
     permission?: string,
   ) => {
-    if (item.id === "employees") return isAdmin;
-
     // Clinicians should only see a restricted set of pages WITHIN the patients and symptom_ai modules.
     // If the admin gives them access to other modules (like pharmacy or lab), they will see those pages.
     if (isClinicianUser) {
@@ -478,8 +470,16 @@ function App() {
     }
 
     // Normal users must explicitly have the module in their module_access array (if the nav item belongs to a module).
+    // An entry can be the bare module key (full access) OR a dotted "module.subitem"
+    // key that narrows access to just one sub-item (see SUB_MODULES/core/auth.py) --
+    // a user granted only e.g. "patients.registration" still needs every patients-module
+    // nav item to pass this check, since the sub-item implies module visibility.
     if (user?.user_type !== "admin") {
-      if (item.module && !(user?.module_access || []).includes(item.module)) {
+      const moduleAccess = user?.module_access || [];
+      const hasModuleEntry = moduleAccess.some(
+        (entry) => entry === item.module || entry.startsWith(`${item.module}.`),
+      );
+      if (item.module && !hasModuleEntry) {
         return false;
       }
     }
@@ -576,6 +576,8 @@ function App() {
       "consent-desk",
       "insurance-desk",
       "op-desk",
+      "pharmacy",
+      "symptom-ai",
       "billing-aging",
       "billing-reconciliation",
       "billing-create-invoice",
@@ -587,15 +589,7 @@ function App() {
       "billing-payment-collection",
       "billing-revenue-reports",
       "billing-daily-monthly-reports",
-      "pharmacy",
       "hrms",
-      "accounts",
-      "reports",
-      "accounts-ledger",
-      "accounts-vendor-payments",
-      "accounts-doctor-payouts",
-      "reports",
-      "symptom-ai",
       "employees",
       "settings",
     ];
@@ -607,14 +601,14 @@ function App() {
       // which might be stale during login, so we re-evaluate it with currentUser.
 
       let hasAccess = false;
-      const isAdminCheck =
-        resolvePermissions(currentUser).includes("admin.use");
-      if (navItem.id === "employees") {
-        hasAccess = isAdminCheck;
-      } else if (
+      const moduleAccess = currentUser?.module_access || [];
+      const hasModuleEntry = moduleAccess.some(
+        (entry) => entry === navItem.module || entry.startsWith(`${navItem.module}.`),
+      );
+      if (
         currentUser?.user_type !== "admin" &&
         navItem.module &&
-        !(currentUser?.module_access || []).includes(navItem.module)
+        !hasModuleEntry
       ) {
         hasAccess = false;
       } else {
@@ -627,7 +621,14 @@ function App() {
         return candidate;
       }
     }
-    return "settings";
+    // "settings" used to be a safe universal fallback because it had no
+    // permission gate at all; now that it's admin.use-gated like every
+    // other item in its group, an account with literally zero module_access
+    // (e.g. a brand-new employee not yet configured) would otherwise be
+    // routed to a page it immediately gets bounced back out of. "dashboard"
+    // is the first (and most universally granted) candidate above, so
+    // falling back to it here is consistent, not a new default.
+    return "dashboard";
   };
 
   const syncUrlForPage = (nextPage: string) => {
