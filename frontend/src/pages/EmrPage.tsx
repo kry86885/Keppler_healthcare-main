@@ -18,6 +18,7 @@ import {
   FiFileText,
   FiDollarSign,
   FiCircle,
+  FiAlertCircle,
 } from "react-icons/fi";
 import type { Notice, Patient } from "../types";
 
@@ -32,6 +33,7 @@ const STAGE_ICON: Record<string, typeof FiCircle> = {
   documents: FiFileText,
   billing: FiDollarSign,
   lab: FiActivity,
+  er: FiAlertCircle,
 };
 const STAGE_COLOR: Record<string, string> = {
   registration: "#0369a1",
@@ -43,6 +45,7 @@ const STAGE_COLOR: Record<string, string> = {
   documents: "#475569",
   billing: "#065f46",
   lab: "#9333ea",
+  er: "#dc2626",
 };
 
 /* ─── helpers ─── */

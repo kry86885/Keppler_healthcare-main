@@ -36,15 +36,17 @@ USER_TYPES = ("admin", "normal")
 # Modules a normal (non-admin) user can be granted. Each maps to a base "view"
 # permission (its read/GET routes) plus zero or more sub-items that gate a
 # specific write/delete action within it (see SUB_MODULES below). This stays
-# out of "emergency"/"icu"/"ambulance"/"nurse"/"queue" deliberately -- those
-# backend blueprints are stub scaffolding (Phase A/E/F/G) with no real pages
-# behind them yet; there's nothing to protect there. "beds" (Phase H) is the
-# first of that batch to get a real page -- see modules/beds/routes.py.
+# out of "icu"/"ambulance"/"nurse"/"queue" deliberately -- those backend
+# blueprints are stub scaffolding (Phase A/E/F/G) with no real pages behind
+# them yet; there's nothing to protect there. "beds" (Phase H) and "er" (ER
+# module Phase 1) are the ones from that batch with a real implementation --
+# see modules/beds/routes.py and modules/er/routes.py.
 ASSIGNABLE_MODULES = (
     "dashboard",
     "patients",
     "op",
     "beds",
+    "er",
     "billing",
     "pharmacy",
     "hrms",
@@ -61,6 +63,7 @@ MODULE_BASE_PERMISSION = {
     "patients": "patients.read",
     "op": "op.read",
     "beds": "beds.read",
+    "er": "er.read",
     "billing": "billing.read",
     "pharmacy": "pharmacy.read",
     "hrms": "hr.read",
@@ -129,6 +132,36 @@ SUB_MODULES = {
         "manage": {
             "label": "Add/Edit Beds & Admit/Discharge Patients",
             "permissions": ["beds.write"],
+        },
+    },
+    "er": {
+        "registration": {
+            "label": "ER Registration & Intake",
+            "permissions": ["er.registration.write"],
+        },
+        "triage": {
+            "label": "Triage & Vitals",
+            "permissions": ["er.triage.write"],
+        },
+        "treatment": {
+            "label": "Emergency Treatment",
+            "permissions": ["er.treatment.write"],
+        },
+        "doctor_assignment": {
+            "label": "Doctor Assignment & Clinical Notes",
+            "permissions": ["er.doctor_assignment.write"],
+        },
+        "disposition": {
+            "label": "Disposition Decision",
+            "permissions": ["er.disposition.write"],
+        },
+        # Deliberately not "bed_request": fulfilling an ER bed request is a Bed
+        # Management action (it calls assign_patient_to_bed() unchanged) and is
+        # gated on the existing beds.write permission instead, so ER clinical
+        # staff and Reception/bed-management staff stay separate grants.
+        "config": {
+            "label": "Triage Category Configuration",
+            "permissions": ["er.config.write"],
         },
     },
     "billing": {

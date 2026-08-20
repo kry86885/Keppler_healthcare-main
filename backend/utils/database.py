@@ -1,6 +1,7 @@
 import os
 import json
 import math
+import re
 import uuid as uuid_lib
 from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
@@ -458,9 +459,11 @@ def init_database():
             """)
         ensure_hospital_columns(conn)
         ensure_patient_columns(conn)
+        ensure_patient_id_generation(conn)
         ensure_user_columns(conn)
         ensure_document_columns(conn)
         ensure_hospai_module_tables(conn)
+        ensure_er_tables(conn)
         ensure_financial_hospital_columns(conn)
         ensure_operational_audit_columns(conn)
         ensure_vector_store_tables(conn)
@@ -762,6 +765,31 @@ def ensure_patient_columns(conn):
     _ensure_column(cursor, "patients", "blood_group", "TEXT")
     _ensure_column(cursor, "patients", "emergency_contact", "TEXT")
     _ensure_column(cursor, "patients", "aadhar_number", "TEXT")
+
+
+def ensure_patient_id_generation(conn):
+    """generate_patient_id() used to scan for the next number per hospital
+    with no locking -- two concurrent registrations for the same hospital
+    could read the same max and collide on insert. patients.patient_id is
+    also GLOBALLY unique (not per-hospital) -- and that turned out to be
+    unsafe to change: admissions, documents, medical_history, clinical_notes,
+    patient_vitals, diagnosis_records, and emr_access_logs all carry a
+    FOREIGN KEY against patients(patient_id) that depends on it staying a
+    single-column unique key (confirmed by a DependentObjectsStillExist error
+    when this was tried). So instead of touching that constraint, this makes
+    id generation itself race-free and globally unique by construction: one
+    Postgres SEQUENCE shared by every hospital, seeded once from whatever's
+    already been issued so no existing id is ever re-used."""
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM pg_sequences WHERE sequencename = 'patient_id_seq'")
+    if cursor.fetchone() is None:
+        cursor.execute(
+            "SELECT MAX(CAST(SUBSTR(patient_id, 5) AS INTEGER)) FROM patients "
+            "WHERE patient_id LIKE 'PAT-1%'"
+        )
+        row = cursor.fetchone()
+        seed = int(row[0]) if row and row[0] else 100000
+        cursor.execute(f"CREATE SEQUENCE patient_id_seq START WITH {seed + 1}")
 
 
 def ensure_user_columns(conn):
@@ -1444,6 +1472,229 @@ def ensure_hospai_module_tables(conn):
     # Intentionally leaving doctors table empty instead of seeding hardcoded misleading names
 
 
+def ensure_er_tables(conn):
+    """ER / Casualty module (Phase 1). Every table here gets hospital_id from
+    day one (not the legacy patient_id-trust pattern used by the
+    pre-multi-tenancy EMR tables) and is added to OPERATIONAL_TABLES below for
+    uuid/audit/soft-delete columns.
+
+    er_triage_config ships with zero seeded rows on purpose -- the hospital's
+    own clinical team must author B1-B4-equivalent categories before triage
+    can be used; nothing here hardcodes a clinical threshold."""
+    cursor = conn.cursor()
+    id_column = "SERIAL PRIMARY KEY"
+
+    cursor.execute("CREATE SEQUENCE IF NOT EXISTS er_visit_seq START 1")
+
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS er_visits (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            visit_no TEXT UNIQUE NOT NULL,
+            patient_id TEXT,
+            is_unknown_patient BOOLEAN DEFAULT FALSE,
+            unknown_patient_label TEXT,
+            merged_into_patient_id TEXT,
+            arrival_mode TEXT,
+            brought_by TEXT,
+            referral_hospital TEXT,
+            police_involved BOOLEAN DEFAULT FALSE,
+            condition_at_arrival TEXT,
+            conscious_status TEXT,
+            arrival_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            status TEXT NOT NULL DEFAULT 'registered',
+            assigned_doctor_name TEXT,
+            assigned_specialty TEXT,
+            doctor_assigned_at TIMESTAMP,
+            doctor_accepted_at TIMESTAMP,
+            registered_by TEXT,
+            closed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS er_complaints (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            er_visit_id INTEGER NOT NULL,
+            complaint TEXT NOT NULL,
+            severity TEXT,
+            start_date DATE,
+            start_time TEXT,
+            duration TEXT,
+            progression TEXT,
+            associated_symptoms TEXT,
+            source_of_information TEXT,
+            reported_by TEXT,
+            case_category TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS er_incident_history (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            er_visit_id INTEGER NOT NULL UNIQUE,
+            incident_type TEXT,
+            incident_at TIMESTAMP,
+            incident_time_precision TEXT,
+            discovered_at TIMESTAMP,
+            details_json JSONB,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS er_vitals (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            er_visit_id INTEGER NOT NULL,
+            recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            recorded_by TEXT,
+            heart_rate INTEGER,
+            bp_systolic INTEGER,
+            bp_diastolic INTEGER,
+            respiratory_rate INTEGER,
+            spo2 INTEGER,
+            temperature REAL,
+            consciousness_level TEXT,
+            blood_glucose REAL,
+            pain_score INTEGER,
+            gcs INTEGER,
+            pupillary_response TEXT,
+            notes TEXT
+        )
+        """)
+
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS er_triage_config (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            category_code TEXT NOT NULL,
+            category_label TEXT NOT NULL,
+            description TEXT,
+            sort_order INTEGER DEFAULT 0,
+            color TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+    cursor.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_er_triage_config_code "
+        "ON er_triage_config(hospital_id, category_code)"
+    )
+
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS er_triage (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            er_visit_id INTEGER NOT NULL UNIQUE,
+            category TEXT NOT NULL,
+            triage_bed_label TEXT,
+            reason TEXT,
+            assigned_by TEXT,
+            triaged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS er_treatments (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            er_visit_id INTEGER NOT NULL,
+            intervention_type TEXT NOT NULL,
+            description TEXT,
+            administered_by TEXT,
+            prescribed_by TEXT,
+            performed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            notes TEXT
+        )
+        """)
+
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS er_clinical_notes (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            er_visit_id INTEGER NOT NULL,
+            note_type TEXT NOT NULL DEFAULT 'assessment',
+            author TEXT,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS er_disposition (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            er_visit_id INTEGER NOT NULL UNIQUE,
+            outcome TEXT NOT NULL,
+            required_specialty TEXT,
+            clinical_reason TEXT NOT NULL,
+            decided_by TEXT,
+            decided_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            priority TEXT
+        )
+        """)
+
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS er_bed_requests (
+            id {id_column},
+            hospital_id INTEGER NOT NULL,
+            er_visit_id INTEGER NOT NULL,
+            disposition_id INTEGER NOT NULL,
+            requested_level_of_care TEXT NOT NULL,
+            requested_specialty TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            requested_by TEXT,
+            requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            allocated_bed_id INTEGER,
+            allocated_admission_id INTEGER,
+            allocated_by TEXT,
+            allocated_at TIMESTAMP
+        )
+        """)
+
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_er_visits_hospital ON er_visits(hospital_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_er_visits_patient ON er_visits(patient_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_er_bed_requests_status ON er_bed_requests(hospital_id, status)"
+    )
+
+    # Back-link from a real admission to the ER visit that led to it.
+    # assign_patient_to_bed() always mints a fresh admissions row -- this is
+    # set afterward by the /bed-requests/<id>/allocate route, not by changing
+    # that function.
+    _ensure_column(cursor, "admissions", "er_visit_id", "INTEGER")
+
+    # invoices.module's CHECK constraint is declared inline in its CREATE
+    # TABLE with no separate ADD CONSTRAINT anywhere, so adding 'ER' isn't a
+    # plain _ensure_column-style ALTER -- look up the actual (Postgres
+    # auto-generated) constraint name dynamically rather than hardcoding one.
+    # Once 'ER' is present in the definition this is permanently a no-op, so
+    # it's safe to leave in the boot sequence.
+    cursor.execute("""
+        SELECT con.conname, pg_get_constraintdef(con.oid) AS definition
+        FROM pg_constraint con
+        JOIN pg_class rel ON rel.oid = con.conrelid
+        WHERE rel.relname = 'invoices' AND con.contype = 'c'
+            AND pg_get_constraintdef(con.oid) LIKE '%module%'
+        """)
+    module_check = cursor.fetchone()
+    if module_check and "'ER'" not in module_check[1]:
+        cursor.execute(f"ALTER TABLE invoices DROP CONSTRAINT {module_check[0]}")
+        cursor.execute(
+            "ALTER TABLE invoices ADD CONSTRAINT invoices_module_check "
+            "CHECK (module IN ('OP', 'IP', 'LAB', 'PHARMACY', 'ER'))"
+        )
+
+
 # ==================== Schema hardening: uuid + audit/soft-delete columns ====================
 
 # Every operational/domain table (system tables -- hospitals, users, sessions, audit_logs --
@@ -1480,6 +1731,16 @@ OPERATIONAL_TABLES = (
     "accounts_ledger",
     "vendor_payments",
     "doctor_payouts",
+    "er_visits",
+    "er_complaints",
+    "er_incident_history",
+    "er_vitals",
+    "er_triage_config",
+    "er_triage",
+    "er_treatments",
+    "er_clinical_notes",
+    "er_disposition",
+    "er_bed_requests",
 )
 
 
@@ -2649,28 +2910,22 @@ def query_bulk_patients(hospital_id, where_clause, params, page=1, page_size=150
 
 
 def generate_patient_id(hospital_id=None):
-    scoped_hospital_id = hospital_id or resolve_hospital_id()
+    """Atomically reserves the next globally-unique PAT-XXXXXX number via a
+    single Postgres SEQUENCE shared across every hospital (patient_id is a
+    GLOBAL unique column, not per-hospital -- several other tables carry a
+    foreign key against it that depends on that, see
+    ensure_patient_id_generation). Replaces the old per-hospital scan, which
+    had no locking and let two concurrent calls read the same max and
+    collide on insert; nextval() is atomic by construction, no locking code
+    needed here. hospital_id is accepted for call-site compatibility but no
+    longer affects the generated id."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        # Find the highest continuous sequence id directly from the database.
-        cursor.execute(
-            "SELECT patient_id FROM patients WHERE hospital_id = ? AND patient_id LIKE ? "
-            "ORDER BY CAST(SUBSTR(patient_id, 5) AS INTEGER) DESC LIMIT 1",
-            (scoped_hospital_id, "PAT-1%"),
-        )
-        row = cursor.fetchone()
+        cursor.execute("SELECT nextval('patient_id_seq')")
+        issued = cursor.fetchone()[0]
+        conn.commit()
 
-        max_num = 100000
-        if row:
-            try:
-                # Expecting format PAT-100001
-                num = int(row[0].split("-")[1])
-                if num > max_num:
-                    max_num = num
-            except (IndexError, ValueError):
-                pass
-
-    return f"PAT-{max_num + 1}"
+    return f"PAT-{issued}"
 
 
 def check_duplicate_patient(name, last_name, dob, phone, hospital_id=None):
@@ -3797,6 +4052,30 @@ def get_suggested_doctors(department=None, region=None):
             (scoped_hospital_id,),
         )
         return [dict(row) for row in cursor.fetchall()]
+
+
+def match_doctor_to_department(available_doctors, department):
+    """Picks the first entry from available_doctors (each formatted
+    "Name (Department)") whose parenthetical department matches department,
+    case-insensitively. Returns the doctor's name, or "" if none match.
+    Extracted from Symptom AI triage's deterministic doctor-matching fallback
+    (the local model doesn't reliably pick a doctor even when one is
+    available for the chosen department) so ER doctor assignment can reuse
+    the exact same mechanism -- same "suggest, don't decide" discipline in
+    both places."""
+    target = (department or "").strip().lower()
+    if not target:
+        return ""
+    for doc_entry in available_doctors or []:
+        m = re.match(r"^(.*)\(([^()]*)\)\s*$", doc_entry.strip())
+        doc_name, doc_dept = (
+            (m.group(1).strip(), m.group(2).strip().lower())
+            if m
+            else (doc_entry.strip(), "")
+        )
+        if doc_dept == target:
+            return doc_name
+    return ""
 
 
 def create_doctor_schedule(data):
@@ -5490,6 +5769,761 @@ def list_patient_movements(patient_id):
         return cursor.fetchall()
 
 
+# ==================== ER / Casualty module (Phase 1) ====================
+
+# Deliberately collapsed vs. the spec's illustrative status list (which names
+# icu_requested/ward_requested separately): the *clinical* outcome detail
+# always lives in er_disposition.outcome, so er_visits.status only needs to
+# track coarse workflow progress for the queue view, not duplicate it.
+ER_STATUS_TRANSITIONS = {
+    "registered": {"triaged", "closed"},
+    "triaged": {"under_treatment", "doctor_assigned", "closed"},
+    "under_treatment": {"doctor_assigned", "under_investigation", "stabilized", "closed"},
+    # A doctor can be assigned before OR after treatment starts (Quick Intake's
+    # AI flow triages then immediately assigns a doctor, before any treatment
+    # is logged) -- every clinically-active state must therefore be able to
+    # move back into "under_treatment" as further interventions are given,
+    # or add_er_treatment()'s status nudge silently no-ops and the queue's
+    # status badge gets stuck on "Doctor Assigned" forever even while the
+    # patient is actively being treated.
+    "doctor_assigned": {"under_treatment", "under_investigation", "stabilized", "awaiting_disposition", "closed"},
+    "under_investigation": {"under_treatment", "stabilized", "awaiting_disposition", "closed"},
+    "stabilized": {"under_treatment", "under_investigation", "awaiting_disposition", "closed"},
+    "awaiting_disposition": {"bed_requested", "closed"},
+    "bed_requested": {"bed_allocated", "closed"},
+    "bed_allocated": {"transferred", "closed"},
+    "transferred": {"closed"},
+    "closed": set(),
+}
+
+# Disposition outcomes that need a physical bed -- these get an er_bed_requests
+# row; everything else closes the visit directly (see close_er_visit).
+ER_OUTCOMES_REQUIRING_BED = {"ward", "icu", "ot", "observation"}
+
+
+def update_er_visit_status(hospital_id, er_visit_id, new_status):
+    """Raises ValueError on an illegal transition, mirroring the
+    ValueError-on-bad-input style of transfer_bed/assign_patient_to_bed."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT status FROM er_visits WHERE id = ? AND hospital_id = ?",
+            (er_visit_id, hospital_id),
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise ValueError("ER visit not found.")
+        current_status = row["status"]
+        if new_status != current_status and new_status not in ER_STATUS_TRANSITIONS.get(
+            current_status, set()
+        ):
+            raise ValueError(
+                f"Cannot move ER visit from '{current_status}' to '{new_status}'."
+            )
+        closed_clause = ", closed_at = CURRENT_TIMESTAMP" if new_status == "closed" else ""
+        cursor.execute(
+            f"UPDATE er_visits SET status = ?{closed_clause} WHERE id = ?",
+            (new_status, er_visit_id),
+        )
+        conn.commit()
+        return True
+
+
+def create_er_visit(data, hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT nextval('er_visit_seq')")
+        seq = cursor.fetchone()[0]
+        visit_no = f"ER-{current_ist_datetime().year}-{int(seq):06d}"
+        cursor.execute(
+            """
+            INSERT INTO er_visits (
+                hospital_id, visit_no, patient_id, is_unknown_patient, unknown_patient_label,
+                arrival_mode, brought_by, referral_hospital, police_involved,
+                condition_at_arrival, conscious_status, registered_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+            """,
+            (
+                scoped_hospital_id,
+                visit_no,
+                data.get("patient_id"),
+                bool(data.get("is_unknown_patient", False)),
+                data.get("unknown_patient_label"),
+                data.get("arrival_mode"),
+                data.get("brought_by"),
+                data.get("referral_hospital"),
+                bool(data.get("police_involved", False)),
+                data.get("condition_at_arrival"),
+                data.get("conscious_status"),
+                data.get("registered_by"),
+            ),
+        )
+        visit_id = cursor.fetchone()[0]
+        conn.commit()
+        return {"id": visit_id, "visit_no": visit_no}
+
+
+def list_er_visits(patient_id=None, hospital_id=None, status=None, active_only=False):
+    """Includes the current triage category/bay (LEFT JOIN, so an
+    un-triaged visit still returns a row with those two fields NULL) --
+    the queue view needs acuity visible without a per-row detail fetch,
+    the same way a real ED tracking board always shows priority up front."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        clauses = ["v.deleted_at IS NULL"]
+        params = []
+        if hospital_id:
+            clauses.append("v.hospital_id = ?")
+            params.append(hospital_id)
+        if patient_id:
+            clauses.append("v.patient_id = ?")
+            params.append(patient_id)
+        if status:
+            clauses.append("v.status = ?")
+            params.append(status)
+        if active_only:
+            clauses.append("v.status != 'closed'")
+        where_clause = f" WHERE {' AND '.join(clauses)}"
+        cursor.execute(
+            f"""
+            SELECT v.*, t.category AS triage_category, t.triage_bed_label AS triage_bed_label
+            FROM er_visits v
+            LEFT JOIN er_triage t ON t.er_visit_id = v.id
+            {where_clause}
+            ORDER BY v.arrival_at DESC
+            """,
+            tuple(params),
+        )
+        return cursor.fetchall()
+
+
+def get_er_visit(er_visit_id, hospital_id=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM er_visits WHERE id = ? AND hospital_id = ? AND deleted_at IS NULL",
+            (er_visit_id, scoped_hospital_id),
+        )
+        visit = cursor.fetchone()
+        if not visit:
+            return None
+        visit = dict(visit)
+
+        cursor.execute(
+            "SELECT * FROM er_complaints WHERE er_visit_id = ? ORDER BY created_at ASC",
+            (er_visit_id,),
+        )
+        visit["complaints"] = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute(
+            "SELECT * FROM er_incident_history WHERE er_visit_id = ?", (er_visit_id,)
+        )
+        incident = cursor.fetchone()
+        visit["incident_history"] = dict(incident) if incident else None
+
+        cursor.execute(
+            "SELECT * FROM er_vitals WHERE er_visit_id = ? ORDER BY recorded_at ASC",
+            (er_visit_id,),
+        )
+        visit["vitals"] = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute("SELECT * FROM er_triage WHERE er_visit_id = ?", (er_visit_id,))
+        triage = cursor.fetchone()
+        visit["triage"] = dict(triage) if triage else None
+
+        cursor.execute(
+            "SELECT * FROM er_treatments WHERE er_visit_id = ? ORDER BY performed_at ASC",
+            (er_visit_id,),
+        )
+        visit["treatments"] = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute(
+            "SELECT * FROM er_clinical_notes WHERE er_visit_id = ? ORDER BY created_at ASC",
+            (er_visit_id,),
+        )
+        visit["clinical_notes"] = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute("SELECT * FROM er_disposition WHERE er_visit_id = ?", (er_visit_id,))
+        disposition = cursor.fetchone()
+        visit["disposition"] = dict(disposition) if disposition else None
+
+        cursor.execute(
+            "SELECT * FROM er_bed_requests WHERE er_visit_id = ? ORDER BY requested_at DESC",
+            (er_visit_id,),
+        )
+        visit["bed_requests"] = [dict(r) for r in cursor.fetchall()]
+
+        return visit
+
+
+def merge_er_unknown_patient(hospital_id, er_visit_id, patient_id):
+    """Links a temporary unknown-patient ER visit to a confirmed patient_id
+    once identity is known. Everything already recorded on the visit
+    (complaints/vitals/triage/treatments/notes) stays exactly where it is --
+    only er_visits.patient_id changes, so nothing needs to be copied."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id FROM er_visits WHERE id = ? AND hospital_id = ?",
+            (er_visit_id, hospital_id),
+        )
+        if not cursor.fetchone():
+            return False
+        cursor.execute(
+            "UPDATE er_visits SET patient_id = ?, is_unknown_patient = FALSE, "
+            "merged_into_patient_id = ? WHERE id = ?",
+            (patient_id, patient_id, er_visit_id),
+        )
+        conn.commit()
+        return True
+
+
+def add_er_complaint(hospital_id, er_visit_id, data):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO er_complaints (
+                hospital_id, er_visit_id, complaint, severity, start_date, start_time,
+                duration, progression, associated_symptoms, source_of_information,
+                reported_by, case_category
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+            """,
+            (
+                hospital_id,
+                er_visit_id,
+                data["complaint"],
+                data.get("severity"),
+                data.get("start_date"),
+                data.get("start_time"),
+                data.get("duration"),
+                data.get("progression"),
+                data.get("associated_symptoms"),
+                data.get("source_of_information"),
+                data.get("reported_by"),
+                data.get("case_category"),
+            ),
+        )
+        complaint_id = cursor.fetchone()[0]
+        conn.commit()
+        return complaint_id
+
+
+def set_er_incident(hospital_id, er_visit_id, data):
+    """One incident-history record per visit -- an upsert, since staff refine
+    incident details as more information arrives rather than filing a fresh
+    record each time."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id FROM er_incident_history WHERE er_visit_id = ?", (er_visit_id,)
+        )
+        existing = cursor.fetchone()
+        details_json = json.dumps(data.get("details") or {})
+        if existing:
+            cursor.execute(
+                "UPDATE er_incident_history SET incident_type = ?, incident_at = ?, "
+                "incident_time_precision = ?, discovered_at = ?, details_json = ? "
+                "WHERE er_visit_id = ?",
+                (
+                    data.get("incident_type"),
+                    data.get("incident_at"),
+                    data.get("incident_time_precision"),
+                    data.get("discovered_at"),
+                    details_json,
+                    er_visit_id,
+                ),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO er_incident_history (hospital_id, er_visit_id, incident_type, "
+                "incident_at, incident_time_precision, discovered_at, details_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    hospital_id,
+                    er_visit_id,
+                    data.get("incident_type"),
+                    data.get("incident_at"),
+                    data.get("incident_time_precision"),
+                    data.get("discovered_at"),
+                    details_json,
+                ),
+            )
+        conn.commit()
+        return True
+
+
+def add_er_vitals(hospital_id, er_visit_id, data, recorded_by=None):
+    """Every call inserts a new row -- vitals are never updated/overwritten,
+    matching the spec's BR-003."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO er_vitals (
+                hospital_id, er_visit_id, recorded_by, heart_rate, bp_systolic, bp_diastolic,
+                respiratory_rate, spo2, temperature, consciousness_level, blood_glucose,
+                pain_score, gcs, pupillary_response, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+            """,
+            (
+                hospital_id,
+                er_visit_id,
+                recorded_by,
+                data.get("heart_rate"),
+                data.get("bp_systolic"),
+                data.get("bp_diastolic"),
+                data.get("respiratory_rate"),
+                data.get("spo2"),
+                data.get("temperature"),
+                data.get("consciousness_level"),
+                data.get("blood_glucose"),
+                data.get("pain_score"),
+                data.get("gcs"),
+                data.get("pupillary_response"),
+                data.get("notes"),
+            ),
+        )
+        vitals_id = cursor.fetchone()[0]
+        conn.commit()
+        return vitals_id
+
+
+def list_er_triage_config(hospital_id, active_only=True):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        clauses = ["hospital_id = ?", "deleted_at IS NULL"]
+        params = [hospital_id]
+        if active_only:
+            clauses.append("is_active = TRUE")
+        cursor.execute(
+            f"SELECT * FROM er_triage_config WHERE {' AND '.join(clauses)} "
+            "ORDER BY sort_order ASC, category_code ASC",
+            tuple(params),
+        )
+        return cursor.fetchall()
+
+
+def create_er_triage_category(hospital_id, data):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO er_triage_config (
+                hospital_id, category_code, category_label, description, sort_order, color
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            RETURNING id
+            """,
+            (
+                hospital_id,
+                data["category_code"],
+                data["category_label"],
+                data.get("description"),
+                int(data.get("sort_order", 0) or 0),
+                data.get("color"),
+            ),
+        )
+        category_id = cursor.fetchone()[0]
+        conn.commit()
+        return category_id
+
+
+def set_er_triage(hospital_id, er_visit_id, data, assigned_by=None):
+    """One triage row per visit -- corrections overwrite it; the change itself
+    is captured by the generic audit-log mechanism at the route layer (same
+    as the spec's own "Nurse01 changed triage level B3->B1" example), not a
+    separate history table here."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM er_triage WHERE er_visit_id = ?", (er_visit_id,))
+        existing = cursor.fetchone()
+        if existing:
+            cursor.execute(
+                "UPDATE er_triage SET category = ?, triage_bed_label = ?, reason = ?, "
+                "assigned_by = ?, triaged_at = CURRENT_TIMESTAMP WHERE er_visit_id = ?",
+                (
+                    data["category"],
+                    data.get("triage_bed_label"),
+                    data.get("reason"),
+                    assigned_by,
+                    er_visit_id,
+                ),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO er_triage (hospital_id, er_visit_id, category, triage_bed_label, "
+                "reason, assigned_by) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    hospital_id,
+                    er_visit_id,
+                    data["category"],
+                    data.get("triage_bed_label"),
+                    data.get("reason"),
+                    assigned_by,
+                ),
+            )
+        conn.commit()
+
+    # Best-effort forward nudge -- triage can be corrected later in the visit
+    # (e.g. after treatment has already started), so an invalid-transition
+    # error here is expected and non-fatal, not a reason to fail the request.
+    try:
+        update_er_visit_status(hospital_id, er_visit_id, "triaged")
+    except ValueError:
+        pass
+    return True
+
+
+def add_er_treatment(hospital_id, er_visit_id, data):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO er_treatments (
+                hospital_id, er_visit_id, intervention_type, description,
+                administered_by, prescribed_by, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+            """,
+            (
+                hospital_id,
+                er_visit_id,
+                data["intervention_type"],
+                data.get("description"),
+                data.get("administered_by"),
+                data.get("prescribed_by"),
+                data.get("notes"),
+            ),
+        )
+        treatment_id = cursor.fetchone()[0]
+        conn.commit()
+
+    try:
+        update_er_visit_status(hospital_id, er_visit_id, "under_treatment")
+    except ValueError:
+        pass
+    return treatment_id
+
+
+def assign_er_doctor(hospital_id, er_visit_id, specialty, doctor_name=None):
+    """Suggests a doctor via the same deterministic matching Symptom AI triage
+    uses when no doctor_name is given explicitly; staff can always override
+    with an explicit doctor_name. Never decides on its own who treats the
+    patient -- only fills in a suggestion for staff to confirm.
+
+    If nobody in the exact requested specialty is on staff, falls back to any
+    other available doctor (real ER practice: the on-call/general physician
+    covers until a specialist is free) instead of leaving the visit
+    unassigned. get_suggested_doctors() already does this same
+    exact-department-first-else-anyone fallback internally, but a naive
+    match_doctor_to_department() re-filter on its result would silently
+    throw that fallback away again whenever the exact department has no
+    doctor -- so the fallback candidate is taken directly here instead."""
+    final_doctor = (doctor_name or "").strip()
+    matched_specialty = specialty
+    used_fallback = False
+    if not final_doctor:
+        candidates = get_suggested_doctors(department=specialty)
+        available = [
+            f"{doc['doctor_name']} ({doc.get('department') or ''})"
+            for doc in candidates
+            if doc.get("doctor_name")
+        ]
+        final_doctor = match_doctor_to_department(available, specialty)
+        if not final_doctor and candidates:
+            top = candidates[0]
+            final_doctor = (top.get("doctor_name") or "").strip()
+            matched_specialty = top.get("department") or specialty
+            used_fallback = bool(final_doctor)
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE er_visits SET assigned_doctor_name = ?, assigned_specialty = ?, "
+            "doctor_assigned_at = CURRENT_TIMESTAMP, doctor_accepted_at = NULL "
+            "WHERE id = ? AND hospital_id = ?",
+            (final_doctor or None, specialty, er_visit_id, hospital_id),
+        )
+        conn.commit()
+
+    try:
+        update_er_visit_status(hospital_id, er_visit_id, "doctor_assigned")
+    except ValueError:
+        pass
+    return {
+        "doctor_name": final_doctor,
+        "matched_specialty": matched_specialty,
+        "used_fallback": used_fallback,
+    }
+
+
+def accept_er_doctor_assignment(hospital_id, er_visit_id):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE er_visits SET doctor_accepted_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND hospital_id = ? AND assigned_doctor_name IS NOT NULL",
+            (er_visit_id, hospital_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def add_er_clinical_note(hospital_id, er_visit_id, note_type, content, author=None):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO er_clinical_notes (hospital_id, er_visit_id, note_type, author, content) "
+            "VALUES (?, ?, ?, ?, ?) RETURNING id",
+            (hospital_id, er_visit_id, note_type, author, content),
+        )
+        note_id = cursor.fetchone()[0]
+        conn.commit()
+        return note_id
+
+
+def record_er_disposition(hospital_id, er_visit_id, data, decided_by=None):
+    """Records the ER doctor's clinical decision -- never a bed number. For
+    outcomes that need a physical bed, also creates the er_bed_requests row
+    Reception fulfills via allocate_er_bed_request(); this function never
+    touches bed_master/bed_allocations itself."""
+    outcome = data["outcome"]
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT status FROM er_visits WHERE id = ? AND hospital_id = ?",
+            (er_visit_id, hospital_id),
+        )
+        visit_row = cursor.fetchone()
+        if not visit_row:
+            raise ValueError("ER visit not found.")
+        if visit_row["status"] in ("bed_allocated", "transferred", "closed"):
+            raise ValueError("This ER visit has already progressed past the disposition stage.")
+
+        cursor.execute("SELECT id FROM er_disposition WHERE er_visit_id = ?", (er_visit_id,))
+        existing = cursor.fetchone()
+        if existing:
+            cursor.execute(
+                "UPDATE er_disposition SET outcome = ?, required_specialty = ?, "
+                "clinical_reason = ?, decided_by = ?, decided_at = CURRENT_TIMESTAMP, "
+                "priority = ? WHERE er_visit_id = ? RETURNING id",
+                (
+                    outcome,
+                    data.get("required_specialty"),
+                    data["clinical_reason"],
+                    decided_by,
+                    data.get("priority"),
+                    er_visit_id,
+                ),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO er_disposition (hospital_id, er_visit_id, outcome, "
+                "required_specialty, clinical_reason, decided_by, priority) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
+                (
+                    hospital_id,
+                    er_visit_id,
+                    outcome,
+                    data.get("required_specialty"),
+                    data["clinical_reason"],
+                    decided_by,
+                    data.get("priority"),
+                ),
+            )
+        disposition_id = cursor.fetchone()[0]
+
+        bed_request_id = None
+        if outcome in ER_OUTCOMES_REQUIRING_BED:
+            cursor.execute(
+                "INSERT INTO er_bed_requests (hospital_id, er_visit_id, disposition_id, "
+                "requested_level_of_care, requested_specialty, requested_by) "
+                "VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
+                (
+                    hospital_id,
+                    er_visit_id,
+                    disposition_id,
+                    outcome,
+                    data.get("required_specialty"),
+                    decided_by,
+                ),
+            )
+            bed_request_id = cursor.fetchone()[0]
+
+        # Recording a disposition is itself the "we've reached the decision
+        # point" transition, so this sets status directly in the same
+        # transaction rather than going through update_er_visit_status's
+        # stricter step-by-step transition table -- real ER visits don't
+        # reliably walk through every intermediate status via a separate API
+        # call first (e.g. a nurse may give oxygen before a doctor is even
+        # assigned), and disposition recording shouldn't be blocked by that.
+        new_status = "bed_requested" if bed_request_id else "awaiting_disposition"
+        cursor.execute("UPDATE er_visits SET status = ? WHERE id = ?", (new_status, er_visit_id))
+        conn.commit()
+
+    return {"disposition_id": disposition_id, "bed_request_id": bed_request_id}
+
+
+def list_er_bed_requests(hospital_id, status=None):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        clauses = ["r.hospital_id = ?"]
+        params = [hospital_id]
+        if status:
+            clauses.append("r.status = ?")
+            params.append(status)
+        cursor.execute(
+            f"""
+            SELECT r.*, v.visit_no, v.patient_id, v.unknown_patient_label, v.is_unknown_patient
+            FROM er_bed_requests r
+            JOIN er_visits v ON v.id = r.er_visit_id
+            WHERE {' AND '.join(clauses)}
+            ORDER BY r.requested_at ASC
+            """,
+            tuple(params),
+        )
+        return cursor.fetchall()
+
+
+def allocate_er_bed_request(
+    hospital_id, bed_request_id, bed_id, notes, allocated_by=None, expected_los_days=None
+):
+    """Reception fulfilling an ER bed request. Calls assign_patient_to_bed()
+    completely unchanged -- this function only reads the request, delegates
+    the actual bed assignment, then records the back-link and advances the
+    request/visit status. The bed_id always comes from the caller (Reception,
+    choosing from real availability); this function never picks one itself --
+    that's the boundary the whole ER module is built around."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM er_bed_requests WHERE id = ? AND hospital_id = ? AND status = 'pending'",
+            (bed_request_id, hospital_id),
+        )
+        req = cursor.fetchone()
+        if not req:
+            return None
+        er_visit_id = req["er_visit_id"]
+        cursor.execute("SELECT patient_id FROM er_visits WHERE id = ?", (er_visit_id,))
+        visit_row = cursor.fetchone()
+        patient_id = visit_row["patient_id"] if visit_row else None
+
+    if not patient_id:
+        raise ValueError(
+            "This ER visit isn't linked to a confirmed patient record yet -- "
+            "merge the unknown patient before allocating a bed."
+        )
+
+    result = assign_patient_to_bed(
+        hospital_id, bed_id, patient_id, notes, expected_los_days=expected_los_days
+    )
+    if result is None:
+        return None
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE er_bed_requests SET status = 'allocated', allocated_bed_id = ?, "
+            "allocated_admission_id = ?, allocated_by = ?, allocated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ?",
+            (bed_id, result["admission_id"], allocated_by, bed_request_id),
+        )
+        cursor.execute(
+            "UPDATE admissions SET er_visit_id = ? WHERE id = ?",
+            (er_visit_id, result["admission_id"]),
+        )
+        conn.commit()
+
+    # Best-effort: the bed is already assigned and committed above regardless
+    # of whether this coarse status label updates cleanly, so a mismatch here
+    # must never look like the allocation itself failed.
+    try:
+        update_er_visit_status(hospital_id, er_visit_id, "bed_allocated")
+    except ValueError:
+        pass
+    return {**result, "er_visit_id": er_visit_id, "bed_request_id": bed_request_id}
+
+
+def compute_er_charges(hospital_id, er_visit_id, consultation_fee=0.0):
+    """Itemizes an ER visit's own charges for staff review before an invoice
+    is raised -- mirrors compute_room_charges()'s shape. Only used for
+    outcomes that close without an admission; an admitted visit's stay is
+    billed by the existing IP invoice at discharge instead, exactly like OP
+    consultation and IP room charges are already two separate invoice events
+    at two separate points in time. Treatment line items have no per-item
+    price configured in Phase 1 -- they're listed for the review step, not
+    automatically priced; staff enter/adjust the reviewed total on confirm."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT intervention_type, description FROM er_treatments "
+            "WHERE hospital_id = ? AND er_visit_id = ? ORDER BY performed_at ASC",
+            (hospital_id, er_visit_id),
+        )
+        treatment_rows = cursor.fetchall()
+
+    items = []
+    total = 0.0
+    if consultation_fee:
+        items.append({"label": "ER Consultation", "amount": float(consultation_fee)})
+        total += float(consultation_fee)
+    for row in treatment_rows:
+        label = (
+            row["intervention_type"]
+            if not row["description"]
+            else f"{row['intervention_type']} — {row['description']}"
+        )
+        items.append({"label": label, "amount": 0.0})
+    return {"items": items, "total": total}
+
+
+def close_er_visit(hospital_id, er_visit_id, total_amount=None, consultation_fee=0.0, created_by=None):
+    """Closes an ER visit that isn't being admitted (discharge/referral/
+    transfer/death/other outcomes) and raises its invoice -- mirrors how
+    release_bed() auto-invoices at the equivalent IP closing action.
+    total_amount, when given, is the staff-reviewed/adjusted total from the
+    closing modal; when omitted, falls back to compute_er_charges()'s total.
+    No new "deposit before total is known" capability -- confirmed not to
+    exist anywhere in the app today, out of scope for this pass."""
+    charges = compute_er_charges(hospital_id, er_visit_id, consultation_fee=consultation_fee)
+    total = total_amount if total_amount is not None else charges["total"]
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT patient_id FROM er_visits WHERE id = ? AND hospital_id = ?",
+            (er_visit_id, hospital_id),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        patient_id = row["patient_id"]
+
+    invoice_id = None
+    if total and total > 0 and patient_id:
+        invoice_no = f"INV-ER-{er_visit_id}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        invoice_id = create_invoice(
+            {
+                "invoice_no": invoice_no,
+                "patient_id": patient_id,
+                "module": "ER",
+                "total_amount": total,
+                "subtotal": total,
+                "payment_status": "due",
+                "created_by": created_by,
+            },
+            hospital_id=hospital_id,
+        )
+
+    update_er_visit_status(hospital_id, er_visit_id, "closed")
+    return {"invoice_id": invoice_id, "total": total, "items": charges["items"]}
+
+
 def get_patient_journey(patient_id, hospital_id=None):
     patient = get_patient(patient_id, hospital_id=hospital_id)
     if not patient:
@@ -5505,6 +6539,56 @@ def get_patient_journey(patient_id, hospital_id=None):
                 "timestamp": patient["created_at"],
             }
         )
+
+    for row in list_er_visits(patient_id=patient_id, hospital_id=hospital_id):
+        er_visit = dict(row)
+        events.append(
+            {
+                "stage": "er",
+                "label": f"ER visit registered ({er_visit.get('visit_no')})"
+                + (f" — {er_visit.get('arrival_mode')}" if er_visit.get("arrival_mode") else ""),
+                "timestamp": er_visit.get("arrival_at"),
+                "detail": {"visit_no": er_visit.get("visit_no"), "status": er_visit.get("status")},
+            }
+        )
+        with get_connection() as conn:
+            er_cursor = conn.cursor()
+            er_cursor.execute(
+                "SELECT category, triage_bed_label, triaged_at FROM er_triage WHERE er_visit_id = ?",
+                (er_visit["id"],),
+            )
+            triage_row = er_cursor.fetchone()
+            if triage_row:
+                events.append(
+                    {
+                        "stage": "er",
+                        "label": f"ER triage: {triage_row['category']}"
+                        + (
+                            f" — {triage_row['triage_bed_label']}"
+                            if triage_row["triage_bed_label"]
+                            else ""
+                        ),
+                        "timestamp": triage_row["triaged_at"],
+                    }
+                )
+            er_cursor.execute(
+                "SELECT outcome, clinical_reason, decided_at FROM er_disposition WHERE er_visit_id = ?",
+                (er_visit["id"],),
+            )
+            disposition_row = er_cursor.fetchone()
+            if disposition_row:
+                events.append(
+                    {
+                        "stage": "er",
+                        "label": f"ER disposition: {disposition_row['outcome']}"
+                        + (
+                            f" — {disposition_row['clinical_reason']}"
+                            if disposition_row["clinical_reason"]
+                            else ""
+                        ),
+                        "timestamp": disposition_row["decided_at"],
+                    }
+                )
 
     for row in list_appointments(patient_id=patient_id, hospital_id=hospital_id):
         appt = dict(row)
@@ -7016,15 +8100,27 @@ def list_departments(hospital_id=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
+        # Plain UNION only dedupes when every selected column matches, but the
+        # department_master branch carries a real id/created_at while the
+        # doctor-derived branch has NULL for both -- so a department that
+        # exists in both (the common case once department_master and doctor
+        # profiles are kept in sync) survived as two "duplicate" rows. Group
+        # by name so a hospital's own configured departments and any
+        # department only implied by a doctor's profile are still merged
+        # into one list, picking a representative id/created_at per name.
         cursor.execute(
             """
-            SELECT id, department_name, created_at, hospital_id
-            FROM department_master
-            WHERE hospital_id = ?
-            UNION
-            SELECT NULL as id, department as department_name, NULL as created_at, hospital_id
-            FROM users
-            WHERE hospital_id = ? AND department IS NOT NULL AND department != '' AND status = 'active' AND LOWER(job_role) = 'doctor'
+            SELECT MIN(id) as id, department_name, MIN(created_at) as created_at, hospital_id
+            FROM (
+                SELECT id, department_name, created_at, hospital_id
+                FROM department_master
+                WHERE hospital_id = ?
+                UNION ALL
+                SELECT NULL as id, department as department_name, NULL as created_at, hospital_id
+                FROM users
+                WHERE hospital_id = ? AND department IS NOT NULL AND department != '' AND status = 'active' AND LOWER(job_role) = 'doctor'
+            ) AS combined
+            GROUP BY department_name, hospital_id
             ORDER BY department_name ASC
             """,
             (scoped_hospital_id, scoped_hospital_id),

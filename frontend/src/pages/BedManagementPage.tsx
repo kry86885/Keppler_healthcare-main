@@ -56,6 +56,18 @@ type Bed = {
   room_charges_so_far: number | null;
 };
 
+type ErBedRequest = {
+  id: number;
+  er_visit_id: number;
+  visit_no: string;
+  patient_id: string | null;
+  is_unknown_patient: boolean;
+  unknown_patient_label: string | null;
+  requested_level_of_care: string;
+  requested_specialty: string | null;
+  requested_at: string;
+};
+
 type RoomChargeSegment = {
   ward: string;
   room_no: string;
@@ -201,6 +213,78 @@ export default function BedManagementPage({ setNotice }: Props) {
   const [dischargeReason, setDischargeReason] = useState("");
   const [roomChargeSegments, setRoomChargeSegments] = useState<RoomChargeSegment[]>([]);
 
+  // ER Bed Requests -- Reception's side of the ER handoff. This is
+  // deliberately surfaced here rather than in the ER module's own page: the
+  // ER doctor only ever records a clinical decision (Ward/ICU/OT/Observation
+  // needed); picking the actual bed is a Bed Management action, gated on the
+  // same beds.write permission as every other bed action on this page.
+  const [erRequests, setErRequests] = useState<ErBedRequest[]>([]);
+  const [erRequestsLoading, setErRequestsLoading] = useState(false);
+  const [allocatingRequest, setAllocatingRequest] = useState<ErBedRequest | null>(null);
+  const [allocateFilter, setAllocateFilter] = useState("");
+  const [allocateBedId, setAllocateBedId] = useState<number | null>(null);
+  const [allocateNotes, setAllocateNotes] = useState("");
+  const [allocating, setAllocating] = useState(false);
+
+  const loadErRequests = async () => {
+    setErRequestsLoading(true);
+    try {
+      const data = await apiFetch<{ bed_requests: ErBedRequest[] }>(
+        "/api/er/bed-requests?status=pending",
+      );
+      setErRequests(data.bed_requests || []);
+    } catch {
+      // ER module may not be enabled for this account (no er module at all
+      // still means beds.write should work) -- fail quietly, matching how
+      // this panel simply won't have anything to show for hospitals not
+      // using the ER module yet.
+      setErRequests([]);
+    } finally {
+      setErRequestsLoading(false);
+    }
+  };
+
+  const availableBedsForAllocation = useMemo(() => {
+    const text = allocateFilter.trim().toLowerCase();
+    return beds
+      .filter((b) => b.status === "Available")
+      .filter((b) => {
+        if (!text) return true;
+        return [b.ward, b.room_no, b.bed_no, b.bed_type]
+          .filter(Boolean)
+          .some((field) => (field as string).toLowerCase().includes(text));
+      });
+  }, [beds, allocateFilter]);
+
+  const closeAllocateModal = () => {
+    setAllocatingRequest(null);
+    setAllocateFilter("");
+    setAllocateBedId(null);
+    setAllocateNotes("");
+  };
+
+  const handleAllocateErBed = async () => {
+    if (!allocatingRequest || !allocateBedId) return;
+    setAllocating(true);
+    try {
+      await apiFetch(`/api/er/bed-requests/${allocatingRequest.id}/allocate`, {
+        method: "POST",
+        body: JSON.stringify({ bed_id: allocateBedId, notes: allocateNotes }),
+      });
+      setNotice({ type: "success", message: "Bed allocated from ER request." });
+      closeAllocateModal();
+      await Promise.all([loadBeds(), loadErRequests()]);
+    } catch (error) {
+      reportError(
+        setNotice,
+        error as { message?: string; status?: number },
+        "Unable to allocate this bed.",
+      );
+    } finally {
+      setAllocating(false);
+    }
+  };
+
   const loadBeds = async () => {
     setLoading(true);
     try {
@@ -224,6 +308,7 @@ export default function BedManagementPage({ setNotice }: Props) {
 
   useEffect(() => {
     void loadBeds();
+    void loadErRequests();
   }, []);
 
   useEffect(() => {
@@ -605,6 +690,60 @@ export default function BedManagementPage({ setNotice }: Props) {
         <StatCard label="Occupied" value={displaySummary.occupied} />
         <StatCard label="Maintenance" value={displaySummary.maintenance} />
       </div>
+
+      {(erRequestsLoading || erRequests.length > 0) && (
+        <div className="panel">
+          <div className="module-panel-head">
+            <h3 style={{ margin: 0 }}>ER Bed Requests</h3>
+            <p className="muted" style={{ margin: 0 }}>
+              The ER doctor's clinical decision -- pick the actual bed here.
+            </p>
+          </div>
+          {erRequestsLoading ? (
+            <p className="muted">Loading ER requests...</p>
+          ) : (
+            <Table>
+              <TableHead>
+                <TableCell>ER Visit</TableCell>
+                <TableCell>Patient</TableCell>
+                <TableCell>Level of Care</TableCell>
+                <TableCell>Specialty</TableCell>
+                <TableCell>Requested</TableCell>
+                <TableCell />
+              </TableHead>
+              {erRequests.map((req) => (
+                <TableRow key={req.id}>
+                  <TableCell>{req.visit_no}</TableCell>
+                  <TableCell>
+                    {req.is_unknown_patient
+                      ? req.unknown_patient_label || "Unknown patient"
+                      : req.patient_id}
+                  </TableCell>
+                  <TableCell style={{ textTransform: "uppercase" }}>
+                    {req.requested_level_of_care}
+                  </TableCell>
+                  <TableCell>{req.requested_specialty || "-"}</TableCell>
+                  <TableCell>{formatDateTimeIST(req.requested_at)}</TableCell>
+                  <TableCell>
+                    <Button
+                      size="sm"
+                      disabled={req.is_unknown_patient}
+                      title={
+                        req.is_unknown_patient
+                          ? "Merge the unknown patient in the ER module before allocating a bed"
+                          : undefined
+                      }
+                      onClick={() => setAllocatingRequest(req)}
+                    >
+                      Allocate Bed
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </Table>
+          )}
+        </div>
+      )}
 
       <div className="panel">
         <div className="bed-map-toolbar">
@@ -1406,6 +1545,70 @@ export default function BedManagementPage({ setNotice }: Props) {
               </Button>
               <Button onClick={handleSaveBedEdit} disabled={savingBedEdit}>
                 {savingBedEdit ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!allocatingRequest}
+        onClose={closeAllocateModal}
+        title="Allocate Bed"
+        description={
+          allocatingRequest
+            ? `${allocatingRequest.visit_no} -- ${allocatingRequest.requested_level_of_care.toUpperCase()} requested`
+            : undefined
+        }
+      >
+        {allocatingRequest && (
+          <>
+            <div className="ai-search-bar" style={{ marginBottom: "0.75rem" }}>
+              <FiSearch className="ai-search-icon" aria-hidden />
+              <Input
+                className="ai-search-input"
+                placeholder="Filter by ward, room, or bed number"
+                value={allocateFilter}
+                onChange={(e) => setAllocateFilter(e.target.value)}
+              />
+            </div>
+            {availableBedsForAllocation.length === 0 ? (
+              <p className="muted">No available beds match this filter.</p>
+            ) : (
+              <div className="bed-transfer-target-list">
+                {availableBedsForAllocation.map((bed) => (
+                  <button
+                    key={bed.id}
+                    type="button"
+                    className={
+                      "bed-transfer-target" +
+                      (allocateBedId === bed.id ? " bed-transfer-target-selected" : "")
+                    }
+                    onClick={() => setAllocateBedId(bed.id)}
+                  >
+                    {bed.ward} / Room {bed.room_no} / Bed {bed.bed_no}
+                    <span className="muted"> — {bed.bed_type}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <Label style={{ marginTop: "0.75rem" }}>
+              Notes
+              <Textarea
+                value={allocateNotes}
+                onChange={(e) => setAllocateNotes(e.target.value)}
+                placeholder="Optional admission notes"
+              />
+            </Label>
+            <div className="ui-modal-actions" style={{ marginTop: "1rem" }}>
+              <Button variant="ghost" onClick={closeAllocateModal} disabled={allocating}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAllocateErBed}
+                disabled={!allocateBedId || allocating}
+              >
+                {allocating ? "Allocating..." : "Confirm Allocation"}
               </Button>
             </div>
           </>

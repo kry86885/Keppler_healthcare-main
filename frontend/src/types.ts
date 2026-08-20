@@ -4,6 +4,7 @@ export type ModuleId =
   | "patients"
   | "op"
   | "beds"
+  | "er"
   | "billing"
   | "pharmacy"
   | "hrms"

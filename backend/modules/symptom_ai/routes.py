@@ -16,6 +16,7 @@ from utils.database import (
     save_symptom_ai_chat_message,
     list_symptom_ai_chat_history,
     delete_symptom_ai_chat_history,
+    match_doctor_to_department,
 )
 
 symptom_ai_bp = Blueprint("symptom_ai_rag", __name__)
@@ -557,21 +558,61 @@ Your response MUST be valid JSON only. Do not include markdown formatting or bac
                     )
                 )
 
+        # Enforce the same hallucination guard on "doctor" that already exists
+        # for "department" above: the model sometimes returns a doctor name
+        # verbatim instead of leaving it blank, and nothing was previously
+        # checking that name was real before it got written into a patient's
+        # record downstream (ER assign-doctor trusts a non-empty doctor_name
+        # as-is). Strip any "(Department)" suffix from both sides so this
+        # works whichever format the caller's available_doctors list uses.
+        def _bare_name(entry: str) -> str:
+            m = re.match(r"^(.*)\(([^()]*)\)\s*$", entry.strip())
+            return (m.group(1).strip() if m else entry.strip())
+
+        def _normalize(name: str) -> str:
+            # Tolerant of "Dr. Naresh" vs "dr.naresh"-style spacing/
+            # punctuation differences between what the model says and how a
+            # name is stored -- only letters/digits count for comparison.
+            return re.sub(r"[^a-z0-9]", "", name.lower())
+
+        raw_doctor = (result.get("doctor") or "").strip()
+        if raw_doctor and available_doctors:
+            # Keyed by the full "Name (Department)" entry, not just the bare
+            # name -- a name existing in the roster at all isn't enough proof
+            # it's a valid pick; the model can name a REAL doctor from the
+            # WRONG specialty (e.g. picking a cardiologist for a urology case
+            # just because a name starting with the same letter is nearby in
+            # the prompt), which the name-only check below would've let
+            # through unchecked.
+            bare_available = {_normalize(_bare_name(d)): d for d in available_doctors}
+            candidate_entry = bare_available.get(_normalize(_bare_name(raw_doctor)))
+            if candidate_entry:
+                dept_match = re.match(r"^(.*)\(([^()]*)\)\s*$", candidate_entry.strip())
+                candidate_dept = dept_match.group(2).strip().lower() if dept_match else ""
+                target_dept = (result.get("department") or "").strip().lower()
+                if candidate_dept and target_dept and candidate_dept != target_dept:
+                    # Wrong specialty -- fall through to empty so the
+                    # deterministic match_doctor_to_department backstop below
+                    # picks someone actually in the right department instead.
+                    result["doctor"] = ""
+                else:
+                    result["doctor"] = _bare_name(candidate_entry)
+            else:
+                result["doctor"] = ""
+        elif raw_doctor and not available_doctors:
+            # No roster to validate against -- don't fabricate confidence
+            # either way; keep the model's answer as the caller has nothing
+            # to cross-check it with.
+            result["doctor"] = raw_doctor
+
         # The local model doesn't reliably pick a doctor even when one is available for
         # the chosen department, so backstop it deterministically here (mirrors the
-        # department hallucination guard above).
+        # department hallucination guard above). Shared with ER doctor assignment --
+        # see match_doctor_to_department in utils/database.py.
         if not (result.get("doctor") or "").strip() and available_doctors:
-            final_dept_lower = result.get("department", "").strip().lower()
-            for doc_entry in available_doctors:
-                m = re.match(r"^(.*)\(([^()]*)\)\s*$", doc_entry.strip())
-                doc_name, doc_dept = (
-                    (m.group(1).strip(), m.group(2).strip().lower())
-                    if m
-                    else (doc_entry.strip(), "")
-                )
-                if doc_dept == final_dept_lower:
-                    result["doctor"] = doc_name
-                    break
+            result["doctor"] = match_doctor_to_department(
+                available_doctors, result.get("department", "")
+            )
 
         return jsonify(result)
     except json.JSONDecodeError:

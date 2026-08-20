@@ -1619,6 +1619,482 @@ main {
   max-width: 32ch;
 }
 
+/* ==================== Emergency Room ==================== */
+
+/* Status badge: five semantic groups tracing a visit's progress, not one
+   color per literal status string, so the queue reads at a glance --
+   intake (blue) -> active care (amber) -> pending decision (terracotta,
+   deliberately more urgent-reading than "active care") -> resolved into an
+   admission (green) -> closed (neutral). */
+.er-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.22rem 0.62rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.er-status-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.er-status-intake {
+  background: hsl(var(--accent) / 0.13);
+  color: hsl(var(--accent));
+}
+
+.er-status-active {
+  background: rgba(248, 180, 64, 0.18);
+  color: #8a5300;
+}
+
+.er-status-pending {
+  background: rgba(217, 91, 40, 0.14);
+  color: #b3451f;
+}
+
+.er-status-resolved {
+  background: rgba(12, 164, 121, 0.14);
+  color: #0f6f57;
+}
+
+.er-status-closed {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+
+/* Triage severity chip -- background/text color comes from the hospital's
+   own configured category color (inline style), this class only supplies
+   shape/weight so every chip reads consistently regardless of hue chosen. */
+.er-triage-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 8px;
+  padding: 0.28rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.er-triage-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.er-elapsed {
+  font-size: 0.74rem;
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.er-queue-row-unknown {
+  box-shadow: inset 3px 0 0 0 rgba(217, 91, 40, 0.55);
+}
+
+/* Visit detail header card */
+.er-visit-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
+  background: linear-gradient(
+    155deg,
+    hsl(var(--primary) / 0.06) 0%,
+    hsl(var(--card)) 55%
+  );
+  box-shadow: var(--shadow-sm);
+  padding: 1.3rem 1.4rem;
+}
+
+.er-visit-header-back {
+  margin-bottom: 0.6rem;
+}
+
+.er-visit-no {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: hsl(var(--foreground));
+  letter-spacing: -0.01em;
+}
+
+.er-visit-sub {
+  margin: 0.2rem 0 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.9rem;
+}
+
+.er-visit-header-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+/* Section card -- every ER workflow step gets the same icon+title
+   treatment so the whole visit detail screen reads as one system. */
+.er-section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-bottom: 0.9rem;
+}
+
+.er-section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: hsl(var(--accent) / 0.12);
+  color: hsl(var(--accent));
+  font-size: 1.05rem;
+}
+
+.er-section-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.er-section-head-actions {
+  margin-left: auto;
+}
+
+.er-list {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.er-list li {
+  padding: 0.65rem 0.8rem;
+  border-radius: calc(var(--radius) - 6px);
+  background: hsl(var(--muted) / 0.5);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+/* Compact form for the 320px visit-detail sidebar (Vitals, Triage, Doctor
+   Assignment) -- a single labeled column instead of the app-wide
+   .module-form-grid's fixed 4 columns, which crushed placeholders like "BP
+   diastolic" down to unreadable widths at this size. .er-sidebar-form-row
+   pairs two related fields (HR/SpO2, BP sys/dia) side by side where there's
+   room; everything else stacks. */
+.er-sidebar-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.er-sidebar-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+/* Vitals timeline -- replaces a generic 6-column data table that couldn't
+   fit BP/HR/SpO2/RR/Temp/Time legibly in a 320px sidebar. Each reading is
+   its own row: a short time header, then one chip per recorded value so a
+   reading with only 2 of 6 vitals doesn't leave four "-" cells behind. */
+.er-vitals-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+}
+
+.er-vitals-reading {
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 6px);
+  background: hsl(var(--card));
+  padding: 0.55rem 0.7rem;
+}
+
+.er-vitals-reading-latest {
+  border-color: hsl(var(--primary) / 0.4);
+  background: hsl(var(--primary) / 0.04);
+}
+
+.er-vitals-reading-time {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 0.4rem;
+}
+
+.er-vitals-latest-tag {
+  margin-left: auto;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.12);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+}
+
+.er-vitals-reading-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.er-vital-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  border-radius: 7px;
+  padding: 0.2rem 0.5rem;
+  background: hsl(var(--muted) / 0.6);
+  font-size: 0.8rem;
+}
+
+.er-vital-chip-label {
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+.er-vital-chip-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--foreground));
+}
+
+.er-vital-chip-abnormal {
+  background: rgba(165, 48, 69, 0.12);
+}
+
+.er-vital-chip-abnormal .er-vital-chip-label,
+.er-vital-chip-abnormal .er-vital-chip-value {
+  color: #a53045;
+}
+
+/* New Visit modal: patient-mode selector, three equal cards instead of a
+   generic tab strip -- this is the first decision a clinician makes for a
+   new visit, so it gets the most visual weight in the modal. */
+.er-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+}
+
+@media (max-width: 640px) {
+  .er-mode-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.er-mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.9rem 0.6rem;
+  border-radius: calc(var(--radius) - 4px);
+  border: 1.5px solid hsl(var(--border));
+  background: hsl(var(--card));
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: hsl(var(--muted-foreground));
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.er-mode-card:hover {
+  border-color: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+.er-mode-card-active {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.06);
+  color: hsl(var(--primary));
+}
+
+.er-mode-card svg {
+  font-size: 1.3rem;
+}
+
+.er-patient-search-results {
+  margin-top: 0.4rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 6px);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.er-patient-search-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  background: hsl(var(--card));
+  border: none;
+  border-bottom: 1px solid hsl(var(--border));
+  text-align: left;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.er-patient-search-row:last-child {
+  border-bottom: none;
+}
+
+.er-patient-search-row:hover {
+  background: hsl(var(--accent) / 0.08);
+}
+
+.er-patient-search-row-selected {
+  background: hsl(var(--primary) / 0.08);
+}
+
+.er-selected-patient {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: calc(var(--radius) - 6px);
+  border: 1.5px solid hsl(var(--primary));
+  background: hsl(var(--primary) / 0.06);
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: hsl(var(--primary));
+}
+
+.er-registration-redirect {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  align-items: flex-start;
+  padding: 0.9rem 1rem;
+  border-radius: calc(var(--radius) - 4px);
+  border: 1.5px dashed hsl(var(--border));
+  background: hsl(var(--muted) / 0.4);
+}
+
+.er-registration-redirect button {
+  align-self: stretch;
+  justify-content: center;
+}
+
+/* Stat tiles -- one semantic accent color each (bordered top edge + tinted
+   icon tile), reusing the same intake/active/pending/resolved language as
+   the status badges so the whole module reads as one color system. */
+.er-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.85rem;
+}
+
+.er-stat-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1.1rem 1.25rem;
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
+  border-top: 3px solid transparent;
+  background: hsl(var(--card));
+  box-shadow: var(--shadow-sm);
+}
+
+.er-stat-tile p {
+  margin: 0 0 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+.er-stat-tile h3 {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--foreground));
+}
+
+.er-stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 1.3rem;
+}
+
+.er-stat-tile-neutral { border-top-color: hsl(var(--primary)); }
+.er-stat-tile-neutral .er-stat-icon { background: hsl(var(--primary) / 0.1); color: hsl(var(--primary)); }
+
+.er-stat-tile-active { border-top-color: #d99f1e; }
+.er-stat-tile-active .er-stat-icon { background: rgba(248, 180, 64, 0.18); color: #8a5300; }
+
+.er-stat-tile-pending { border-top-color: #d9552a; }
+.er-stat-tile-pending .er-stat-icon { background: rgba(217, 91, 40, 0.16); color: #b3451f; }
+
+.er-stat-tile-resolved { border-top-color: #0f9d78; }
+.er-stat-tile-resolved .er-stat-icon { background: rgba(12, 164, 121, 0.16); color: #0f6f57; }
+
+/* Queue table: acuity-colored left border per row (set inline from the
+   hospital's configured triage color) plus a hover lift, so the board reads
+   like a real ED tracking board rather than a generic records list.
+   .table-row/.table-head's shared grid is fixed at 6 columns app-wide --
+   this queue has 7 (an extra Triage column), so it needs its own template
+   rather than fighting the shared one. */
+.er-queue-table .table {
+  overflow: hidden;
+  border-radius: calc(var(--radius) - 4px);
+  border: 1px solid hsl(var(--border));
+}
+
+.er-queue-table .table-head,
+.er-queue-table .table-row {
+  grid-template-columns: 1.3fr 1fr 1.7fr 1fr 1.15fr 1fr 0.8fr;
+}
+
+.er-queue-row {
+  transition: background 120ms ease;
+}
+
+.er-queue-row:hover {
+  background: hsl(var(--accent) / 0.05);
+}
+
 /* Queue stat summary bar */
 .queue-stats {
   display: flex;
@@ -5974,4 +6450,143 @@ main {
     opacity: 1;
     transform: scale(1) translateY(0);
   }
+}
+
+/* ==================== ER Module Redesign ==================== */
+
+/* Glassmorphism Stat Tiles */
+.er-stat-tile-modern {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  border: 1px solid hsl(var(--border));
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.er-stat-tile-modern:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+}
+.er-stat-tile-modern .er-stat-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+}
+.er-stat-tile-neutral .er-stat-icon { background: #f1f5f9; color: #475569; }
+.er-stat-tile-active .er-stat-icon { background: #fef3c7; color: #d97706; }
+.er-stat-tile-pending .er-stat-icon { background: #fee2e2; color: #dc2626; }
+.er-stat-tile-resolved .er-stat-icon { background: #d1fae5; color: #059669; }
+
+.er-stat-tile-modern p {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: hsl(var(--muted-foreground));
+}
+.er-stat-tile-modern h3 {
+  margin: 0.25rem 0 0 0;
+  font-size: 2rem;
+  font-weight: 800;
+  color: hsl(var(--foreground));
+  line-height: 1;
+}
+
+/* ER Queue Table Row Enhancements */
+.er-queue-row-modern {
+  transition: all 0.2s ease;
+}
+.er-queue-row-modern:hover {
+  background-color: #f8fafc !important;
+  transform: scale(1.002);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.er-queue-row-modern td {
+  padding: 1rem 0.75rem !important;
+  vertical-align: middle;
+}
+.er-queue-patient-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+.er-queue-patient-id {
+  font-size: 0.8rem;
+  color: #64748b;
+  display: block;
+  margin-top: 0.2rem;
+}
+
+/* Two-Column Visit Detail Layout */
+.er-detail-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .er-detail-layout {
+    grid-template-columns: 320px 1fr;
+  }
+}
+
+.er-detail-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  position: sticky;
+  top: 1.5rem;
+}
+
+.er-detail-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ER Dashboard Split Layout */
+.er-dashboard-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (min-width: 1200px) {
+  .er-dashboard-layout {
+    grid-template-columns: 340px 1fr;
+  }
+}
+
+.er-intake-sidebar {
+  position: sticky;
+  top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.er-intake-panel {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  padding: 1.5rem;
+}
+
+.er-intake-panel h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: hsl(var(--foreground));
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }

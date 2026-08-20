@@ -23,12 +23,13 @@ import re
 import base64
 import hashlib
 import hmac
-from datetime import datetime
+from datetime import date, datetime
 from functools import wraps
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from flask import Flask, g, jsonify, request, send_file, make_response
+from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
 import secrets
 from core.limiter import limiter
@@ -206,7 +207,28 @@ STORAGE = ObjectStorage()
 
 from core.celery_app import celery_init_app
 
+class ISODateTimeJSONProvider(DefaultJSONProvider):
+    """Flask's DefaultJSONProvider serializes datetime/date objects as RFC 1123
+    HTTP-date strings (e.g. "Wed, 19 Aug 2026 16:41:22 GMT"), not ISO 8601 --
+    that's the same format used for HTTP headers, reused here as a generic
+    fallback. Every timestamp field in every API response (recorded_at,
+    triaged_at, arrival_at, created_at, ...) goes through this, but the
+    frontend's date parsing (lib/format.ts's parseTimestamp, used by every
+    formatDateTimeIST() call) expects ISO 8601 and silently fails on that
+    format, falling back to displaying the raw HTTP-date string verbatim --
+    e.g. the ER Vitals table showing "Wed, 19 Aug 2026 16:41:22 GMT" instead
+    of a proper IST time. isoformat() fixes every timestamp across the whole
+    app at the source instead of teaching every frontend parser this format."""
+
+    @staticmethod
+    def default(o):
+        if isinstance(o, (datetime, date)):
+            return o.isoformat()
+        return DefaultJSONProvider.default(o)
+
+
 app = Flask(__name__)
+app.json = ISODateTimeJSONProvider(app)
 # Bulk patient-list uploads (AI Mode) can legitimately be up to 200MB; without this,
 # Werkzeug happily buffers unbounded request bodies before any route code runs.
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
@@ -778,6 +800,10 @@ app.register_blueprint(emr_bp)
 from modules.bulk_import.routes import bulk_import_bp
 
 app.register_blueprint(bulk_import_bp)
+
+from modules.er.routes import er_bp
+
+app.register_blueprint(er_bp)
 
 
 @app.errorhandler(413)

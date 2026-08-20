@@ -21,7 +21,12 @@ type Props = {
     refreshPatientId: () => Promise<void>,
   ) => Promise<{ patient_id: string; admission_id?: string } | null>;
   setNotice: Dispatch<SetStateAction<Notice | null>>;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, extraData?: any) => void;
+  // Set when registration was reached via ER's "New" patient mode -- see
+  // App.tsx's navigateToPage. When present, a successful registration
+  // returns to that module (with the new patient handed back) instead of
+  // always defaulting to appointment booking.
+  returnTo?: string | null;
 };
 
 type Department = {
@@ -51,6 +56,7 @@ export default function AddPatientPage({
   onCreate,
   setNotice,
   onNavigate,
+  returnTo,
 }: Props) {
   const registrationFormId = "patient-registration-form";
   const [form, setForm] = useState<PatientForm>(EMPTY_PATIENT_FORM);
@@ -146,6 +152,21 @@ export default function AddPatientPage({
       refreshPatientId,
     );
     if (!createdPatient?.patient_id) return;
+
+    if (returnTo === "er") {
+      setNotice({
+        type: "success",
+        message: `Patient ${createdPatient.patient_id} registered. Starting their ER visit...`,
+      });
+      onNavigate("er", {
+        newlyRegisteredPatient: {
+          patient_id: createdPatient.patient_id,
+          name: form.name,
+          last_name: form.last_name,
+        },
+      });
+      return;
+    }
 
     setNotice({
       type: "success",
