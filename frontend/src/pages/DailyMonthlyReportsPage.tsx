@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
   Button,
@@ -13,6 +13,7 @@ import {
   TableRow,
   TableCell,
 } from "../components/ui";
+import { apiFetch, reportError } from "../lib/api";
 import type { Notice } from "../types";
 
 type Props = {
@@ -67,24 +68,25 @@ export default function DailyMonthlyReportsPage({
   };
 
   const fetchRecords = async () => {
+    // Fetched independently -- a permission/hospital-scope error on one
+    // (previously silently swallowed by an unchecked `.ok` check, which just
+    // rendered ₹0 with no indication why) must not blank out the other.
+    let paymentRecords: DailyRecord[] = [];
     try {
-      const [paymentsRes, pharmacySalesRes] = await Promise.all([
-        fetch("/api/billing/payments"),
-        fetch("/api/pharmacy/sales"),
-      ]);
-
-      const paymentRecords: DailyRecord[] = [];
-      if (paymentsRes.ok) {
-        const data = await paymentsRes.json();
-        (data.payments || []).forEach((p: any) => {
+      const data = await apiFetch<{ payments: any[] }>("/api/billing/payments");
+      paymentRecords = (data.payments || [])
+        .filter((p) => {
           const paymentFor = p.payment_for || p.paymentFor || "";
           // Only OP/IP payments exist here -- pharmacy revenue is tracked
           // entirely in pharmacy_sales (merged in below), never as a billed
           // invoice payment, and lab/diagnostics is no longer a module in
           // this app, so both are excluded here rather than silently
           // counted under an unlabeled bucket.
-          if (paymentFor !== "OP" && paymentFor !== "IP") return;
-          paymentRecords.push({
+          return paymentFor === "OP" || paymentFor === "IP";
+        })
+        .map((p) => {
+          const paymentFor = p.payment_for || p.paymentFor || "";
+          return {
             id: String(p.id),
             patientName: p.patient_name || p.patientName || "Unknown",
             patientId: p.patient_id || p.patientId || "",
@@ -92,58 +94,75 @@ export default function DailyMonthlyReportsPage({
             module: paymentFor === "IP" ? "IP / Bed Charges" : "OP / Billing",
             amount: parseFloat(p.amount) || 0,
             date: p.date || "",
-          });
+          };
         });
-      }
-
-      const pharmacyRecords: DailyRecord[] = [];
-      if (pharmacySalesRes.ok) {
-        const data = await pharmacySalesRes.json();
-        (data.sales || []).forEach((sale: any) => {
-          pharmacyRecords.push({
-            id: `pharmacy-${sale.id}`,
-            patientName: sale.patient_name || sale.patient_id || "Walk-in",
-            patientId: sale.patient_id || "",
-            // Pharmacy sales don't capture a payment mode, so this
-            // deliberately doesn't match any label in PAYMENT_METHODS --
-            // it still counts toward totals and the module breakdown below,
-            // just isn't fabricated into a specific payment method bucket.
-            paymentMethod: "Pharmacy Sale",
-            module: "Pharmacy",
-            amount: parseFloat(sale.amount) || 0,
-            date:
-              (sale.sold_at || "").split("T")[0] ||
-              (sale.sold_at || "").split(" ")[0] ||
-              "",
-          });
-        });
-      }
-
-      setRecords([...paymentRecords, ...pharmacyRecords]);
-    } catch (err) {
-      console.error("Failed to fetch payments:", err);
+    } catch (error: any) {
+      reportError(setNotice, error, "Failed to load recorded payments.");
     }
+
+    let pharmacyRecords: DailyRecord[] = [];
+    try {
+      const data = await apiFetch<{ sales: any[] }>("/api/pharmacy/sales");
+      pharmacyRecords = (data.sales || []).map((sale) => ({
+        id: `pharmacy-${sale.id}`,
+        patientName: sale.patient_name || sale.patient_id || "Walk-in",
+        patientId: sale.patient_id || "",
+        // Pharmacy sales don't capture a payment mode, so this
+        // deliberately doesn't match any label in PAYMENT_METHODS --
+        // it still counts toward totals and the module breakdown below,
+        // just isn't fabricated into a specific payment method bucket.
+        paymentMethod: "Pharmacy Sale",
+        module: "Pharmacy",
+        amount: parseFloat(sale.amount) || 0,
+        date:
+          (sale.sold_at || "").split("T")[0] ||
+          (sale.sold_at || "").split(" ")[0] ||
+          "",
+      }));
+    } catch (error: any) {
+      reportError(setNotice, error, "Failed to load pharmacy sales.");
+    }
+
+    setRecords([...paymentRecords, ...pharmacyRecords]);
   };
 
   useEffect(() => {
     fetchRecords();
   }, []);
 
+  // The Daily/Monthly toggle + date picker previously didn't filter
+  // anything -- every total on this page was all-time regardless of what
+  // was selected, silently. This is what makes the picker actually mean
+  // something.
+  const periodRecords = useMemo(() => {
+    if (!selectDate) return records;
+    const bucketKey = period === "Monthly" ? selectDate.slice(0, 7) : selectDate;
+    return records.filter((r) => {
+      if (!r.date) return false;
+      const parsed = new Date(r.date);
+      if (Number.isNaN(parsed.getTime())) return false;
+      const key = period === "Monthly"
+        ? parsed.toISOString().slice(0, 7)
+        : parsed.toISOString().slice(0, 10);
+      return key === bucketKey;
+    });
+  }, [records, selectDate, period]);
+
   const formatCurrency = (val: number) => `₹${val.toLocaleString("en-IN")}`;
 
   const getRecordsForMethod = (method: string) =>
-    records.filter((r) => r.paymentMethod === method);
+    periodRecords.filter((r) => r.paymentMethod === method);
 
   const getAmountForMethod = (method: string) =>
     getRecordsForMethod(method).reduce((s, r) => s + r.amount, 0);
 
   const getRecordsForModule = (module: string) =>
-    records.filter((r) => r.module === module);
+    periodRecords.filter((r) => r.module === module);
 
   const getAmountForModule = (module: string) =>
     getRecordsForModule(module).reduce((s, r) => s + r.amount, 0);
 
-  const totalCollected = records.reduce((s, r) => s + r.amount, 0);
+  const totalCollected = periodRecords.reduce((s, r) => s + r.amount, 0);
   const maxModuleVal = Math.max(
     ...MODULES.map((m) => getAmountForModule(m.label)),
     1,

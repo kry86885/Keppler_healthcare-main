@@ -391,6 +391,15 @@ function App() {
     name: string;
     last_name?: string;
   } | null>(null);
+  // Which unknown ER visit to merge the newly-registered patient into --
+  // set alongside patientRegistrationReturnTo when returnTo is "er-merge"
+  // (see MergeUnknownPatient's "Register as New Patient" button).
+  const [patientRegistrationMergeVisitId, setPatientRegistrationMergeVisitId] =
+    useState<number | null>(null);
+  const [erMergeTarget, setErMergeTarget] = useState<{
+    visitId: number;
+    patientId: string;
+  } | null>(null);
   useEffect(() => {
     if (!notice) return;
     const timeoutId = window.setTimeout(() => setNotice(null), 4200);
@@ -1260,11 +1269,17 @@ function App() {
       // to "add" (e.g. from the Dashboard's own "Register Patient" button)
       // must not inherit a stale ER return intent from an earlier detour.
       setPatientRegistrationReturnTo(extraData?.returnTo || null);
+      setPatientRegistrationMergeVisitId(extraData?.mergeVisitId ?? null);
     }
     if (nextPage === "er" && extraData?.newlyRegisteredPatient) {
       setErPrefillPatient(extraData.newlyRegisteredPatient);
     } else if (nextPage === "er") {
       setErPrefillPatient(null);
+    }
+    if (nextPage === "er" && extraData?.mergeIntoVisit) {
+      setErMergeTarget(extraData.mergeIntoVisit);
+    } else if (nextPage === "er") {
+      setErMergeTarget(null);
     }
     syncUrlForPage(nextPage);
     setPage(nextPage);
@@ -1677,6 +1692,7 @@ function App() {
                 setNotice={setNotice}
                 onNavigate={navigateToPage}
                 returnTo={patientRegistrationReturnTo}
+                mergeVisitId={patientRegistrationMergeVisitId}
               />
             )}
             {page === "ocr" && hasPermission("patients.documents.write") && (
@@ -1767,6 +1783,7 @@ function App() {
                 ocrLanguage={ocrLanguage}
                 languages={languages}
                 refreshToken={patientDetailRefreshToken}
+                onNavigate={setPage}
               />
             )}
 
@@ -1820,6 +1837,7 @@ function App() {
                 setNotice={setNotice}
                 onNavigate={navigateToPage}
                 prefillPatient={erPrefillPatient}
+                mergeTarget={erMergeTarget}
               />
             )}
 

@@ -765,6 +765,8 @@ def ensure_patient_columns(conn):
     _ensure_column(cursor, "patients", "blood_group", "TEXT")
     _ensure_column(cursor, "patients", "emergency_contact", "TEXT")
     _ensure_column(cursor, "patients", "aadhar_number", "TEXT")
+    _ensure_column(cursor, "patients", "registration_source", "TEXT DEFAULT 'outpatient'")
+    _ensure_column(cursor, "patients", "patient_type", "TEXT DEFAULT 'regular'")
 
 
 def ensure_patient_id_generation(conn):
@@ -2928,6 +2930,18 @@ def generate_patient_id(hospital_id=None):
     return f"PAT-{issued}"
 
 
+def generate_er_patient_id(hospital_id=None):
+    """Atomically reserves the next globally-unique ER-PAT-XXXXXX number for Emergency Room
+    patients via the shared sequence, keeping ER records distinct and standalone."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT nextval('patient_id_seq')")
+        issued = cursor.fetchone()[0]
+        conn.commit()
+
+    return f"ER-PAT-{issued}"
+
+
 def check_duplicate_patient(name, last_name, dob, phone, hospital_id=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
@@ -2949,8 +2963,8 @@ def add_patient(data, hospital_id=None):
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO patients (hospital_id, patient_id, name, middle_name, last_name, dob, age, weight, height, gender, pregnant, allergies, symptoms, phone, address, blood_group, emergency_contact, aadhar_number)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO patients (hospital_id, patient_id, name, middle_name, last_name, dob, age, weight, height, gender, pregnant, allergies, symptoms, phone, address, blood_group, emergency_contact, aadhar_number, registration_source, patient_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 scoped_hospital_id,
@@ -2971,6 +2985,8 @@ def add_patient(data, hospital_id=None):
                 data.get("blood_group", ""),
                 data.get("emergency_contact", ""),
                 data.get("aadhar_number", ""),
+                data.get("registration_source", "outpatient"),
+                data.get("patient_type", "regular"),
             ),
         )
         conn.commit()
@@ -2988,40 +3004,148 @@ def get_patient(patient_id, hospital_id=None):
         return cursor.fetchone()
 
 
-def get_all_patients(hospital_id=None, doctor_name=None):
+def get_patient_stream_counts(hospital_id=None, doctor_name=None):
+    """Calculates live patient tallies segregated by care stream: All, OP, IP, and ER."""
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
-        query = """SELECT p.*, (SELECT status FROM appointments a WHERE a.patient_id = p.patient_id ORDER BY a.created_at DESC LIMIT 1) as status 
-            FROM patients p WHERE p.hospital_id = ? AND p.deleted_at IS NULL"""
+        # See get_all_patients() -- LIKE patterns must be bound params, not
+        # inlined SQL text, or a literal "%" breaks psycopg2's substitution
+        # for the whole query. A third copy of the same mistake.
+        er_prefix_pattern = "ER-PAT-%"
+        doc_filter = ""
+        params = [scoped_hospital_id]
+        if doctor_name:
+            doc_filter = " AND p.patient_id IN (SELECT patient_id FROM appointments WHERE doctor_name = ?)"
+            params.append(doctor_name)
+
+        query = f"""
+            SELECT
+                COUNT(*) AS total_count,
+                COUNT(CASE
+                    WHEN (p.registration_source = 'emergency' OR p.patient_id LIKE ? OR p.patient_type = 'emergency'
+                          OR EXISTS (SELECT 1 FROM er_visits ev WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL))
+                    THEN 1
+                END) AS er_count,
+                COUNT(CASE
+                    WHEN EXISTS (SELECT 1 FROM bed_allocations ba WHERE ba.patient_id = p.patient_id AND (ba.status = 'active' OR ba.released_at IS NULL))
+                    THEN 1
+                END) AS ip_count,
+                COUNT(CASE
+                    WHEN (p.registration_source != 'emergency' AND p.patient_id NOT LIKE ?
+                          AND NOT EXISTS (SELECT 1 FROM bed_allocations ba WHERE ba.patient_id = p.patient_id AND (ba.status = 'active' OR ba.released_at IS NULL))
+                          AND NOT EXISTS (SELECT 1 FROM er_visits ev WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL))
+                    THEN 1
+                END) AS op_count
+            FROM patients p
+            WHERE p.hospital_id = ? AND p.deleted_at IS NULL {doc_filter}
+        """
+        # Both "LIKE ?" placeholders (er_count, then op_count) precede the
+        # WHERE clause's own params in the finished SQL text.
+        cursor.execute(query, tuple([er_prefix_pattern, er_prefix_pattern] + params))
+        row = cursor.fetchone()
+        if not row:
+            return {"all": 0, "op": 0, "ip": 0, "er": 0}
+        r = dict(row)
+        return {
+            "all": r.get("total_count", 0) or 0,
+            "op": r.get("op_count", 0) or 0,
+            "ip": r.get("ip_count", 0) or 0,
+            "er": r.get("er_count", 0) or 0,
+        }
+
+
+def get_all_patients(hospital_id=None, doctor_name=None, care_type=None):
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        care_type_lower = (care_type or "all").lower().strip()
+
+        # LIKE patterns must always be bound parameters (LIKE ?), never
+        # inlined into the SQL text -- the shared _CompatCursor.execute()
+        # (see _to_sql_params) hands the finished string to psycopg2's own
+        # %s-style substitution, which treats ANY literal "%" character in
+        # the SQL text itself as part of that substitution syntax. An
+        # inlined "LIKE 'ER-PAT-%'" broke every call to this function
+        # (including the plain, no-filter GET /api/patients, since the '%'
+        # in the SELECT clause's CASE below ran unconditionally) with
+        # "IndexError: tuple index out of range" from psycopg2 -- not just
+        # when a care_type filter was active. Every other LIKE in this file
+        # already follows this pattern (e.g. list_departments, search_patients);
+        # this one just didn't.
+        er_prefix_pattern = "ER-PAT-%"
+
+        where_clauses = ["p.hospital_id = ?", "p.deleted_at IS NULL"]
         params = [scoped_hospital_id]
 
         if doctor_name:
-            query += " AND p.patient_id IN (SELECT patient_id FROM appointments WHERE doctor_name = ?)"
+            where_clauses.append("p.patient_id IN (SELECT patient_id FROM appointments WHERE doctor_name = ?)")
             params.append(doctor_name)
 
-        query += " ORDER BY p.created_at DESC"
-        cursor.execute(query, tuple(params))
+        if care_type_lower in ("er", "emergency"):
+            where_clauses.append(
+                "(p.registration_source = 'emergency' OR p.patient_id LIKE ? OR p.patient_type = 'emergency' "
+                "OR EXISTS (SELECT 1 FROM er_visits ev WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL))"
+            )
+            params.append(er_prefix_pattern)
+        elif care_type_lower in ("ip", "inpatient"):
+            where_clauses.append(
+                "EXISTS (SELECT 1 FROM bed_allocations ba WHERE ba.patient_id = p.patient_id AND (ba.status = 'active' OR ba.released_at IS NULL))"
+            )
+        elif care_type_lower in ("op", "outpatient"):
+            where_clauses.append(
+                "(p.registration_source != 'emergency' AND p.patient_id NOT LIKE ? "
+                "AND NOT EXISTS (SELECT 1 FROM bed_allocations ba WHERE ba.patient_id = p.patient_id AND (ba.status = 'active' OR ba.released_at IS NULL)) "
+                "AND NOT EXISTS (SELECT 1 FROM er_visits ev WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL))"
+            )
+            params.append(er_prefix_pattern)
+
+        query = f"""
+            SELECT p.*,
+                (SELECT status FROM appointments a WHERE a.patient_id = p.patient_id ORDER BY a.created_at DESC LIMIT 1) as appointment_status,
+                (SELECT doctor_name FROM appointments a WHERE a.patient_id = p.patient_id ORDER BY a.created_at DESC LIMIT 1) as appointment_doctor,
+                (SELECT department FROM appointments a WHERE a.patient_id = p.patient_id ORDER BY a.created_at DESC LIMIT 1) as appointment_dept,
+                (SELECT ba.ward || ' · Bed ' || ba.bed_no FROM bed_allocations ba WHERE ba.patient_id = p.patient_id AND (ba.status = 'active' OR ba.released_at IS NULL) ORDER BY ba.allocated_at DESC LIMIT 1) as active_bed,
+                (SELECT ev.id FROM er_visits ev WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL ORDER BY ev.arrival_at DESC LIMIT 1) as active_er_visit_id,
+                (SELECT ev.visit_no FROM er_visits ev WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL ORDER BY ev.arrival_at DESC LIMIT 1) as active_er_visit_no,
+                (SELECT ev.status FROM er_visits ev WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL ORDER BY ev.arrival_at DESC LIMIT 1) as active_er_status,
+                (SELECT t.category FROM er_visits ev JOIN er_triage t ON t.er_visit_id = ev.id WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL ORDER BY ev.arrival_at DESC LIMIT 1) as er_triage_category,
+                CASE
+                    WHEN (p.registration_source = 'emergency' OR p.patient_id LIKE ? OR p.patient_type = 'emergency'
+                          OR EXISTS (SELECT 1 FROM er_visits ev WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL)) THEN 'ER'
+                    WHEN EXISTS (SELECT 1 FROM bed_allocations ba WHERE ba.patient_id = p.patient_id AND (ba.status = 'active' OR ba.released_at IS NULL)) THEN 'IP'
+                    ELSE 'OP'
+                END AS care_stream
+            FROM patients p
+            WHERE {' AND '.join(where_clauses)}
+            ORDER BY p.created_at DESC
+        """
+        # The CASE's "LIKE ?" is the first placeholder to appear in the
+        # finished SQL text (SELECT clause precedes WHERE), so its bound
+        # value must be first in the params tuple, ahead of the WHERE clause's.
+        cursor.execute(query, tuple([er_prefix_pattern] + params))
         return cursor.fetchall()
 
 
-def search_patients(query, hospital_id=None, doctor_name=None):
+def search_patients(query, hospital_id=None, doctor_name=None, care_type=None):
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         if not query:
             return []
         search = f"%{query.strip().lower()}%"
+        care_type_lower = (care_type or "all").lower().strip()
 
-        sql = """
-            SELECT p.*, (SELECT status FROM appointments a WHERE a.patient_id = p.patient_id ORDER BY a.created_at DESC LIMIT 1) as status
-            FROM patients p WHERE
-            p.hospital_id = ? AND p.deleted_at IS NULL AND (
-            LOWER(p.name) LIKE ? OR LOWER(p.last_name) LIKE ? OR LOWER(p.middle_name) LIKE ?
-            OR LOWER(p.phone) LIKE ? OR LOWER(p.patient_id) LIKE ? OR LOWER(p.aadhar_number) LIKE ?
-            OR LOWER(TRIM(p.name || ' ' || COALESCE(p.middle_name, '') || ' ' || p.last_name)) LIKE ?
-            OR LOWER(TRIM(p.last_name || ' ' || p.name)) LIKE ?)
-        """
+        where_clauses = [
+            "p.hospital_id = ?",
+            "p.deleted_at IS NULL",
+            """(
+                LOWER(p.name) LIKE ? OR LOWER(p.last_name) LIKE ? OR LOWER(p.middle_name) LIKE ?
+                OR LOWER(p.phone) LIKE ? OR LOWER(p.patient_id) LIKE ? OR LOWER(p.aadhar_number) LIKE ?
+                OR LOWER(TRIM(p.name || ' ' || COALESCE(p.middle_name, '') || ' ' || p.last_name)) LIKE ?
+                OR LOWER(TRIM(p.last_name || ' ' || p.name)) LIKE ?
+            )"""
+        ]
         params = [
             scoped_hospital_id,
             search,
@@ -3035,11 +3159,58 @@ def search_patients(query, hospital_id=None, doctor_name=None):
         ]
 
         if doctor_name:
-            sql += " AND p.patient_id IN (SELECT patient_id FROM appointments WHERE doctor_name = ?)"
+            where_clauses.append("p.patient_id IN (SELECT patient_id FROM appointments WHERE doctor_name = ?)")
             params.append(doctor_name)
 
-        sql += " ORDER BY p.created_at DESC"
-        cursor.execute(sql, tuple(params))
+        # See get_all_patients() for why this must be a bound "LIKE ?" param
+        # rather than inlined "LIKE 'ER-PAT-%'" text -- a literal "%" in the
+        # SQL string breaks psycopg2's %s-style substitution for the whole
+        # query. This duplicated the same bug: it broke every patient search
+        # (any non-empty q), not just ones with a care_type filter, because
+        # the CASE clause's inlined LIKE is unconditional.
+        er_prefix_pattern = "ER-PAT-%"
+
+        if care_type_lower in ("er", "emergency"):
+            where_clauses.append(
+                "(p.registration_source = 'emergency' OR p.patient_id LIKE ? OR p.patient_type = 'emergency' "
+                "OR EXISTS (SELECT 1 FROM er_visits ev WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL))"
+            )
+            params.append(er_prefix_pattern)
+        elif care_type_lower in ("ip", "inpatient"):
+            where_clauses.append(
+                "EXISTS (SELECT 1 FROM bed_allocations ba WHERE ba.patient_id = p.patient_id AND (ba.status = 'active' OR ba.released_at IS NULL))"
+            )
+        elif care_type_lower in ("op", "outpatient"):
+            where_clauses.append(
+                "(p.registration_source != 'emergency' AND p.patient_id NOT LIKE ? "
+                "AND NOT EXISTS (SELECT 1 FROM bed_allocations ba WHERE ba.patient_id = p.patient_id AND (ba.status = 'active' OR ba.released_at IS NULL)) "
+                "AND NOT EXISTS (SELECT 1 FROM er_visits ev WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL))"
+            )
+            params.append(er_prefix_pattern)
+
+        sql = f"""
+            SELECT p.*,
+                (SELECT status FROM appointments a WHERE a.patient_id = p.patient_id ORDER BY a.created_at DESC LIMIT 1) as appointment_status,
+                (SELECT doctor_name FROM appointments a WHERE a.patient_id = p.patient_id ORDER BY a.created_at DESC LIMIT 1) as appointment_doctor,
+                (SELECT department FROM appointments a WHERE a.patient_id = p.patient_id ORDER BY a.created_at DESC LIMIT 1) as appointment_dept,
+                (SELECT ba.ward || ' · Bed ' || ba.bed_no FROM bed_allocations ba WHERE ba.patient_id = p.patient_id AND (ba.status = 'active' OR ba.released_at IS NULL) ORDER BY ba.allocated_at DESC LIMIT 1) as active_bed,
+                (SELECT ev.id FROM er_visits ev WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL ORDER BY ev.arrival_at DESC LIMIT 1) as active_er_visit_id,
+                (SELECT ev.visit_no FROM er_visits ev WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL ORDER BY ev.arrival_at DESC LIMIT 1) as active_er_visit_no,
+                (SELECT ev.status FROM er_visits ev WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL ORDER BY ev.arrival_at DESC LIMIT 1) as active_er_status,
+                (SELECT t.category FROM er_visits ev JOIN er_triage t ON t.er_visit_id = ev.id WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL ORDER BY ev.arrival_at DESC LIMIT 1) as er_triage_category,
+                CASE
+                    WHEN (p.registration_source = 'emergency' OR p.patient_id LIKE ? OR p.patient_type = 'emergency'
+                          OR EXISTS (SELECT 1 FROM er_visits ev WHERE ev.patient_id = p.patient_id AND ev.hospital_id = p.hospital_id AND ev.deleted_at IS NULL)) THEN 'ER'
+                    WHEN EXISTS (SELECT 1 FROM bed_allocations ba WHERE ba.patient_id = p.patient_id AND (ba.status = 'active' OR ba.released_at IS NULL)) THEN 'IP'
+                    ELSE 'OP'
+                END AS care_stream
+            FROM patients p
+            WHERE {' AND '.join(where_clauses)}
+            ORDER BY p.created_at DESC
+        """
+        # CASE's "LIKE ?" is the first placeholder in the finished SQL text
+        # (SELECT precedes WHERE), so its value goes first in the tuple.
+        cursor.execute(sql, tuple([er_prefix_pattern] + params))
         return cursor.fetchall()
 
 
@@ -4002,8 +4173,16 @@ def delete_doctor(doctor_id):
         return cursor.rowcount > 0
 
 
-def get_suggested_doctors(department=None, region=None):
-    scoped_hospital_id = resolve_hospital_id()
+def get_suggested_doctors(department=None, region=None, hospital_id=None):
+    # Previously always resolve_hospital_id() regardless of what the caller
+    # actually wanted -- that falls back to the platform's DEFAULT hospital
+    # whenever it's not given an explicit code, not "whichever hospital is
+    # asking." assign_er_doctor() (and any other caller) passing its own
+    # hospital_id was silently discarded, so a non-default hospital's ER
+    # visit could get auto-assigned a doctor who works at a different
+    # hospital entirely, or told "no doctor on staff" while its own roster
+    # has one.
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
     region_dept_map = {
         "chest": "Cardiology",
         "head": "Neurology",
@@ -5865,11 +6044,111 @@ def create_er_visit(data, hospital_id=None):
         return {"id": visit_id, "visit_no": visit_no}
 
 
+def register_er_patient(
+    hospital_id,
+    patient_data,
+    visit_data,
+    complaints=None,
+    vitals=None,
+    registered_by=None,
+):
+    """Atomically registers an emergency room patient and opens their ER visit
+    without needing any OP registration detour or merge steps."""
+    scoped_hospital_id = hospital_id or resolve_hospital_id()
+
+    patient_id = patient_data.get("patient_id")
+    if not patient_id:
+        patient_id = generate_er_patient_id(scoped_hospital_id)
+
+    name = (patient_data.get("name") or "Emergency Patient").strip()
+    middle_name = (patient_data.get("middle_name") or "").strip()
+    last_name = (patient_data.get("last_name") or "").strip()
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        # 1. Insert patient
+        cursor.execute(
+            """
+            INSERT INTO patients (
+                hospital_id, patient_id, name, middle_name, last_name,
+                dob, age, weight, height, gender, pregnant,
+                allergies, symptoms, phone, address, blood_group,
+                emergency_contact, aadhar_number, registration_source, patient_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emergency', 'emergency')
+            """,
+            (
+                scoped_hospital_id,
+                patient_id,
+                name,
+                middle_name,
+                last_name,
+                patient_data.get("dob"),
+                patient_data.get("age"),
+                patient_data.get("weight"),
+                patient_data.get("height"),
+                patient_data.get("gender"),
+                1 if patient_data.get("pregnant") else 0,
+                patient_data.get("allergies", ""),
+                patient_data.get("symptoms", ""),
+                patient_data.get("phone", ""),
+                patient_data.get("address", ""),
+                patient_data.get("blood_group", ""),
+                patient_data.get("emergency_contact", ""),
+                patient_data.get("aadhar_number", ""),
+            ),
+        )
+        conn.commit()
+
+    # 2-4. Create the ER visit (+ complaints/vitals) -- the patient insert
+    # above already committed on its own connection, so it's NOT covered by
+    # any transaction spanning these steps. If any of them raise, this
+    # deletes that patient row before re-raising rather than leaving an
+    # orphaned "Emergency Patient" record with no visit behind it -- the
+    # docstring says "atomically" and this is what actually makes that true.
+    try:
+        visit_payload = dict(visit_data or {})
+        visit_payload["patient_id"] = patient_id
+        visit_payload["is_unknown_patient"] = False
+        visit_payload["registered_by"] = registered_by or visit_payload.get("registered_by")
+        visit_result = create_er_visit(visit_payload, hospital_id=scoped_hospital_id)
+        visit_id = visit_result["id"]
+
+        if complaints:
+            if isinstance(complaints, list):
+                for c in complaints:
+                    if isinstance(c, str) and c.strip():
+                        add_er_complaint(scoped_hospital_id, visit_id, {"complaint": c.strip(), "reported_by": registered_by})
+                    elif isinstance(c, dict) and c.get("complaint"):
+                        c.setdefault("reported_by", registered_by)
+                        add_er_complaint(scoped_hospital_id, visit_id, c)
+            elif isinstance(complaints, str) and complaints.strip():
+                add_er_complaint(scoped_hospital_id, visit_id, {"complaint": complaints.strip(), "reported_by": registered_by})
+
+        if vitals and isinstance(vitals, dict):
+            has_vitals = any(vitals.get(k) is not None and str(vitals.get(k)).strip() != "" for k in ["heart_rate", "bp_systolic", "bp_diastolic", "spo2", "temperature", "respiratory_rate", "pain_score", "gcs"])
+            if has_vitals:
+                add_er_vitals(scoped_hospital_id, visit_id, vitals, recorded_by=registered_by)
+    except Exception:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM patients WHERE patient_id = ? AND hospital_id = ?",
+                (patient_id, scoped_hospital_id),
+            )
+            conn.commit()
+        raise
+
+    patient_record = get_patient(patient_id, hospital_id=scoped_hospital_id)
+    return {
+        "patient_id": patient_id,
+        "patient": dict(patient_record) if patient_record else patient_data,
+        "visit": visit_result,
+    }
+
+
 def list_er_visits(patient_id=None, hospital_id=None, status=None, active_only=False):
-    """Includes the current triage category/bay (LEFT JOIN, so an
-    un-triaged visit still returns a row with those two fields NULL) --
-    the queue view needs acuity visible without a per-row detail fetch,
-    the same way a real ED tracking board always shows priority up front."""
+    """Includes the current triage category/bay and patient demographics
+    (LEFT JOINs) so the ED tracking board displays acuity and patient info directly."""
     with get_connection() as conn:
         cursor = conn.cursor()
         clauses = ["v.deleted_at IS NULL"]
@@ -5888,9 +6167,12 @@ def list_er_visits(patient_id=None, hospital_id=None, status=None, active_only=F
         where_clause = f" WHERE {' AND '.join(clauses)}"
         cursor.execute(
             f"""
-            SELECT v.*, t.category AS triage_category, t.triage_bed_label AS triage_bed_label
+            SELECT v.*, t.category AS triage_category, t.triage_bed_label AS triage_bed_label,
+                   p.name AS patient_name, p.last_name AS patient_last_name, p.gender AS patient_gender,
+                   p.age AS patient_age, p.phone AS patient_phone, p.emergency_contact AS patient_emergency_contact
             FROM er_visits v
             LEFT JOIN er_triage t ON t.er_visit_id = v.id
+            LEFT JOIN patients p ON p.patient_id = v.patient_id AND p.hospital_id = v.hospital_id
             {where_clause}
             ORDER BY v.arrival_at DESC
             """,
@@ -5911,6 +6193,17 @@ def get_er_visit(er_visit_id, hospital_id=None):
         if not visit:
             return None
         visit = dict(visit)
+
+        # Attach linked patient demographics if available
+        if visit.get("patient_id"):
+            cursor.execute(
+                "SELECT * FROM patients WHERE patient_id = ? AND hospital_id = ? AND deleted_at IS NULL",
+                (visit["patient_id"], scoped_hospital_id),
+            )
+            p_row = cursor.fetchone()
+            visit["patient"] = dict(p_row) if p_row else None
+        else:
+            visit["patient"] = None
 
         cursor.execute(
             "SELECT * FROM er_complaints WHERE er_visit_id = ? ORDER BY created_at ASC",
@@ -5963,7 +6256,14 @@ def merge_er_unknown_patient(hospital_id, er_visit_id, patient_id):
     """Links a temporary unknown-patient ER visit to a confirmed patient_id
     once identity is known. Everything already recorded on the visit
     (complaints/vitals/triage/treatments/notes) stays exactly where it is --
-    only er_visits.patient_id changes, so nothing needs to be copied."""
+    only er_visits.patient_id changes, so nothing needs to be copied.
+
+    Raises ValueError if patient_id doesn't refer to a real, non-deleted
+    patient in this hospital -- previously any string was accepted as-is, so
+    a typo silently "succeeded": is_unknown_patient flipped to FALSE, the
+    queue's LEFT JOIN then shows a blank name for a patient_id that matches
+    nothing, and the UI can no longer offer a re-merge since it only renders
+    that option while is_unknown_patient is still true."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -5972,6 +6272,12 @@ def merge_er_unknown_patient(hospital_id, er_visit_id, patient_id):
         )
         if not cursor.fetchone():
             return False
+        cursor.execute(
+            "SELECT patient_id FROM patients WHERE patient_id = ? AND hospital_id = ? AND deleted_at IS NULL",
+            (patient_id, hospital_id),
+        )
+        if not cursor.fetchone():
+            raise ValueError(f"Patient {patient_id} was not found in this hospital.")
         cursor.execute(
             "UPDATE er_visits SET patient_id = ?, is_unknown_patient = FALSE, "
             "merged_into_patient_id = ? WHERE id = ?",
@@ -6228,7 +6534,7 @@ def assign_er_doctor(hospital_id, er_visit_id, specialty, doctor_name=None):
     matched_specialty = specialty
     used_fallback = False
     if not final_doctor:
-        candidates = get_suggested_doctors(department=specialty)
+        candidates = get_suggested_doctors(department=specialty, hospital_id=hospital_id)
         available = [
             f"{doc['doctor_name']} ({doc.get('department') or ''})"
             for doc in candidates
@@ -6243,11 +6549,18 @@ def assign_er_doctor(hospital_id, er_visit_id, specialty, doctor_name=None):
 
     with get_connection() as conn:
         cursor = conn.cursor()
+        # matched_specialty, not specialty -- on a fallback match it holds the
+        # covering doctor's REAL department, while `specialty` is still the
+        # originally requested one. Storing `specialty` here was writing e.g.
+        # "Cardiology" (what was asked for) even though the doctor actually
+        # assigned practices General Medicine (the fallback that was found) --
+        # the accept toast and printed handover sheet would then show a
+        # doctor next to a specialty they don't actually belong to.
         cursor.execute(
             "UPDATE er_visits SET assigned_doctor_name = ?, assigned_specialty = ?, "
             "doctor_assigned_at = CURRENT_TIMESTAMP, doctor_accepted_at = NULL "
             "WHERE id = ? AND hospital_id = ?",
-            (final_doctor or None, specialty, er_visit_id, hospital_id),
+            (final_doctor or None, matched_specialty, er_visit_id, hospital_id),
         )
         conn.commit()
 
@@ -6337,6 +6650,21 @@ def record_er_disposition(hospital_id, er_visit_id, data, decided_by=None):
                 ),
             )
         disposition_id = cursor.fetchone()[0]
+
+        # A disposition correction (existing != None) can change the outcome
+        # away from one that needed a bed, or to a different bed-requiring
+        # outcome entirely (ward -> icu) -- either way, any bed request the
+        # PREVIOUS outcome raised is now stale and must not be left
+        # "pending" for Reception to act on. Without this, ward -> discharge
+        # left the original ward request sitting in Bed Management's queue
+        # indefinitely, allocatable for a patient who's actually being
+        # discharged; ward -> icu left two pending requests instead of one.
+        if existing:
+            cursor.execute(
+                "UPDATE er_bed_requests SET status = 'cancelled' "
+                "WHERE er_visit_id = ? AND status = 'pending'",
+                (er_visit_id,),
+            )
 
         bed_request_id = None
         if outcome in ER_OUTCOMES_REQUIRING_BED:
@@ -6876,19 +7204,34 @@ def list_invoices(patient_id=None, module=None, hospital_id=None):
         return cursor.fetchall()
 
 
-def get_invoice_by_id(invoice_id):
+def get_invoice_by_id(invoice_id, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
+        clauses = ["id = ?", "deleted_at IS NULL"]
+        params = [invoice_id]
+        if hospital_id:
+            clauses.append("hospital_id = ?")
+            params.append(hospital_id)
         cursor.execute(
-            "SELECT * FROM invoices WHERE id = ? AND deleted_at IS NULL", (invoice_id,)
+            f"SELECT * FROM invoices WHERE {' AND '.join(clauses)}", tuple(params)
         )
         return cursor.fetchone()
 
 
-def update_invoice(invoice_id, data):
+def update_invoice(invoice_id, data, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,))
+        # Same cross-tenant gap as record_invoice_payment/get_invoice_by_id --
+        # without this, any authenticated user could edit another hospital's
+        # invoice by guessing/incrementing its numeric id.
+        clauses = ["id = ?"]
+        params = [invoice_id]
+        if hospital_id:
+            clauses.append("hospital_id = ?")
+            params.append(hospital_id)
+        cursor.execute(
+            f"SELECT * FROM invoices WHERE {' AND '.join(clauses)}", tuple(params)
+        )
         existing = cursor.fetchone()
         if not existing:
             return False
@@ -6955,15 +7298,22 @@ def update_invoice(invoice_id, data):
         return cursor.rowcount > 0
 
 
-def delete_invoice(invoice_id, actor=None):
+def delete_invoice(invoice_id, actor=None, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
+        payment_clauses = ["invoice_id = ?", "deleted_at IS NULL"]
+        payment_params = [invoice_id]
+        if hospital_id:
+            payment_clauses.append("hospital_id = ?")
+            payment_params.append(hospital_id)
         cursor.execute(
-            "UPDATE invoice_payments SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ? "
-            "WHERE invoice_id = ? AND deleted_at IS NULL",
-            (actor, invoice_id),
+            f"UPDATE invoice_payments SET deleted_at = CURRENT_TIMESTAMP, deleted_by = ? "
+            f"WHERE {' AND '.join(payment_clauses)}",
+            (actor, *payment_params),
         )
-        deleted = soft_delete_row(cursor, "invoices", "id", invoice_id, actor=actor)
+        deleted = soft_delete_row(
+            cursor, "invoices", "id", invoice_id, hospital_id=hospital_id, actor=actor
+        )
         conn.commit()
         return deleted
 
@@ -7011,12 +7361,27 @@ def list_all_invoice_payments(hospital_id=None):
         return cursor.fetchall()
 
 
-def record_invoice_payment(invoice_id, data):
+def record_invoice_payment(invoice_id, data, hospital_id=None):
     with get_connection() as conn:
         cursor = conn.cursor()
+        # FOR UPDATE locks this invoice row for the rest of the transaction --
+        # without it, two concurrent payments both read the same starting
+        # paid_amount, both compute "+amount" from it, and the second UPDATE
+        # clobbers the first instead of the two summing (a real race, not
+        # hypothetical: two staff recording payment on the same invoice near-
+        # simultaneously, or a double-click before the first request returns).
+        # Also now hospital-scoped -- previously any authenticated user could
+        # record (and silently succeed) a payment against another hospital's
+        # invoice by id alone.
+        clauses = ["id = ?"]
+        params = [invoice_id]
+        if hospital_id:
+            clauses.append("hospital_id = ?")
+            params.append(hospital_id)
         cursor.execute(
-            "SELECT total_amount, paid_amount, advance_amount, refunded_amount, hospital_id FROM invoices WHERE id = ?",
-            (invoice_id,),
+            f"SELECT total_amount, paid_amount, advance_amount, refunded_amount, hospital_id "
+            f"FROM invoices WHERE {' AND '.join(clauses)} AND deleted_at IS NULL FOR UPDATE",
+            tuple(params),
         )
         invoice = cursor.fetchone()
         if not invoice:
@@ -7154,31 +7519,36 @@ def delete_insurance_claim(claim_id, actor=None):
 
 
 def get_revenue_summary(hospital_id=None):
+    # Every invoices query below matches list_invoices()'s own convention of
+    # excluding soft-deleted rows -- omitted here previously, so a deleted
+    # invoice kept inflating these totals forever (it never gets excluded by
+    # anything else, since nothing else in this function joins against a
+    # "current" invoice list).
     scoped_hospital_id = hospital_id or resolve_hospital_id()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT COALESCE(SUM(total_amount), 0) AS value FROM invoices WHERE hospital_id = ?",
+            "SELECT COALESCE(SUM(total_amount), 0) AS value FROM invoices WHERE hospital_id = ? AND deleted_at IS NULL",
             (scoped_hospital_id,),
         )
         total_billed = cursor.fetchone()["value"]
         cursor.execute(
-            "SELECT COALESCE(SUM(paid_amount + advance_amount - refunded_amount), 0) AS value FROM invoices WHERE hospital_id = ?",
+            "SELECT COALESCE(SUM(paid_amount + advance_amount - refunded_amount), 0) AS value FROM invoices WHERE hospital_id = ? AND deleted_at IS NULL",
             (scoped_hospital_id,),
         )
         total_collected = cursor.fetchone()["value"]
         cursor.execute(
-            "SELECT COALESCE(SUM(due_amount), 0) AS value FROM invoices WHERE hospital_id = ?",
+            "SELECT COALESCE(SUM(due_amount), 0) AS value FROM invoices WHERE hospital_id = ? AND deleted_at IS NULL",
             (scoped_hospital_id,),
         )
         total_due = cursor.fetchone()["value"]
         cursor.execute(
-            "SELECT COALESCE(SUM(advance_amount), 0) AS value FROM invoices WHERE hospital_id = ?",
+            "SELECT COALESCE(SUM(advance_amount), 0) AS value FROM invoices WHERE hospital_id = ? AND deleted_at IS NULL",
             (scoped_hospital_id,),
         )
         total_advance = cursor.fetchone()["value"]
         cursor.execute(
-            "SELECT COALESCE(SUM(refunded_amount), 0) AS value FROM invoices WHERE hospital_id = ?",
+            "SELECT COALESCE(SUM(refunded_amount), 0) AS value FROM invoices WHERE hospital_id = ? AND deleted_at IS NULL",
             (scoped_hospital_id,),
         )
         total_refunded = cursor.fetchone()["value"]
@@ -7186,7 +7556,7 @@ def get_revenue_summary(hospital_id=None):
             """
             SELECT payment_mode AS label, COALESCE(SUM(amount), 0) AS count
             FROM invoice_payments
-            WHERE hospital_id = ?
+            WHERE hospital_id = ? AND deleted_at IS NULL
             GROUP BY payment_mode
             ORDER BY count DESC
             """,
@@ -7197,7 +7567,7 @@ def get_revenue_summary(hospital_id=None):
             """
             SELECT module AS label, COALESCE(SUM(paid_amount + advance_amount - refunded_amount), 0) AS count
             FROM invoices
-            WHERE hospital_id = ?
+            WHERE hospital_id = ? AND deleted_at IS NULL
             GROUP BY module
             ORDER BY count DESC
             """,
@@ -7213,7 +7583,7 @@ def get_revenue_summary(hospital_id=None):
                 COALESCE(SUM(CASE WHEN due_amount > 0 AND CURRENT_TIMESTAMP - created_at >= INTERVAL '61 days' AND CURRENT_TIMESTAMP - created_at < INTERVAL '91 days' THEN due_amount ELSE 0 END), 0) AS bucket_61_90,
                 COALESCE(SUM(CASE WHEN due_amount > 0 AND CURRENT_TIMESTAMP - created_at >= INTERVAL '91 days' THEN due_amount ELSE 0 END), 0) AS bucket_91_plus
             FROM invoices
-            WHERE hospital_id = ?
+            WHERE hospital_id = ? AND deleted_at IS NULL
             """,
             (scoped_hospital_id,),
         )

@@ -103,7 +103,7 @@ def billing_create_invoice():
 @require_permissions("billing.invoices.write")
 def billing_update_invoice(invoice_id):
     payload = request.get_json(force=True)
-    updated = update_invoice(invoice_id, payload)
+    updated = update_invoice(invoice_id, payload, hospital_id=current_hospital_id())
     if not updated:
         return jsonify({"error": "Invoice not found"}), 404
     log_audit_event(
@@ -115,7 +115,9 @@ def billing_update_invoice(invoice_id):
 @billing_bp.delete("/api/billing/invoices/<int:invoice_id>")
 @require_permissions("billing.invoices.write")
 def billing_delete_invoice(invoice_id):
-    deleted = delete_invoice(invoice_id, actor=g.current_user.get("username"))
+    deleted = delete_invoice(
+        invoice_id, actor=g.current_user.get("username"), hospital_id=current_hospital_id()
+    )
     if not deleted:
         return jsonify({"error": "Invoice not found"}), 404
     log_audit_event(
@@ -144,7 +146,7 @@ def billing_razorpay_order():
         invoice_id = int(payload.get("invoice_id"))
     except (TypeError, ValueError):
         return jsonify({"error": "invoice_id must be a valid number."}), 400
-    if not get_invoice_by_id(invoice_id):
+    if not get_invoice_by_id(invoice_id, hospital_id=current_hospital_id()):
         return jsonify({"error": "Invoice not found"}), 404
     receipt = (
         payload.get("receipt")
@@ -222,6 +224,7 @@ def billing_razorpay_verify():
             "converted_from_mode": payload.get("converted_from_mode"),
             "converted_to_mode": payload.get("converted_to_mode"),
         },
+        hospital_id=current_hospital_id(),
     )
     if payment_id is None:
         return jsonify({"error": "Invoice not found"}), 404
@@ -254,6 +257,7 @@ def billing_record_payment(invoice_id):
             "converted_from_mode": payload.get("converted_from_mode"),
             "converted_to_mode": payload.get("converted_to_mode"),
         },
+        hospital_id=current_hospital_id(),
     )
     if payment_id is None:
         return jsonify({"error": "Invoice not found"}), 404

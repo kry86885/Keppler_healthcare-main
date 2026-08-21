@@ -21,6 +21,7 @@ import {
   FiWatch,
   FiBell,
   FiHome,
+  FiPrinter,
 } from "react-icons/fi";
 import {
   Button,
@@ -49,6 +50,11 @@ type Props = {
   // Intake pick up exactly where staff left off instead of making them
   // search for the patient they just registered.
   prefillPatient?: { patient_id: string; name: string; last_name?: string } | null;
+  // Handed back after a patient registered via an unknown visit's "Register
+  // as New Patient" button (see MergeUnknownPatient) -- merges that patient
+  // into the visit they came from and reopens it, instead of leaving staff
+  // to redo the merge by hand after being bounced back to the ER queue.
+  mergeTarget?: { visitId: number; patientId: string } | null;
 };
 
 type ErVisit = {
@@ -63,9 +69,18 @@ type ErVisit = {
   status: string;
   assigned_doctor_name: string | null;
   assigned_specialty: string | null;
+  doctor_assigned_at: string | null;
   doctor_accepted_at: string | null;
   triage_category: string | null;
   triage_bed_label: string | null;
+  closed_at: string | null;
+  patient_name?: string | null;
+  patient_last_name?: string | null;
+  patient_gender?: string | null;
+  patient_age?: number | null;
+  patient_phone?: string | null;
+  patient_emergency_contact?: string | null;
+  patient?: Patient | null;
 };
 
 type ErComplaint = {
@@ -74,6 +89,7 @@ type ErComplaint = {
   severity: string | null;
   case_category: string | null;
   duration: string | null;
+  reported_by: string | null;
   created_at: string;
 };
 
@@ -121,6 +137,7 @@ type ErDisposition = {
   outcome: string;
   required_specialty: string | null;
   clinical_reason: string;
+  decided_by: string | null;
   decided_at: string;
   priority: string | null;
 } | null;
@@ -132,6 +149,7 @@ type ErBedRequest = {
   requested_specialty: string | null;
   requested_at: string;
   allocated_bed_id: number | null;
+  allocated_admission_id: number | null;
   allocated_at: string | null;
 };
 
@@ -362,9 +380,15 @@ function buildSymptomsSummary(complaints: ErComplaint[], vitals: ErVitals[]): st
 // nonexistent `.name` here and silently sent the AI an empty list) and calls
 // the triage endpoint. Used by Quick Intake, the AI Triage Assistant panel,
 // and Doctor Assignment's AI suggestion so all three reason from identical data.
-async function fetchAiTriageSuggestion(
-  symptoms: string,
-): Promise<{ department: string; urgency: string; reasoning: string; doctor: string }> {
+type AiTriageSuggestion = {
+  department: string;
+  urgency: string;
+  reasoning: string;
+  doctor: string;
+  suggested_treatment: { intervention_type: string; description: string } | null;
+};
+
+async function fetchAiTriageSuggestion(symptoms: string): Promise<AiTriageSuggestion> {
   const deptsRes = await apiFetch<{ departments: { department_name: string }[] }>("/api/registration/departments");
   const docsRes = await apiFetch<{ doctors: { doctor_name: string; department: string }[] }>("/api/op/doctors");
   const available_departments = deptsRes.departments.map((d) => d.department_name);
@@ -373,13 +397,13 @@ async function fetchAiTriageSuggestion(
   // model itself doesn't return a doctor, and without the "(Department)"
   // suffix it can never match anything.
   const available_doctors = docsRes.doctors.map((d) => `${d.doctor_name} (${d.department || "General"})`);
-  return apiFetch<{ department: string; urgency: string; reasoning: string; doctor: string }>(
+  return apiFetch<AiTriageSuggestion>(
     "/api/symptom-ai/triage",
     { method: "POST", body: JSON.stringify({ symptoms, available_departments, available_doctors }) },
   );
 }
 
-export default function ErPage({ setNotice, onNavigate, prefillPatient }: Props) {
+export default function ErPage({ setNotice, onNavigate, prefillPatient, mergeTarget }: Props) {
   const [tab, setTab] = useState<"queue" | "config">("queue");
   const [visits, setVisits] = useState<ErVisit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -440,6 +464,26 @@ export default function ErPage({ setNotice, onNavigate, prefillPatient }: Props)
     if (selectedVisitId) loadDetail(selectedVisitId);
   }, [selectedVisitId]);
 
+  useEffect(() => {
+    if (!mergeTarget) return;
+    (async () => {
+      try {
+        await apiFetch(`/api/er/visits/${mergeTarget.visitId}/merge-unknown`, {
+          method: "POST",
+          body: JSON.stringify({ patient_id: mergeTarget.patientId }),
+        });
+        setNotice({ type: "success", message: "New patient registered and merged into the visit." });
+        setSelectedVisitId(mergeTarget.visitId);
+      } catch (error: any) {
+        reportError(setNotice, error, "Patient was registered, but merging into the visit failed -- merge manually from the visit's Identity panel.");
+        setSelectedVisitId(mergeTarget.visitId);
+      }
+    })();
+    // Runs once per distinct mergeTarget object -- App.tsx clears it on any
+    // other navigation to "er", so this won't re-fire on a later unrelated visit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mergeTarget]);
+
   const summary = useMemo(() => {
     const byStatus: Record<string, number> = {};
     for (const v of visits) {
@@ -453,6 +497,14 @@ export default function ErPage({ setNotice, onNavigate, prefillPatient }: Props)
     if (selectedVisitId) await loadDetail(selectedVisitId);
   };
 
+  // A patient handed back from the registration-redirect flow (see
+  // App.tsx's navigateToPage) needs the intake modal open to actually see
+  // themselves pre-selected in it -- the panel now only renders while this
+  // modal is open, unlike the old always-visible sidebar.
+  useEffect(() => {
+    if (prefillPatient) setNewVisitOpen(true);
+  }, [prefillPatient]);
+
   if (selectedVisitId && detail) {
     return (
       <VisitDetailPanel
@@ -460,6 +512,7 @@ export default function ErPage({ setNotice, onNavigate, prefillPatient }: Props)
         loading={detailLoading}
         categories={categories}
         setNotice={setNotice}
+        onNavigate={onNavigate}
         onBack={() => {
           setSelectedVisitId(null);
           setDetail(null);
@@ -496,24 +549,13 @@ export default function ErPage({ setNotice, onNavigate, prefillPatient }: Props)
           <Button variant="ghost" onClick={loadVisits}>
             <FiRefreshCw aria-hidden /> Refresh
           </Button>
+          <Button onClick={() => setNewVisitOpen(true)}>
+            <FiPlus aria-hidden /> New ER Patient
+          </Button>
         </div>
       </div>
 
-      <div className="er-dashboard-layout">
-        <div className="er-intake-sidebar">
-          <QuickIntakePanel
-            setNotice={setNotice}
-            categories={categories}
-            prefillPatient={prefillPatient}
-            onCreated={(visitId) => {
-              loadVisits();
-              setSelectedVisitId(visitId);
-            }}
-            onNavigate={onNavigate}
-          />
-        </div>
-
-        <div className="er-queue-area" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+      <div className="er-queue-area" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
           <div className="er-stat-grid" style={{ gap: "1.5rem" }}>
             <div className="er-stat-tile-modern er-stat-tile-neutral">
               <span className="er-stat-icon"><FiUsers aria-hidden /></span>
@@ -595,10 +637,17 @@ export default function ErPage({ setNotice, onNavigate, prefillPatient }: Props)
                           {v.is_unknown_patient ? (
                             <span>
                               <FiHelpCircle aria-hidden style={{ marginRight: "0.3rem", color: "#b3451f" }} />
-                              <span className="er-queue-patient-name">{v.unknown_patient_label || "Unknown patient"}</span>
+                              <span className="er-queue-patient-name">{v.unknown_patient_label || "Unidentified Trauma Patient"}</span>
                             </span>
                           ) : (
-                            <span className="er-queue-patient-id">{v.patient_id}</span>
+                            <div>
+                              <span className="er-queue-patient-name" style={{ fontWeight: 600 }}>
+                                {[v.patient_name, v.patient_last_name].filter(Boolean).join(" ") || v.patient_id}
+                              </span>
+                              <span className="muted" style={{ fontSize: "0.75rem", display: "block" }}>
+                                {v.patient_id}{v.patient_gender ? ` · ${v.patient_gender}` : ""}{v.patient_age ? ` · ${v.patient_age}y` : ""}
+                              </span>
+                            </div>
                           )}
                         </TableCell>
                         <TableCell>
@@ -638,7 +687,6 @@ export default function ErPage({ setNotice, onNavigate, prefillPatient }: Props)
             )}
           </div>
         </div>
-      </div>
 
       {prescriptionTarget && (
         <PrescriptionUploadModal
@@ -650,6 +698,26 @@ export default function ErPage({ setNotice, onNavigate, prefillPatient }: Props)
           onClose={() => setPrescriptionTarget(null)}
         />
       )}
+
+      <Modal
+        open={newVisitOpen}
+        onClose={() => setNewVisitOpen(false)}
+        title="New ER Patient"
+        description="Register, log complaints/vitals, and run AI triage in one flow -- you'll land on the patient's visit page as soon as it's created."
+        className="ui-modal-wide"
+      >
+        <QuickIntakePanel
+          setNotice={setNotice}
+          categories={categories}
+          prefillPatient={prefillPatient}
+          onCreated={(visitId) => {
+            setNewVisitOpen(false);
+            loadVisits();
+            setSelectedVisitId(visitId);
+          }}
+          onNavigate={onNavigate}
+        />
+      </Modal>
     </section>
   );
 }
@@ -671,23 +739,24 @@ function QuickIntakePanel({
   onCreated: (visitId: number) => void;
   onNavigate?: (page: string, extraData?: any) => void;
 }) {
-  const [patientMode, setPatientMode] = useState<PatientMode>("existing");
+  const [patientMode, setPatientMode] = useState<PatientMode>("new");
 
   // Existing patient search
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
 
-  // A patient just registered via "New" mode (see the registration-redirect
-  // card below) comes back here already known -- skip straight to having
-  // them selected instead of making staff search for who they just typed in.
-  useEffect(() => {
-    if (!prefillPatient) return;
-    setPatientMode("existing");
-    setSelectedPatient(prefillPatient as Patient);
-  }, [prefillPatient]);
+  // New ER Patient Registration Fields
+  const [newName, setNewName] = useState("");
+  const [newLastName, setNewLastName] = useState("");
+  const [newGender, setNewGender] = useState("Male");
+  const [newAge, setNewAge] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newEmergencyContact, setNewEmergencyContact] = useState("");
+  const [newBroughtBy, setNewBroughtBy] = useState("");
+  const [newAllergies, setNewAllergies] = useState("");
 
-  // Unknown patient
+  // Unknown patient description
   const [unknownLabel, setUnknownLabel] = useState("");
 
   // Clinical Intake
@@ -698,8 +767,15 @@ function QuickIntakePanel({
   const [vitalsBpSys, setVitalsBpSys] = useState("");
   const [vitalsBpDia, setVitalsBpDia] = useState("");
   const [vitalsSpo2, setVitalsSpo2] = useState("");
+  const [vitalsTemp, setVitalsTemp] = useState("");
 
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!prefillPatient) return;
+    setPatientMode("existing");
+    setSelectedPatient(prefillPatient as Patient);
+  }, [prefillPatient]);
 
   useEffect(() => {
     if (patientMode !== "existing" || searchQuery.trim().length < 2) {
@@ -724,105 +800,166 @@ function QuickIntakePanel({
       setNotice({ type: "error", message: "Select a patient first." });
       return;
     }
+    if (patientMode === "new" && !newName.trim()) {
+      setNotice({ type: "error", message: "Patient name is required for ER registration." });
+      return;
+    }
     if (patientMode === "unknown" && !unknownLabel.trim()) {
-      setNotice({ type: "error", message: "Describe the unknown patient (e.g. \"Unknown male, approx 35-40\")." });
+      setNotice({
+        type: "error",
+        message: 'Describe the unknown patient (e.g. "Unidentified male, approx 35-40").',
+      });
       return;
     }
 
     setSaving(true);
     try {
-      let patientId: string | undefined;
+      let visitId: number;
+      let visitNo: string;
+      let registeredId: string;
 
-      // 1. Resolve Patient (new patients are registered via the Patient
-      // Registration module itself -- see the "new" mode card below -- so
-      // by the time this form submits, patientMode is only ever "existing"
-      // or "unknown".)
-      if (patientMode === "existing") {
-        patientId = selectedPatient!.patient_id;
-      }
+      if (patientMode === "new") {
+        // Direct Standalone ER Patient Registration
+        const vPayload: any = {};
+        if (vitalsHr.trim()) vPayload.heart_rate = parseInt(vitalsHr);
+        if (vitalsBpSys.trim()) vPayload.bp_systolic = parseInt(vitalsBpSys);
+        if (vitalsBpDia.trim()) vPayload.bp_diastolic = parseInt(vitalsBpDia);
+        if (vitalsSpo2.trim()) vPayload.spo2 = parseInt(vitalsSpo2);
+        if (vitalsTemp.trim()) vPayload.temperature = parseFloat(vitalsTemp);
 
-      // 2. Create ER Visit
-      const payload: Record<string, unknown> = {
-        arrival_mode: arrivalMode,
-        condition_at_arrival: conditionAtArrival || undefined,
-      };
-      if (patientMode === "unknown") {
-        payload.is_unknown_patient = true;
-        payload.unknown_patient_label = unknownLabel.trim();
+        const regRes = await apiFetch<{
+          patient_id: string;
+          patient: Patient;
+          visit: { id: number; visit_no: string };
+        }>("/api/er/register-patient", {
+          method: "POST",
+          body: JSON.stringify({
+            patient: {
+              name: newName.trim(),
+              last_name: newLastName.trim(),
+              gender: newGender,
+              age: newAge.trim() ? parseInt(newAge) : undefined,
+              phone: newPhone.trim(),
+              emergency_contact: newEmergencyContact.trim(),
+              allergies: newAllergies.trim(),
+            },
+            visit: {
+              arrival_mode: arrivalMode,
+              brought_by: newBroughtBy.trim() || undefined,
+              condition_at_arrival: conditionAtArrival || undefined,
+            },
+            complaint: complaint.trim() || undefined,
+            vitals: Object.keys(vPayload).length > 0 ? vPayload : undefined,
+          }),
+        });
+
+        visitId = regRes.visit.id;
+        visitNo = regRes.visit.visit_no;
+        registeredId = regRes.patient_id;
       } else {
-        payload.patient_id = patientId;
+        // Existing or Unknown mode
+        let patientId: string | undefined;
+        if (patientMode === "existing") {
+          patientId = selectedPatient!.patient_id;
+        }
+
+        const payload: Record<string, unknown> = {
+          arrival_mode: arrivalMode,
+          brought_by: newBroughtBy.trim() || undefined,
+          condition_at_arrival: conditionAtArrival || undefined,
+        };
+        if (patientMode === "unknown") {
+          payload.is_unknown_patient = true;
+          payload.unknown_patient_label = unknownLabel.trim();
+        } else {
+          payload.patient_id = patientId;
+        }
+
+        const visitRes = await apiFetch<{ id: number; visit_no: string }>(
+          "/api/er/visits",
+          { method: "POST", body: JSON.stringify(payload) },
+        );
+        visitId = visitRes.id;
+        visitNo = visitRes.visit_no;
+        registeredId = patientId || unknownLabel;
+
+        // Add Complaints
+        if (complaint.trim()) {
+          await apiFetch(`/api/er/visits/${visitId}/complaints`, {
+            method: "POST",
+            body: JSON.stringify({ complaint: complaint.trim() }),
+          });
+        }
+
+        // Add Vitals
+        const vPayload: any = {};
+        if (vitalsHr.trim()) vPayload.heart_rate = parseInt(vitalsHr);
+        if (vitalsBpSys.trim()) vPayload.bp_systolic = parseInt(vitalsBpSys);
+        if (vitalsBpDia.trim()) vPayload.bp_diastolic = parseInt(vitalsBpDia);
+        if (vitalsSpo2.trim()) vPayload.spo2 = parseInt(vitalsSpo2);
+        if (vitalsTemp.trim()) vPayload.temperature = parseFloat(vitalsTemp);
+        if (Object.keys(vPayload).length > 0) {
+          await apiFetch(`/api/er/visits/${visitId}/vitals`, {
+            method: "POST",
+            body: JSON.stringify(vPayload),
+          });
+        }
       }
 
-      const visitRes = await apiFetch<{ id: number; visit_no: string }>(
-        "/api/er/visits",
-        { method: "POST", body: JSON.stringify(payload) },
-      );
-      const visitId = visitRes.id;
-
+      // Build symptoms text for AI triage
       let symptomsText = "";
+      if (complaint.trim()) symptomsText += `Complaints: ${complaint.trim()}. `;
+      const vitalsParts: string[] = [];
+      if (vitalsHr.trim()) vitalsParts.push(`HR: ${vitalsHr}`);
+      if (vitalsBpSys.trim() && vitalsBpDia.trim()) vitalsParts.push(`BP: ${vitalsBpSys}/${vitalsBpDia}`);
+      if (vitalsSpo2.trim()) vitalsParts.push(`SpO2: ${vitalsSpo2}%`);
+      if (vitalsParts.length > 0) symptomsText += `Vitals: ${vitalsParts.join(", ")}`;
 
-      // 3. Add Complaints
-      if (complaint.trim()) {
-        await apiFetch(`/api/er/visits/${visitId}/complaints`, {
-          method: "POST",
-          body: JSON.stringify({ complaint: complaint.trim() })
-        });
-        symptomsText += `Complaints: ${complaint.trim()}. `;
-      }
-
-      // 4. Add Vitals
-      let vitalsRecorded = false;
-      const vPayload: any = {};
-      if (vitalsHr.trim()) { vPayload.heart_rate = parseInt(vitalsHr); vitalsRecorded = true; }
-      if (vitalsBpSys.trim()) { vPayload.bp_systolic = parseInt(vitalsBpSys); vitalsRecorded = true; }
-      if (vitalsBpDia.trim()) { vPayload.bp_diastolic = parseInt(vitalsBpDia); vitalsRecorded = true; }
-      if (vitalsSpo2.trim()) { vPayload.spo2 = parseInt(vitalsSpo2); vitalsRecorded = true; }
-
-      let vitalsParts = [];
-      if (vitalsRecorded) {
-        await apiFetch(`/api/er/visits/${visitId}/vitals`, {
-          method: "POST",
-          body: JSON.stringify(vPayload)
-        });
-        
-        if (vPayload.heart_rate) vitalsParts.push(`HR: ${vPayload.heart_rate}`);
-        if (vPayload.bp_systolic && vPayload.bp_diastolic) vitalsParts.push(`BP: ${vPayload.bp_systolic}/${vPayload.bp_diastolic}`);
-        if (vPayload.spo2) vitalsParts.push(`SpO2: ${vPayload.spo2}%`);
-        symptomsText += `Vitals: ${vitalsParts.join(", ")}`;
-      }
-
-      // 5. Trigger AI Triage
+      // Run AI Triage if complaints/vitals exist
       if (symptomsText.trim()) {
-        const aiRes = await fetchAiTriageSuggestion(symptomsText);
+        try {
+          const aiRes = await fetchAiTriageSuggestion(symptomsText);
+          const categoryCode = mapUrgencyToTriageCategory(aiRes.urgency, categories);
+          if (categoryCode) {
+            await apiFetch(`/api/er/visits/${visitId}/triage`, {
+              method: "POST",
+              body: JSON.stringify({
+                category: categoryCode,
+                reason: (aiRes.reasoning || "AI Triage applied").substring(0, 200),
+              }),
+            });
+          }
 
-        // Apply Triage -- only if the AI's urgency maps to a category this
-        // hospital has actually configured; otherwise leave it untriaged so
-        // staff set it manually via the Triage panel (see mapUrgencyToTriageCategory).
-        const categoryCode = mapUrgencyToTriageCategory(aiRes.urgency, categories);
-        if (categoryCode) {
-          await apiFetch(`/api/er/visits/${visitId}/triage`, {
-            method: "POST",
-            body: JSON.stringify({
-              category: categoryCode,
-              reason: (aiRes.reasoning || "AI Triage applied").substring(0, 200)
-            })
-          });
-        }
-
-        // Assign Doctor
-        if (aiRes.doctor || aiRes.department) {
-          await apiFetch(`/api/er/visits/${visitId}/assign-doctor`, {
-            method: "POST",
-            body: JSON.stringify({
-              specialty: aiRes.department || "Emergency",
-              doctor_name: aiRes.doctor || undefined
-            })
-          });
+          if (aiRes.doctor || aiRes.department) {
+            await apiFetch(`/api/er/visits/${visitId}/assign-doctor`, {
+              method: "POST",
+              body: JSON.stringify({
+                specialty: aiRes.department || "Emergency",
+                doctor_name: aiRes.doctor || undefined,
+              }),
+            });
+          }
+        } catch (aiErr) {
+          console.warn("AI Triage suggestion failed:", aiErr);
         }
       }
 
-      setNotice({ type: "success", message: `ER visit ${visitRes.visit_no} registered & AI triaged.` });
+      setNotice({
+        type: "success",
+        message:
+          patientMode === "new"
+            ? `ER Patient ${registeredId} registered (${visitNo}) & AI triaged.`
+            : `ER visit ${visitNo} admitted & AI triaged.`,
+      });
+
       // Reset form
+      setNewName("");
+      setNewLastName("");
+      setNewAge("");
+      setNewPhone("");
+      setNewEmergencyContact("");
+      setNewBroughtBy("");
+      setNewAllergies("");
       setSearchQuery("");
       setSelectedPatient(null);
       setUnknownLabel("");
@@ -831,13 +968,14 @@ function QuickIntakePanel({
       setVitalsBpSys("");
       setVitalsBpDia("");
       setVitalsSpo2("");
-      
+      setVitalsTemp("");
+
       onCreated(visitId);
     } catch (error: any) {
       reportError(
         setNotice,
         error,
-        "Failed to complete the Quick Intake process."
+        "Failed to complete the Emergency Intake process.",
       );
     } finally {
       setSaving(false);
@@ -845,28 +983,26 @@ function QuickIntakePanel({
   };
 
   return (
-    <div className="er-intake-panel" style={{ maxHeight: "calc(100vh - 100px)", overflowY: "auto" }}>
-      <h3 style={{ borderBottom: "1px solid #e2e8f0", paddingBottom: "0.5rem", marginBottom: "1rem" }}><FiPlus /> Unified ER Intake</h3>
-      
+    <div className="er-intake-panel">
       {/* 1. Identity Section */}
-      <div style={{ marginBottom: "1.5rem" }}>
-        <Label>1. Patient Identity</Label>
+      <div style={{ marginBottom: "1.2rem" }}>
+        <Label>1. Patient Registration & Identity</Label>
         <div className="er-mode-grid" style={{ marginBottom: "1rem", marginTop: "0.5rem" }}>
-          <button
-            type="button"
-            className={`er-mode-card${patientMode === "existing" ? " er-mode-card-active" : ""}`}
-            onClick={() => setPatientMode("existing")}
-          >
-            <FiSearch aria-hidden />
-            Search
-          </button>
           <button
             type="button"
             className={`er-mode-card${patientMode === "new" ? " er-mode-card-active" : ""}`}
             onClick={() => setPatientMode("new")}
           >
             <FiUserPlus aria-hidden />
-            New
+            New ER Patient
+          </button>
+          <button
+            type="button"
+            className={`er-mode-card${patientMode === "existing" ? " er-mode-card-active" : ""}`}
+            onClick={() => setPatientMode("existing")}
+          >
+            <FiSearch aria-hidden />
+            Search Existing
           </button>
           <button
             type="button"
@@ -874,9 +1010,102 @@ function QuickIntakePanel({
             onClick={() => setPatientMode("unknown")}
           >
             <FiHelpCircle aria-hidden />
-            Unknown
+            Unidentified
           </button>
         </div>
+
+        {patientMode === "new" && (
+          <div className="er-direct-registration-form" style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <div style={{ flex: 2 }}>
+                <Label htmlFor="er-new-name" style={{ fontSize: "0.8rem", color: "#64748b" }}>First Name *</Label>
+                <Input
+                  id="er-new-name"
+                  placeholder="e.g. Rahul"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  required
+                />
+              </div>
+              <div style={{ flex: 2 }}>
+                <Label htmlFor="er-new-lastname" style={{ fontSize: "0.8rem", color: "#64748b" }}>Last Name</Label>
+                <Input
+                  id="er-new-lastname"
+                  placeholder="e.g. Sharma"
+                  value={newLastName}
+                  onChange={(e) => setNewLastName(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <div style={{ flex: 1 }}>
+                <Label htmlFor="er-new-age" style={{ fontSize: "0.8rem", color: "#64748b" }}>Age</Label>
+                <Input
+                  id="er-new-age"
+                  type="number"
+                  placeholder="Yrs"
+                  value={newAge}
+                  onChange={(e) => setNewAge(e.target.value)}
+                />
+              </div>
+              <div style={{ flex: 1.5 }}>
+                <Label htmlFor="er-new-gender" style={{ fontSize: "0.8rem", color: "#64748b" }}>Gender</Label>
+                <Select
+                  id="er-new-gender"
+                  value={newGender}
+                  onChange={(e) => setNewGender(e.target.value)}
+                >
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </Select>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <div style={{ flex: 1 }}>
+                <Label htmlFor="er-new-phone" style={{ fontSize: "0.8rem", color: "#64748b" }}>Phone</Label>
+                <Input
+                  id="er-new-phone"
+                  placeholder="10-digit #"
+                  value={newPhone}
+                  onChange={(e) => setNewPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <Label htmlFor="er-new-emg-contact" style={{ fontSize: "0.8rem", color: "#dc2626" }}>Emergency Contact</Label>
+                <Input
+                  id="er-new-emg-contact"
+                  placeholder="Next of Kin / Relative"
+                  value={newEmergencyContact}
+                  onChange={(e) => setNewEmergencyContact(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <div style={{ flex: 1 }}>
+                <Label htmlFor="er-new-brought-by" style={{ fontSize: "0.8rem", color: "#64748b" }}>Brought By</Label>
+                <Input
+                  id="er-new-brought-by"
+                  placeholder="108 Ambulance / Family / Self"
+                  value={newBroughtBy}
+                  onChange={(e) => setNewBroughtBy(e.target.value)}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <Label htmlFor="er-new-allergies" style={{ fontSize: "0.8rem", color: "#b45309" }}>Known Allergies</Label>
+                <Input
+                  id="er-new-allergies"
+                  placeholder="e.g. Penicillin, NSAIDs"
+                  value={newAllergies}
+                  onChange={(e) => setNewAllergies(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {patientMode === "existing" && (
           <div>
@@ -922,32 +1151,12 @@ function QuickIntakePanel({
           </div>
         )}
 
-        {patientMode === "new" && (
-          <div className="er-registration-redirect">
-            <p className="muted" style={{ marginTop: 0 }}>
-              New patients are registered through the hospital's Patient
-              Registration module, so their record stays consistent everywhere
-              else in the system — ER doesn't keep a separate copy.
-            </p>
-            <Button
-              onClick={() => onNavigate?.("add", { returnTo: "er" })}
-              disabled={!onNavigate}
-            >
-              <FiUserPlus aria-hidden /> Open Patient Registration
-            </Button>
-            <p className="muted" style={{ fontSize: "0.8rem", marginBottom: 0 }}>
-              Once registered, you'll be brought straight back here with them
-              selected — no need to search.
-            </p>
-          </div>
-        )}
-
         {patientMode === "unknown" && (
           <div>
-            <Label htmlFor="er-unknown-label">Description</Label>
+            <Label htmlFor="er-unknown-label">Unidentified Patient Description</Label>
             <Input
               id="er-unknown-label"
-              placeholder="e.g. Unknown male, approx 35-40"
+              placeholder="e.g. Unidentified male, approx 35-40, found unconscious"
               value={unknownLabel}
               onChange={(e) => setUnknownLabel(e.target.value)}
             />
@@ -955,83 +1164,98 @@ function QuickIntakePanel({
         )}
       </div>
 
-      {patientMode !== "new" && (
-        <>
-          {/* 2. Clinical Intake Section */}
-          <div style={{ marginBottom: "1.5rem" }}>
-            <Label>2. Arrival & Complaints</Label>
-            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", marginBottom: "0.5rem" }}>
-              <div style={{ flex: 1 }}>
-                <Label style={{ fontSize: "0.8rem", color: "#64748b" }}>Mode</Label>
-                <Select value={arrivalMode} onChange={(e) => setArrivalMode(e.target.value)}>
-                  <option value="walk-in">Walk-in</option>
-                  <option value="ambulance">Ambulance</option>
-                  <option value="police">Police</option>
-                  <option value="referral">Referral</option>
-                  <option value="other">Other</option>
-                </Select>
-              </div>
-              <div style={{ flex: 1 }}>
-                <Label style={{ fontSize: "0.8rem", color: "#64748b" }}>Condition on arrival</Label>
-                <Select value={conditionAtArrival} onChange={(e) => setConditionAtArrival(e.target.value)}>
-                  <option value="">Select...</option>
-                  {ARRIVAL_CONDITION_OPTIONS.map((o) => (
-                    <option key={o} value={o}>{o}</option>
-                  ))}
-                </Select>
-              </div>
-            </div>
-            <div>
-              <Label style={{ fontSize: "0.8rem", color: "#64748b" }}>Chief Complaints</Label>
-              <Textarea
-                rows={2}
-                placeholder="e.g. Severe chest pain radiating to left arm..."
-                value={complaint}
-                onChange={(e) => setComplaint(e.target.value)}
-              />
-            </div>
+      {/* 2. Clinical Intake Section */}
+      <div style={{ marginBottom: "1.2rem" }}>
+        <Label>2. Arrival & Complaints</Label>
+        <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", marginBottom: "0.5rem" }}>
+          <div style={{ flex: 1 }}>
+            <Label style={{ fontSize: "0.8rem", color: "#64748b" }}>Arrival Mode</Label>
+            <Select value={arrivalMode} onChange={(e) => setArrivalMode(e.target.value)}>
+              <option value="walk-in">Walk-in</option>
+              <option value="ambulance">108 / Ambulance</option>
+              <option value="police">Police</option>
+              <option value="referral">Hospital Referral</option>
+              <option value="other">Other</option>
+            </Select>
           </div>
+          <div style={{ flex: 1 }}>
+            <Label style={{ fontSize: "0.8rem", color: "#64748b" }}>Condition on arrival</Label>
+            <Select value={conditionAtArrival} onChange={(e) => setConditionAtArrival(e.target.value)}>
+              <option value="">Select...</option>
+              {ARRIVAL_CONDITION_OPTIONS.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </Select>
+          </div>
+        </div>
+        <div>
+          <Label style={{ fontSize: "0.8rem", color: "#64748b" }}>Chief Complaints / Trauma Details</Label>
+          <Textarea
+            rows={2}
+            placeholder="e.g. Severe acute chest pain radiating to left arm, shortness of breath..."
+            value={complaint}
+            onChange={(e) => setComplaint(e.target.value)}
+          />
+        </div>
+      </div>
 
-          {/* 3. Vitals Section */}
-          <div style={{ marginBottom: "1.5rem" }}>
-            <Label>3. Initial Vitals</Label>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginTop: "0.5rem" }}>
-              <div>
-                <Label style={{ fontSize: "0.8rem", color: "#64748b" }}>HR (bpm)</Label>
-                <Input type="number" placeholder="80" value={vitalsHr} onChange={e => setVitalsHr(e.target.value)} />
-              </div>
-              <div>
-                <Label style={{ fontSize: "0.8rem", color: "#64748b" }}>SpO2 (%)</Label>
-                <Input type="number" placeholder="98" value={vitalsSpo2} onChange={e => setVitalsSpo2(e.target.value)} />
-              </div>
-              <div style={{ gridColumn: "1 / -1", display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                <div style={{ flex: 1 }}>
-                  <Label style={{ fontSize: "0.8rem", color: "#64748b" }}>Sys BP</Label>
-                  <Input type="number" placeholder="120" value={vitalsBpSys} onChange={e => setVitalsBpSys(e.target.value)} />
-                </div>
-                <span style={{ marginTop: "1.2rem", color: "#94a3b8" }}>/</span>
-                <div style={{ flex: 1 }}>
-                  <Label style={{ fontSize: "0.8rem", color: "#64748b" }}>Dia BP</Label>
-                  <Input type="number" placeholder="80" value={vitalsBpDia} onChange={e => setVitalsBpDia(e.target.value)} />
-                </div>
-              </div>
+      {/* 3. Vitals Section */}
+      <div style={{ marginBottom: "1.2rem" }}>
+        <Label>3. Initial Emergency Vitals</Label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginTop: "0.5rem" }}>
+          <div>
+            <Label style={{ fontSize: "0.8rem", color: "#64748b" }}>HR (bpm)</Label>
+            <Input type="number" placeholder="80" value={vitalsHr} onChange={e => setVitalsHr(e.target.value)} />
+          </div>
+          <div>
+            <Label style={{ fontSize: "0.8rem", color: "#64748b" }}>SpO2 (%)</Label>
+            <Input type="number" placeholder="98" value={vitalsSpo2} onChange={e => setVitalsSpo2(e.target.value)} />
+          </div>
+          <div style={{ gridColumn: "1 / -1", display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <div style={{ flex: 1 }}>
+              <Label style={{ fontSize: "0.8rem", color: "#64748b" }}>Sys BP</Label>
+              <Input type="number" placeholder="120" value={vitalsBpSys} onChange={e => setVitalsBpSys(e.target.value)} />
+            </div>
+            <span style={{ marginTop: "1.2rem", color: "#94a3b8" }}>/</span>
+            <div style={{ flex: 1 }}>
+              <Label style={{ fontSize: "0.8rem", color: "#64748b" }}>Dia BP</Label>
+              <Input type="number" placeholder="80" value={vitalsBpDia} onChange={e => setVitalsBpDia(e.target.value)} />
             </div>
           </div>
+        </div>
+      </div>
 
-          <div style={{ marginTop: "auto" }}>
-            <Button
-              style={{ width: "100%", padding: "1rem", fontSize: "1rem" }}
-              onClick={submit}
-              disabled={saving || (patientMode === "unknown" && !unknownLabel.trim())}
-            >
-              {saving ? "Processing Intake..." : "Admit & Auto-Triage"}
-            </Button>
-            <p className="muted" style={{ fontSize: "0.75rem", textAlign: "center", marginTop: "0.5rem" }}>
-              Identity, Complaints, Vitals, and AI Triage will be processed instantly.
-            </p>
-          </div>
-        </>
-      )}
+      <div style={{ marginTop: "auto" }}>
+        <Button
+          style={{ width: "100%", padding: "0.85rem", fontSize: "1rem", fontWeight: 600 }}
+          onClick={submit}
+          disabled={
+            saving ||
+            (patientMode === "new" && !newName.trim()) ||
+            (patientMode === "unknown" && !unknownLabel.trim()) ||
+            (patientMode === "existing" && !selectedPatient)
+          }
+        >
+          {saving ? (
+            "Registering & Triaging..."
+          ) : patientMode === "new" ? (
+            <>
+              <FiUserPlus aria-hidden style={{ marginRight: "0.4rem" }} /> Register & Admit to ER
+            </>
+          ) : patientMode === "unknown" ? (
+            <>
+              <FiHelpCircle aria-hidden style={{ marginRight: "0.4rem" }} /> Admit Unidentified Patient
+            </>
+          ) : (
+            <>
+              <FiPlus aria-hidden style={{ marginRight: "0.4rem" }} /> Admit Patient to ER
+            </>
+          )}
+        </Button>
+        <p className="muted" style={{ fontSize: "0.75rem", textAlign: "center", marginTop: "0.5rem" }}>
+          Instant standalone ER registration with automatic AI triage priority.
+        </p>
+      </div>
     </div>
   );
 }
@@ -1154,6 +1378,7 @@ function VisitDetailPanel({
   loading,
   categories,
   setNotice,
+  onNavigate,
   onBack,
   onRefresh,
   onOrderMedication,
@@ -1162,13 +1387,33 @@ function VisitDetailPanel({
   loading: boolean;
   categories: TriageCategory[];
   setNotice: (notice: Notice | null) => void;
+  onNavigate?: (page: string, extraData?: any) => void;
   onBack: () => void;
   onRefresh: () => void;
   onOrderMedication: () => void;
 }) {
+  const patientFullName = detail.patient
+    ? [detail.patient.name, detail.patient.last_name].filter(Boolean).join(" ")
+    : null;
   const patientLabel = detail.is_unknown_patient
-    ? detail.unknown_patient_label || "Unknown patient"
-    : detail.patient_id;
+    ? detail.unknown_patient_label || "Unidentified Trauma Patient"
+    : patientFullName
+      ? `${patientFullName} (${detail.patient_id})`
+      : detail.patient_id;
+
+  // Set by AITriagePanel's onSuggestion -- flows down into TriageForm /
+  // DoctorAssignForm / AddTreatmentForm as a one-shot starting value for
+  // their own fields (never written to the visit directly). A fresh object
+  // reference each run so each form's useEffect re-fires even if the AI
+  // suggests the exact same thing twice in a row.
+  const [aiPrefills, setAiPrefills] = useState<AiSectionPrefills>({
+    triage: null,
+    doctor: null,
+    treatment: null,
+  });
+
+  const [viewTab, setViewTab] = useState<"clinical" | "timeline">("clinical");
+  const [showHandoverModal, setShowHandoverModal] = useState(false);
 
   const pendingBedRequest = detail.bed_requests.find((r) => r.status === "pending");
   const closedOrNoBedNeeded =
@@ -1177,10 +1422,20 @@ function VisitDetailPanel({
 
   return (
     <section className="module-page">
-      <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
         <Button variant="ghost" onClick={onBack} className="er-visit-header-back">
           <FiArrowLeft aria-hidden /> Back to Queue
         </Button>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setShowHandoverModal(true)}
+            style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: "0.3rem" }}
+          >
+            <FiPrinter aria-hidden /> Clinical Handover Sheet
+          </Button>
+        </div>
       </div>
 
       <div className="er-visit-header">
@@ -1204,181 +1459,569 @@ function VisitDetailPanel({
         </div>
       </div>
 
-      <div className="journey-steps" role="list" aria-label="ER visit progress">
-        {CORE_STEPS.map((s, index) => {
-          const isDone = index < currentStep;
-          const isActive = index === currentStep;
-          const state = isActive
-            ? "journey-step-active"
-            : isDone
-              ? "journey-step-completed"
-              : "journey-step-upcoming";
-          return (
-            <div className="journey-step-wrap" key={s.key}>
-              <div className={`journey-step ${state}`}>
-                <span className="journey-step-circle">
-                  {isDone ? <FiCheck aria-hidden /> : index + 1}
-                </span>
-                <span className="journey-step-text">
-                  <span className="journey-step-label">{s.label}</span>
-                  <span className="journey-step-hint">{s.hint}</span>
-                </span>
-              </div>
-              {index < CORE_STEPS.length - 1 && (
-                <span className={isDone ? "journey-step-connector filled" : "journey-step-connector"} />
-              )}
-            </div>
-          );
-        })}
+      {/* View Switcher: Clinical Flow vs Chronological Timeline */}
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+        <button
+          type="button"
+          className={`btn btn-sm ${viewTab === "clinical" ? "btn-primary" : "btn-secondary"}`}
+          onClick={() => setViewTab("clinical")}
+          style={{ borderRadius: "20px", padding: "0.35rem 1.2rem", fontSize: "0.85rem" }}
+        >
+          <FiActivity aria-hidden style={{ marginRight: "0.3rem" }} /> Clinical Workflow & Care
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm ${viewTab === "timeline" ? "btn-primary" : "btn-secondary"}`}
+          onClick={() => setViewTab("timeline")}
+          style={{ borderRadius: "20px", padding: "0.35rem 1.2rem", fontSize: "0.85rem" }}
+        >
+          <FiClock aria-hidden style={{ marginRight: "0.3rem" }} /> Chronological Event Timeline
+        </button>
       </div>
 
-      {loading && <p className="muted">Refreshing...</p>}
-
-      <div className="er-detail-layout">
-        <div className="er-detail-sidebar">
-          {detail.is_unknown_patient && (
-            <MergeUnknownPatient
-              visitId={detail.id}
-              setNotice={setNotice}
-              onMerged={onRefresh}
-            />
-          )}
-
-          <div className="panel">
-            <SectionHead icon={<FiActivity aria-hidden />} title="Vitals" />
-            <VitalsList vitals={detail.vitals} />
-            <AddVitalsForm visitId={detail.id} setNotice={setNotice} onAdded={onRefresh} />
-          </div>
-
-          <div className="panel">
-            <SectionHead icon={<FiAlertTriangle aria-hidden />} title="Triage" />
-            {detail.triage ? (
-              <p>
-                <TriageChip category={detail.triage.category} categories={categories} bedLabel={detail.triage.triage_bed_label} />
-                <br />
-                <span className="muted" style={{ display: "inline-block", marginTop: "0.4rem" }}>
-                  {detail.triage.reason} &middot; {formatDateTimeIST(detail.triage.triaged_at)}
-                </span>
-              </p>
-            ) : (
-              <p className="muted">Not yet triaged.</p>
-            )}
-            <TriageForm
-              visitId={detail.id}
-              categories={categories}
-              existing={detail.triage}
-              setNotice={setNotice}
-              onSaved={onRefresh}
-            />
-          </div>
+      {viewTab === "timeline" ? (
+        <div className="panel">
+          <SectionHead icon={<FiClock aria-hidden />} title="Chronological Emergency Event Timeline (Hosp AI)" />
+          <ErTimelineView detail={detail} categories={categories} />
         </div>
-
-        <div className="er-detail-main">
-          <AITriagePanel
-            detail={detail}
-            categories={categories}
-            setNotice={setNotice}
-            onRefresh={onRefresh}
-          />
-
-          <div className="panel">
-            <SectionHead icon={<FiClipboard aria-hidden />} title="Chief Complaints" />
-            <ComplaintList complaints={detail.complaints} />
-            <AddComplaintForm visitId={detail.id} setNotice={setNotice} onAdded={onRefresh} />
-          </div>
-
-          <div className="panel">
-            <SectionHead
-              icon={<FiZap aria-hidden />}
-              title="Emergency Treatment"
-              action={
-                <Button size="sm" onClick={onOrderMedication}>
-                  Order Medication
-                </Button>
-              }
-            />
-            <TreatmentList treatments={detail.treatments} />
-            <AddTreatmentForm visitId={detail.id} setNotice={setNotice} onAdded={onRefresh} />
-          </div>
-
-          <div className="panel">
-            <SectionHead icon={<FiUserCheck aria-hidden />} title="Doctor Assignment" />
-            <p>
-              {detail.assigned_doctor_name ? (
-                <>
-                  <strong>{detail.assigned_doctor_name}</strong> ({detail.assigned_specialty})
-                  {detail.doctor_accepted_at ? (
-                    <span className="er-status-badge er-status-resolved" style={{ marginLeft: "0.5rem" }}>Accepted</span>
-                  ) : (
-                    <span className="er-status-badge er-status-pending" style={{ marginLeft: "0.5rem" }}>Pending accept</span>
+      ) : (
+        <>
+          <div className="journey-steps" role="list" aria-label="ER visit progress">
+            {CORE_STEPS.map((s, index) => {
+              const isDone = index < currentStep;
+              const isActive = index === currentStep;
+              const state = isActive
+                ? "journey-step-active"
+                : isDone
+                  ? "journey-step-completed"
+                  : "journey-step-upcoming";
+              return (
+                <div className="journey-step-wrap" key={s.key}>
+                  <div className={`journey-step ${state}`}>
+                    <span className="journey-step-circle">
+                      {isDone ? <FiCheck aria-hidden /> : index + 1}
+                    </span>
+                    <span className="journey-step-text">
+                      <span className="journey-step-label">{s.label}</span>
+                      <span className="journey-step-hint">{s.hint}</span>
+                    </span>
+                  </div>
+                  {index < CORE_STEPS.length - 1 && (
+                    <span className={isDone ? "journey-step-connector filled" : "journey-step-connector"} />
                   )}
-                </>
-              ) : (
-                <span className="muted">No doctor assigned yet.</span>
+                </div>
+              );
+            })}
+          </div>
+
+          {loading && <p className="muted">Refreshing...</p>}
+
+          <div className="er-detail-layout">
+            <div className="er-detail-sidebar">
+              {!detail.is_unknown_patient && (
+                <div className="panel" style={{ borderLeft: "4px solid #3b82f6" }}>
+                  <SectionHead icon={<FiUser aria-hidden />} title="Patient Record" />
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", fontSize: "0.85rem" }}>
+                    <div>
+                      <strong style={{ fontSize: "1rem", color: "#1e293b", display: "block" }}>
+                        {patientFullName || detail.patient_id}
+                      </strong>
+                      <span className="muted" style={{ fontSize: "0.8rem" }}>
+                        ID: {detail.patient_id}
+                      </span>
+                    </div>
+                    {detail.patient && (
+                      <>
+                        <div style={{ display: "flex", gap: "0.8rem", color: "#475569", flexWrap: "wrap" }}>
+                          {detail.patient.gender && <span>Gender: <strong>{detail.patient.gender}</strong></span>}
+                          {detail.patient.age && <span>Age: <strong>{detail.patient.age}y</strong></span>}
+                          {detail.patient.blood_group && <span>Blood: <strong>{detail.patient.blood_group}</strong></span>}
+                        </div>
+                        {detail.patient.phone && (
+                          <div style={{ color: "#475569" }}>
+                            Phone: <span>{detail.patient.phone}</span>
+                          </div>
+                        )}
+                        {detail.patient.emergency_contact && (
+                          <div style={{ color: "#dc2626" }}>
+                            Emergency Contact: <strong>{detail.patient.emergency_contact}</strong>
+                          </div>
+                        )}
+                        {detail.patient.allergies && (
+                          <div style={{ color: "#b45309" }}>
+                            Allergies: <span>{detail.patient.allergies}</span>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {detail.arrival_mode && (
+                      <div className="muted" style={{ fontSize: "0.8rem", marginTop: "0.2rem" }}>
+                        Arrival Mode: <strong>{detail.arrival_mode}</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
-            </p>
-            <DoctorAssignForm
-              visitId={detail.id}
-              complaints={detail.complaints}
-              vitals={detail.vitals}
-              setNotice={setNotice}
-              onSaved={onRefresh}
-            />
-            {detail.assigned_doctor_name && !detail.doctor_accepted_at && (
-              <Button
-                size="sm"
-                variant="secondary"
-                style={{ marginTop: "0.5rem" }}
-                onClick={async () => {
-                  try {
-                    await apiFetch(`/api/er/visits/${detail.id}/accept`, { method: "POST" });
-                    onRefresh();
-                  } catch (error: any) {
-                    reportError(setNotice, error, "Failed to accept the assignment.");
+
+              {detail.is_unknown_patient && (
+                <MergeUnknownPatient
+                  visitId={detail.id}
+                  setNotice={setNotice}
+                  onMerged={onRefresh}
+                  onNavigate={onNavigate}
+                />
+              )}
+
+              <div className="panel">
+                <SectionHead icon={<FiActivity aria-hidden />} title="Vitals" />
+                <VitalsList vitals={detail.vitals} />
+                <AddVitalsForm visitId={detail.id} setNotice={setNotice} onAdded={onRefresh} />
+              </div>
+
+              <div className="panel">
+                <SectionHead icon={<FiAlertTriangle aria-hidden />} title="Triage" />
+                {detail.triage ? (
+                  <p>
+                    <TriageChip category={detail.triage.category} categories={categories} bedLabel={detail.triage.triage_bed_label} />
+                    <br />
+                    <span className="muted" style={{ display: "inline-block", marginTop: "0.4rem" }}>
+                      {detail.triage.reason} &middot; {formatDateTimeIST(detail.triage.triaged_at)}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="muted">Not yet triaged.</p>
+                )}
+                <TriageForm
+                  visitId={detail.id}
+                  categories={categories}
+                  existing={detail.triage}
+                  aiPrefill={aiPrefills.triage}
+                  setNotice={setNotice}
+                  onSaved={onRefresh}
+                />
+              </div>
+            </div>
+
+            <div className="er-detail-main">
+              <AITriagePanel
+                detail={detail}
+                categories={categories}
+                setNotice={setNotice}
+                onSuggestion={(prefills) => setAiPrefills(prefills)}
+              />
+
+              <div className="panel">
+                <SectionHead icon={<FiClipboard aria-hidden />} title="Chief Complaints" />
+                <ComplaintList complaints={detail.complaints} />
+                <AddComplaintForm visitId={detail.id} setNotice={setNotice} onAdded={onRefresh} />
+              </div>
+
+              <div className="panel">
+                <SectionHead
+                  icon={<FiZap aria-hidden />}
+                  title="Emergency Treatment"
+                  action={
+                    <Button size="sm" onClick={onOrderMedication}>
+                      Order Medication
+                    </Button>
                   }
-                }}
-              >
-                Doctor Accepts Patient
-              </Button>
+                />
+                <TreatmentList treatments={detail.treatments} />
+                <AddTreatmentForm
+                  visitId={detail.id}
+                  aiPrefill={aiPrefills.treatment}
+                  setNotice={setNotice}
+                  onAdded={onRefresh}
+                />
+              </div>
+
+              <div className="panel">
+                <SectionHead icon={<FiUserCheck aria-hidden />} title="Doctor Assignment" />
+                <p>
+                  {detail.assigned_doctor_name ? (
+                    <>
+                      <strong>{detail.assigned_doctor_name}</strong> ({detail.assigned_specialty})
+                      {detail.doctor_accepted_at ? (
+                        <span className="er-status-badge er-status-resolved" style={{ marginLeft: "0.5rem" }}>Accepted</span>
+                      ) : (
+                        <span className="er-status-badge er-status-pending" style={{ marginLeft: "0.5rem" }}>Pending accept</span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="muted">No doctor assigned yet.</span>
+                  )}
+                </p>
+                <DoctorAssignForm
+                  visitId={detail.id}
+                  complaints={detail.complaints}
+                  vitals={detail.vitals}
+                  aiPrefill={aiPrefills.doctor}
+                  setNotice={setNotice}
+                  onSaved={onRefresh}
+                />
+                {detail.assigned_doctor_name && !detail.doctor_accepted_at && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    style={{ marginTop: "0.5rem" }}
+                    onClick={async () => {
+                      try {
+                        await apiFetch(`/api/er/visits/${detail.id}/accept`, { method: "POST" });
+                        onRefresh();
+                      } catch (error: any) {
+                        reportError(setNotice, error, "Failed to accept the assignment.");
+                      }
+                    }}
+                  >
+                    Doctor Accepts Patient
+                  </Button>
+                )}
+              </div>
+
+              <div className="panel">
+                <SectionHead icon={<FiFileText aria-hidden />} title="Clinical Notes" />
+                <NotesList notes={detail.clinical_notes} />
+                <AddNoteForm visitId={detail.id} setNotice={setNotice} onAdded={onRefresh} />
+              </div>
+
+              <div className="panel">
+                <SectionHead icon={<FiFlag aria-hidden />} title="Disposition" />
+                {detail.disposition ? (
+                  <p>
+                    <strong>{OUTCOME_OPTIONS.find((o) => o.value === detail.disposition!.outcome)?.label || detail.disposition.outcome}</strong>
+                    <br />
+                    <span className="muted">{detail.disposition.clinical_reason}</span>
+                  </p>
+                ) : (
+                  <p className="muted">No disposition recorded yet.</p>
+                )}
+
+                {!detail.disposition && (
+                  <DispositionForm visitId={detail.id} setNotice={setNotice} onSaved={onRefresh} />
+                )}
+
+                {pendingBedRequest && (
+                  <p className="muted">
+                    Bed request sent to Bed Management ({pendingBedRequest.requested_level_of_care.toUpperCase()}) —
+                    awaiting allocation.
+                  </p>
+                )}
+
+                {closedOrNoBedNeeded && detail.status !== "closed" && (
+                  <CloseVisitPanel visitId={detail.id} setNotice={setNotice} onClosed={onRefresh} />
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {showHandoverModal && (
+        <ErHandoverModal
+          detail={detail}
+          categories={categories}
+          onClose={() => setShowHandoverModal(false)}
+        />
+      )}
+    </section>
+  );
+}
+
+function ErTimelineView({
+  detail,
+  categories,
+}: {
+  detail: ErVisitDetail;
+  categories: TriageCategory[];
+}) {
+  const events: {
+    timestamp: string;
+    title: string;
+    subtitle?: string;
+    badge?: string;
+    type: "arrival" | "vitals" | "triage" | "treatment" | "doctor" | "note" | "disposition" | "bed";
+  }[] = [];
+
+  if (detail.arrival_at) {
+    events.push({
+      timestamp: detail.arrival_at,
+      title: "Patient Arrived at Emergency Department",
+      subtitle: `Arrival Mode: ${detail.arrival_mode || "Walk-in"}${detail.condition_at_arrival ? ` · Condition: ${detail.condition_at_arrival}` : ""}`,
+      badge: "Arrival",
+      type: "arrival",
+    });
+  }
+
+  detail.complaints.forEach((c) => {
+    events.push({
+      timestamp: c.created_at,
+      title: `Chief Complaint: ${c.complaint}`,
+      subtitle: c.reported_by ? `Reported by: ${c.reported_by}` : undefined,
+      badge: "Complaint",
+      type: "note",
+    });
+  });
+
+  detail.vitals.forEach((v) => {
+    const parts = [];
+    if (v.heart_rate) parts.push(`HR: ${v.heart_rate} bpm`);
+    if (v.bp_systolic && v.bp_diastolic) parts.push(`BP: ${v.bp_systolic}/${v.bp_diastolic}`);
+    if (v.spo2) parts.push(`SpO2: ${v.spo2}%`);
+    if (v.temperature) parts.push(`Temp: ${v.temperature}°C`);
+    if (v.respiratory_rate) parts.push(`RR: ${v.respiratory_rate}/min`);
+    events.push({
+      timestamp: v.recorded_at,
+      title: "Emergency Vitals Recorded",
+      subtitle: parts.join(" · "),
+      badge: "Vitals",
+      type: "vitals",
+    });
+  });
+
+  if (detail.triage) {
+    const cat = categories.find((c) => c.category_code === detail.triage!.category);
+    events.push({
+      timestamp: detail.triage.triaged_at,
+      title: `Emergency Triage: ${detail.triage.category} - ${cat?.category_label || detail.triage.category}`,
+      subtitle: `Triage Bay: ${detail.triage.triage_bed_label || "B1-B4"} · Reason: ${detail.triage.reason || "Clinical assessment"}`,
+      badge: detail.triage.category,
+      type: "triage",
+    });
+  }
+
+  detail.treatments.forEach((t) => {
+    events.push({
+      timestamp: t.performed_at,
+      title: `Emergency Intervention: ${t.intervention_type}`,
+      subtitle: t.description || undefined,
+      badge: "Intervention",
+      type: "treatment",
+    });
+  });
+
+  if (detail.doctor_assigned_at) {
+    events.push({
+      timestamp: detail.doctor_assigned_at,
+      title: `Doctor Assigned: Dr. ${detail.assigned_doctor_name}`,
+      subtitle: `Specialty: ${detail.assigned_specialty}`,
+      badge: "Doctor",
+      type: "doctor",
+    });
+  }
+  if (detail.doctor_accepted_at) {
+    events.push({
+      timestamp: detail.doctor_accepted_at,
+      title: `Doctor Accepted Patient: Dr. ${detail.assigned_doctor_name}`,
+      subtitle: "Active Clinical Care & Assessment Initiated",
+      badge: "Accepted",
+      type: "doctor",
+    });
+  }
+
+  detail.clinical_notes.forEach((n) => {
+    events.push({
+      timestamp: n.created_at,
+      title: `Clinical Note (${n.note_type})`,
+      subtitle: n.content,
+      badge: "Note",
+      type: "note",
+    });
+  });
+
+  if (detail.disposition) {
+    events.push({
+      timestamp: detail.disposition.decided_at,
+      title: `Clinical Disposition: ${detail.disposition.outcome.toUpperCase()}`,
+      subtitle: `Reason: ${detail.disposition.clinical_reason}${detail.disposition.decided_by ? ` · Decided by: ${detail.disposition.decided_by}` : ""}`,
+      badge: "Disposition",
+      type: "disposition",
+    });
+  }
+
+  detail.bed_requests.forEach((r) => {
+    if (r.status === "allocated" && r.allocated_at) {
+      events.push({
+        timestamp: r.allocated_at,
+        title: `Physical Bed Allocated: Bed #${r.allocated_bed_id}`,
+        subtitle: `Admission #${r.allocated_admission_id} · Assigned by Reception / Bed Management`,
+        badge: "Bed Allocated",
+        type: "bed",
+      });
+    }
+  });
+
+  if (detail.closed_at) {
+    events.push({
+      timestamp: detail.closed_at,
+      title: "Emergency Visit Closed / Discharged",
+      badge: "Closed",
+      type: "disposition",
+    });
+  }
+
+  events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+  return (
+    <div className="er-timeline-container" style={{ padding: "0.5rem" }}>
+      <div style={{ position: "relative", paddingLeft: "1.5rem", borderLeft: "2px solid #cbd5e1" }}>
+        {events.map((ev, idx) => (
+          <div key={idx} style={{ marginBottom: "1.25rem", position: "relative" }}>
+            <span
+              style={{
+                position: "absolute",
+                left: "-1.95rem",
+                top: "0.2rem",
+                width: "14px",
+                height: "14px",
+                borderRadius: "50%",
+                backgroundColor:
+                  ev.type === "triage"
+                    ? "#dc2626"
+                    : ev.type === "vitals"
+                      ? "#3b82f6"
+                      : ev.type === "treatment"
+                        ? "#10b981"
+                        : ev.type === "doctor"
+                          ? "#8b5cf6"
+                          : "#64748b",
+                border: "2px solid #fff",
+                boxShadow: "0 0 0 2px #cbd5e1",
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem" }}>
+              <div style={{ fontWeight: 600, fontSize: "0.95rem", color: "#1e293b" }}>{ev.title}</div>
+              <span className="muted" style={{ fontSize: "0.8rem", whiteSpace: "nowrap" }}>
+                {formatDateTimeIST(ev.timestamp)}
+              </span>
+            </div>
+            {ev.subtitle && (
+              <p className="muted" style={{ margin: "0.25rem 0 0 0", fontSize: "0.85rem", color: "#475569" }}>
+                {ev.subtitle}
+              </p>
             )}
           </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-          <div className="panel">
-            <SectionHead icon={<FiFileText aria-hidden />} title="Clinical Notes" />
-            <NotesList notes={detail.clinical_notes} />
-            <AddNoteForm visitId={detail.id} setNotice={setNotice} onAdded={onRefresh} />
+function ErHandoverModal({
+  detail,
+  categories,
+  onClose,
+}: {
+  detail: ErVisitDetail;
+  categories: TriageCategory[];
+  onClose: () => void;
+}) {
+  const patientName = detail.patient
+    ? [detail.patient.name, detail.patient.last_name].filter(Boolean).join(" ")
+    : detail.patient_id;
+  // detail.vitals comes back ordered oldest-first (ASC by recorded_at, see
+  // get_er_visit) -- index 0 is the FIRST reading taken, not the latest.
+  const initialVitals = detail.vitals[0];
+  const latestVitals = detail.vitals[detail.vitals.length - 1];
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  return (
+    <Modal title="Structured ER Clinical Handover Sheet" onClose={onClose} open>
+      <div className="printable-handover-document" style={{ padding: "0.5rem", fontSize: "0.9rem", color: "#1e293b" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "2px solid #0f172a", paddingBottom: "0.5rem", marginBottom: "1rem" }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 800 }}>HOSP AI EMERGENCY DEPARTMENT</h2>
+            <div className="muted" style={{ fontSize: "0.8rem" }}>Phase 1 Clinical Handover & Transfer Summary (Section 36)</div>
           </div>
-
-          <div className="panel">
-            <SectionHead icon={<FiFlag aria-hidden />} title="Disposition" />
-            {detail.disposition ? (
-              <p>
-                <strong>{OUTCOME_OPTIONS.find((o) => o.value === detail.disposition!.outcome)?.label || detail.disposition.outcome}</strong>
-                <br />
-                <span className="muted">{detail.disposition.clinical_reason}</span>
-              </p>
-            ) : (
-              <p className="muted">No disposition recorded yet.</p>
-            )}
-
-            {!detail.disposition && (
-              <DispositionForm visitId={detail.id} setNotice={setNotice} onSaved={onRefresh} />
-            )}
-
-            {pendingBedRequest && (
-              <p className="muted">
-                Bed request sent to Bed Management ({pendingBedRequest.requested_level_of_care.toUpperCase()}) —
-                awaiting allocation.
-              </p>
-            )}
-
-            {closedOrNoBedNeeded && detail.status !== "closed" && (
-              <CloseVisitPanel visitId={detail.id} setNotice={setNotice} onClosed={onRefresh} />
-            )}
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontWeight: 700 }}>Encounter: {detail.visit_no}</div>
+            <div className="muted" style={{ fontSize: "0.8rem" }}>Generated: {formatDateTimeIST(new Date().toISOString())}</div>
           </div>
         </div>
+
+        {/* 1. Patient Details */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", backgroundColor: "#f8fafc", padding: "0.75rem", borderRadius: "6px", marginBottom: "1rem" }}>
+          <div><strong>Patient:</strong> {patientName} ({detail.patient_id})</div>
+          <div><strong>Age / Gender:</strong> {detail.patient?.age || "—"}y / {detail.patient?.gender || "—"}</div>
+          <div><strong>Arrival Time:</strong> {formatDateTimeIST(detail.arrival_at)} ({detail.arrival_mode})</div>
+          <div><strong>Emergency Contact:</strong> {detail.patient?.emergency_contact || detail.patient?.phone || "—"}</div>
+          <div style={{ color: "#b91c1c" }}><strong>Known Allergies:</strong> {detail.patient?.allergies || "None Reported"}</div>
+          <div><strong>Triage Acuity:</strong> {detail.triage?.category || "Untriaged"} (Bay: {detail.triage?.triage_bed_label || "B1-B4"})</div>
+        </div>
+
+        {/* 2. Chief Complaints */}
+        <div style={{ marginBottom: "1rem" }}>
+          <strong style={{ display: "block", color: "#475569", borderBottom: "1px solid #e2e8f0", paddingBottom: "0.2rem", marginBottom: "0.3rem" }}>
+            1. Chief Complaints & Incident
+          </strong>
+          {detail.complaints.length > 0 ? (
+            <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+              {detail.complaints.map((c) => (
+                <li key={c.id}>{c.complaint}</li>
+              ))}
+            </ul>
+          ) : (
+            <span className="muted">No primary complaints recorded.</span>
+          )}
+        </div>
+
+        {/* 3. Vitals Evolution */}
+        <div style={{ marginBottom: "1rem" }}>
+          <strong style={{ display: "block", color: "#475569", borderBottom: "1px solid #e2e8f0", paddingBottom: "0.2rem", marginBottom: "0.3rem" }}>
+            2. Vitals Evolution (Initial vs. Latest)
+          </strong>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", fontSize: "0.85rem" }}>
+            <div style={{ padding: "0.5rem", border: "1px solid #e2e8f0", borderRadius: "4px" }}>
+              <strong>Initial Vitals:</strong>
+              {initialVitals ? (
+                <div>HR: {initialVitals.heart_rate || "—"} | BP: {initialVitals.bp_systolic || "—"}/{initialVitals.bp_diastolic || "—"} | SpO2: {initialVitals.spo2 || "—"}% | Temp: {initialVitals.temperature || "—"}°C</div>
+              ) : <span>Not recorded</span>}
+            </div>
+            <div style={{ padding: "0.5rem", border: "1px solid #e2e8f0", borderRadius: "4px", backgroundColor: "#f0fdf4" }}>
+              <strong>Latest Stabilized Vitals:</strong>
+              {latestVitals ? (
+                <div>HR: {latestVitals.heart_rate || "—"} | BP: {latestVitals.bp_systolic || "—"}/{latestVitals.bp_diastolic || "—"} | SpO2: {latestVitals.spo2 || "—"}% | Temp: {latestVitals.temperature || "—"}°C</div>
+              ) : <span>Not recorded</span>}
+            </div>
+          </div>
+        </div>
+
+        {/* 4. Emergency Interventions & Meds */}
+        <div style={{ marginBottom: "1rem" }}>
+          <strong style={{ display: "block", color: "#475569", borderBottom: "1px solid #e2e8f0", paddingBottom: "0.2rem", marginBottom: "0.3rem" }}>
+            3. Emergency Interventions & Medications Administered
+          </strong>
+          {detail.treatments.length > 0 ? (
+            <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+              {detail.treatments.map((t) => (
+                <li key={t.id}>
+                  <strong>{t.intervention_type}</strong> - {t.description || "Performed"} ({formatDateTimeIST(t.performed_at)})
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="muted">No interventions charted.</span>
+          )}
+        </div>
+
+        {/* 5. Destination */}
+        <div style={{ marginBottom: "1rem", backgroundColor: "#eff6ff", padding: "0.75rem", borderRadius: "6px" }}>
+          <strong style={{ display: "block", color: "#1e3a8a", marginBottom: "0.3rem" }}>
+            4. Destination & Transfer Authorization
+          </strong>
+          <div><strong>Clinical Decision:</strong> {detail.disposition?.outcome?.toUpperCase() || "In Assessment"}</div>
+          <div><strong>Clinical Reason:</strong> {detail.disposition?.clinical_reason || "—"}</div>
+          <div><strong>Assigned Doctor:</strong> {detail.assigned_doctor_name ? `Dr. ${detail.assigned_doctor_name} (${detail.assigned_specialty})` : "ER Covering Staff"}</div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1rem" }}>
+          <Button variant="secondary" onClick={onClose}>Close</Button>
+          <Button variant="primary" onClick={handlePrint}><FiPrinter style={{ marginRight: "0.3rem" }} /> Print Handover Sheet</Button>
+        </div>
       </div>
-    </section>
+    </Modal>
   );
 }
 
@@ -1386,24 +2029,51 @@ function MergeUnknownPatient({
   visitId,
   setNotice,
   onMerged,
+  onNavigate,
 }: {
   visitId: number;
   setNotice: (notice: Notice | null) => void;
   onMerged: () => void;
+  onNavigate?: (page: string, extraData?: any) => void;
 }) {
-  const [patientId, setPatientId] = useState("");
+  // Search-first: staff searching by name/phone/ID once someone identifies
+  // the patient is far more realistic than requiring them to already know
+  // the exact PAT-XXXXXX string. If this really is a brand-new person with
+  // no existing record, "Register as New Patient" below sends them to
+  // Patient Registration and comes straight back here already merged.
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Patient[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (selectedPatient || searchQuery.trim().length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      try {
+        const data = await apiFetch<{ patients: Patient[] }>(
+          `/api/patients?q=${encodeURIComponent(searchQuery.trim())}`,
+        );
+        setSearchResults((data.patients || []).slice(0, 8));
+      } catch (error) {
+        console.error(error);
+      }
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [searchQuery, selectedPatient]);
+
   const submit = async () => {
-    if (!patientId.trim()) {
-      setNotice({ type: "error", message: "Enter the confirmed patient ID." });
+    if (!selectedPatient) {
+      setNotice({ type: "error", message: "Search and select the confirmed patient first." });
       return;
     }
     setSaving(true);
     try {
       await apiFetch(`/api/er/visits/${visitId}/merge-unknown`, {
         method: "POST",
-        body: JSON.stringify({ patient_id: patientId.trim() }),
+        body: JSON.stringify({ patient_id: selectedPatient.patient_id }),
       });
       setNotice({ type: "success", message: "Visit merged into the confirmed patient record." });
       onMerged();
@@ -1421,18 +2091,54 @@ function MergeUnknownPatient({
         Once this patient's identity is confirmed, merge this visit into their real
         patient record. Everything recorded so far stays exactly where it is.
       </p>
-      <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
-        <div style={{ flex: 1 }}>
-          <Label htmlFor="merge-patient-id">Confirmed patient ID</Label>
-          <Input
-            id="merge-patient-id"
-            placeholder="PAT-100001"
-            value={patientId}
-            onChange={(e) => setPatientId(e.target.value)}
-          />
+
+      {selectedPatient ? (
+        <div className="er-selected-patient" style={{ marginBottom: "0.6rem" }}>
+          <span>
+            {selectedPatient.name} {selectedPatient.last_name} — {selectedPatient.patient_id}
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => { setSelectedPatient(null); setSearchQuery(""); }}>
+            Change
+          </Button>
         </div>
-        <Button onClick={submit} disabled={saving}>
+      ) : (
+        <div style={{ marginBottom: "0.6rem" }}>
+          <Label htmlFor="merge-patient-search">Search by name, phone, or patient ID</Label>
+          <Input
+            id="merge-patient-search"
+            placeholder="e.g. Ramesh, 98765xxxxx, or PAT-100001"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchResults.length > 0 && (
+            <div className="er-patient-search-results">
+              {searchResults.map((p) => (
+                <button
+                  key={p.patient_id}
+                  type="button"
+                  className="er-patient-search-row"
+                  onClick={() => { setSelectedPatient(p); setSearchResults([]); }}
+                >
+                  <span>{p.name} {p.last_name}</span>
+                  <span className="muted">{p.patient_id}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+        <Button onClick={submit} disabled={saving || !selectedPatient}>
           {saving ? "Merging..." : "Merge"}
+        </Button>
+        <span className="muted" style={{ fontSize: "0.8rem" }}>or</span>
+        <Button
+          variant="secondary"
+          disabled={!onNavigate}
+          onClick={() => onNavigate?.("add", { returnTo: "er-merge", mergeVisitId: visitId })}
+        >
+          <FiUserPlus aria-hidden /> Register as New Patient
         </Button>
       </div>
     </div>
@@ -1709,12 +2415,14 @@ function TriageForm({
   visitId,
   categories,
   existing,
+  aiPrefill,
   setNotice,
   onSaved,
 }: {
   visitId: number;
   categories: TriageCategory[];
   existing: ErTriage;
+  aiPrefill: { category: string; reason: string } | null;
   setNotice: (notice: Notice | null) => void;
   onSaved: () => void;
 }) {
@@ -1727,6 +2435,19 @@ function TriageForm({
   const [bedLabel, setBedLabel] = useState(existing?.triage_bed_label || "");
   const [reason, setReason] = useState(existing?.reason || "");
   const [saving, setSaving] = useState(false);
+  const [aiFilled, setAiFilled] = useState(false);
+
+  // A fresh AI suggestion always wins visually -- open the form (even if
+  // already triaged, so a correction is right there to review) and load its
+  // pick into the same fields staff would type into by hand. Nothing here
+  // writes anything; "Save Triage"/"Save Correction" below still does that.
+  useEffect(() => {
+    if (!aiPrefill) return;
+    setCategory(aiPrefill.category);
+    setReason(aiPrefill.reason);
+    setAiFilled(true);
+    setOpen(true);
+  }, [aiPrefill]);
 
   if (categories.length === 0) {
     return (
@@ -1770,6 +2491,7 @@ function TriageForm({
           reason: reason || undefined,
         }),
       });
+      setAiFilled(false);
       if (existing) setOpen(false);
       onSaved();
     } catch (error: any) {
@@ -1786,9 +2508,17 @@ function TriageForm({
           Required before treatment can proceed.
         </p>
       )}
+      {aiFilled && (
+        <p className="er-ai-field-note">
+          <FiZap aria-hidden /> AI-suggested — review before saving
+        </p>
+      )}
       <div>
         <Label style={{ fontSize: "0.8rem", color: "#64748b" }}>Category</Label>
-        <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+        <Select
+          value={category}
+          onChange={(e) => { setCategory(e.target.value); setAiFilled(false); }}
+        >
           <option value="">Select category</option>
           {categories.map((c) => (
             <option key={c.id} value={c.category_code}>
@@ -1819,40 +2549,73 @@ function TriageForm({
   );
 }
 
+// What AI Triage Assistant hands each downstream section -- it never writes
+// to the visit itself (see AITriagePanel below). Each section's own form
+// picks this up as a starting point in its own fields, pre-filled but fully
+// editable, and the human still has to press that section's own save button
+// for anything to actually be recorded. That's deliberate: the AI can be
+// wrong, and every field it fills in must remain a plain, ordinary form
+// field a person can just overwrite -- never a separate auto-applied action.
+type AiSectionPrefills = {
+  triage: { category: string; reason: string } | null;
+  doctor: { specialty: string; doctorName: string } | null;
+  treatment: { interventionType: string; description: string } | null;
+};
+
 function AITriagePanel({
   detail,
   categories,
   setNotice,
-  onRefresh,
+  onSuggestion,
 }: {
   detail: ErVisitDetail;
   categories: TriageCategory[];
   setNotice: (notice: Notice | null) => void;
-  onRefresh: () => void;
+  onSuggestion: (prefills: AiSectionPrefills, reasoning: string) => void;
 }) {
   const [loading, setLoading] = useState(false);
-  const [aiResult, setAiResult] = useState<{
-    category: string;
+  const [lastRun, setLastRun] = useState<{
     reasoning: string;
-    department: string;
-    doctor: string;
+    filled: string[];
   } | null>(null);
+
+  const hasChartedData = detail.complaints.length > 0 || detail.vitals.length > 0;
 
   const runAITriage = async () => {
     setLoading(true);
-    setAiResult(null);
+    setLastRun(null);
     try {
       const symptoms = buildSymptomsSummary(detail.complaints, detail.vitals);
       const aiRes = await fetchAiTriageSuggestion(symptoms);
       const categoryMatch = mapUrgencyToTriageCategory(aiRes.urgency, categories);
 
-      setAiResult({
-        category: categoryMatch,
-        reasoning: aiRes.reasoning,
-        department: aiRes.department,
-        doctor: aiRes.doctor,
-      });
+      const filled: string[] = [];
+      const prefills: AiSectionPrefills = {
+        triage: categoryMatch ? { category: categoryMatch, reason: aiRes.reasoning } : null,
+        doctor:
+          aiRes.department || aiRes.doctor
+            ? { specialty: aiRes.department || "", doctorName: aiRes.doctor || "" }
+            : null,
+        treatment: aiRes.suggested_treatment
+          ? {
+              interventionType: aiRes.suggested_treatment.intervention_type,
+              description: aiRes.suggested_treatment.description,
+            }
+          : null,
+      };
+      if (prefills.triage) filled.push("Triage");
+      if (prefills.doctor) filled.push("Doctor Assignment");
+      if (prefills.treatment) filled.push("Emergency Treatment");
 
+      onSuggestion(prefills, aiRes.reasoning);
+      setLastRun({ reasoning: aiRes.reasoning, filled });
+
+      if (filled.length === 0) {
+        setNotice({
+          type: "warning",
+          message: "AI couldn't confidently suggest anything from what's charted so far -- fill in the sections below manually.",
+        });
+      }
     } catch (error: any) {
       reportError(setNotice, error, "AI Triage failed.");
     } finally {
@@ -1860,74 +2623,35 @@ function AITriagePanel({
     }
   };
 
-  const applyAiResult = async () => {
-    if (!aiResult) return;
-    try {
-      if (aiResult.category) {
-        await apiFetch(`/api/er/visits/${detail.id}/triage`, {
-          method: "POST",
-          body: JSON.stringify({
-            category: aiResult.category,
-            reason: aiResult.reasoning,
-          }),
-        });
-      }
-      
-      if (aiResult.department || aiResult.doctor) {
-        await apiFetch(`/api/er/visits/${detail.id}/assign-doctor`, {
-          method: "POST",
-          body: JSON.stringify({
-            specialty: aiResult.department || "General",
-            doctor_name: aiResult.doctor || undefined,
-          }),
-        });
-      }
-      
-      setNotice({ type: "success", message: "AI Triage applied successfully." });
-      setAiResult(null);
-      onRefresh();
-    } catch (error: any) {
-      reportError(setNotice, error, "Failed to apply AI Triage.");
-    }
-  };
-
   return (
-    <div className="panel" style={{ borderColor: "#8b5cf6", backgroundColor: "#f5f3ff", marginBottom: "1rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h4 style={{ margin: 0, color: "#6d28d9", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <FiZap /> AI Triage Assistant
+    <div className="panel er-ai-panel">
+      <div className="er-ai-panel-head">
+        <h4>
+          <FiZap aria-hidden /> AI Triage Assistant
         </h4>
-        <Button size="sm" onClick={runAITriage} disabled={loading} style={{ backgroundColor: "#8b5cf6" }}>
+        <Button size="sm" onClick={runAITriage} disabled={loading || !hasChartedData} className="er-ai-run-button">
           {loading ? "Analyzing..." : "Run AI Analysis"}
         </Button>
       </div>
+      {!hasChartedData && (
+        <p className="muted er-ai-panel-hint">
+          Record a chief complaint or vitals first -- there's nothing for the AI to reason from yet.
+        </p>
+      )}
 
-      {aiResult && (
-        <div style={{ marginTop: "1rem", padding: "1rem", backgroundColor: "white", borderRadius: "8px", border: "1px solid #ddd6fe" }}>
-          <p style={{ margin: "0 0 0.5rem 0" }}><strong>Reasoning:</strong> {aiResult.reasoning}</p>
-          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "1rem" }}>
-            {aiResult.category && (
-              <div>
-                <span className="muted" style={{ fontSize: "0.85rem" }}>Suggested Triage:</span><br/>
-                <TriageChip category={aiResult.category} categories={categories} compact={false} />
-              </div>
-            )}
-            {aiResult.department && (
-              <div>
-                <span className="muted" style={{ fontSize: "0.85rem" }}>Department:</span><br/>
-                <strong>{aiResult.department}</strong>
-              </div>
-            )}
-            {aiResult.doctor && (
-              <div>
-                <span className="muted" style={{ fontSize: "0.85rem" }}>Doctor:</span><br/>
-                <strong>{aiResult.doctor}</strong>
-              </div>
-            )}
-          </div>
-          <Button size="sm" onClick={applyAiResult} style={{ width: "100%", backgroundColor: "#7c3aed" }}>
-            Apply Suggestions
-          </Button>
+      {lastRun && (
+        <div className="er-ai-result">
+          <p className="er-ai-reasoning"><strong>Reasoning:</strong> {lastRun.reasoning}</p>
+          {lastRun.filled.length > 0 ? (
+            <p className="er-ai-filled-note">
+              <FiCheck aria-hidden /> Pre-filled into <strong>{lastRun.filled.join(", ")}</strong> below —
+              review each one and confirm (or change it) with that section's own button.
+            </p>
+          ) : (
+            <p className="muted" style={{ margin: 0 }}>
+              Nothing confident enough to suggest yet -- use the sections below manually.
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -1951,16 +2675,29 @@ function TreatmentList({ treatments }: { treatments: ErTreatment[] }) {
 
 function AddTreatmentForm({
   visitId,
+  aiPrefill,
   setNotice,
   onAdded,
 }: {
   visitId: number;
+  aiPrefill: { interventionType: string; description: string } | null;
   setNotice: (notice: Notice | null) => void;
   onAdded: () => void;
 }) {
   const [interventionType, setInterventionType] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
+  const [aiFilled, setAiFilled] = useState(false);
+
+  // Pre-fills the fields only -- logging an actual intervention is a real
+  // clinical action, so it still requires the explicit "Log Intervention"
+  // click below no matter how it got into these fields.
+  useEffect(() => {
+    if (!aiPrefill) return;
+    setInterventionType(aiPrefill.interventionType);
+    setDescription(aiPrefill.description);
+    setAiFilled(true);
+  }, [aiPrefill]);
 
   const submit = async () => {
     if (!interventionType) {
@@ -1978,6 +2715,7 @@ function AddTreatmentForm({
       });
       setInterventionType("");
       setDescription("");
+      setAiFilled(false);
       onAdded();
     } catch (error: any) {
       reportError(setNotice, error, "Failed to log intervention.");
@@ -1987,21 +2725,31 @@ function AddTreatmentForm({
   };
 
   return (
-    <div className="module-form-grid" style={{ marginTop: "0.75rem" }}>
-      <Select value={interventionType} onChange={(e) => setInterventionType(e.target.value)}>
-        <option value="">Intervention</option>
-        <option value="oxygen">Oxygen</option>
-        <option value="iv_access">IV Access</option>
-        <option value="fluids">Fluids</option>
-        <option value="cpr">CPR</option>
-        <option value="defibrillation">Defibrillation</option>
-        <option value="airway_management">Airway Management</option>
-        <option value="other">Other</option>
-      </Select>
-      <Input placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
-      <Button size="sm" onClick={submit} disabled={saving}>
-        {saving ? "Logging..." : "Log Intervention"}
-      </Button>
+    <div style={{ marginTop: "0.75rem" }}>
+      {aiFilled && (
+        <p className="er-ai-field-note">
+          <FiZap aria-hidden /> AI-suggested — review before logging
+        </p>
+      )}
+      <div className="module-form-grid">
+        <Select
+          value={interventionType}
+          onChange={(e) => { setInterventionType(e.target.value); setAiFilled(false); }}
+        >
+          <option value="">Intervention</option>
+          <option value="oxygen">Oxygen</option>
+          <option value="iv_access">IV Access</option>
+          <option value="fluids">Fluids</option>
+          <option value="cpr">CPR</option>
+          <option value="defibrillation">Defibrillation</option>
+          <option value="airway_management">Airway Management</option>
+          <option value="other">Other</option>
+        </Select>
+        <Input placeholder="Description" value={description} onChange={(e) => { setDescription(e.target.value); setAiFilled(false); }} />
+        <Button size="sm" onClick={submit} disabled={saving}>
+          {saving ? "Logging..." : "Log Intervention"}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -2010,12 +2758,14 @@ function DoctorAssignForm({
   visitId,
   complaints,
   vitals,
+  aiPrefill,
   setNotice,
   onSaved,
 }: {
   visitId: number;
   complaints: ErComplaint[];
   vitals: ErVitals[];
+  aiPrefill: { specialty: string; doctorName: string } | null;
   setNotice: (notice: Notice | null) => void;
   onSaved: () => void;
 }) {
@@ -2026,6 +2776,17 @@ function DoctorAssignForm({
   const [saving, setSaving] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestionReason, setSuggestionReason] = useState("");
+
+  // Same pattern as the local "Suggest from complaints & vitals" button below
+  // -- pre-fills these fields only, "Assign Doctor" still requires its own
+  // explicit click. Lets AI Triage Assistant (top of the page) fill this
+  // section too without staff having to click a second suggest button here.
+  useEffect(() => {
+    if (!aiPrefill) return;
+    setSpecialty(aiPrefill.specialty);
+    setDoctorName(aiPrefill.doctorName);
+    setSuggestionReason("AI Triage Assistant's analysis (see above).");
+  }, [aiPrefill]);
 
   useEffect(() => {
     (async () => {

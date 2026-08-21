@@ -478,6 +478,7 @@ def symptom_ai_triage():
                     f"{department} for staff review. {reason}"
                 ),
                 "doctor": "",
+                "suggested_treatment": None,
                 "fallback": True,
             }
         )
@@ -495,11 +496,21 @@ Analyze the symptoms and provide a JSON response with:
 2. "urgency": "Low", "Medium", "High", or "Critical".
 3. "reasoning": A brief explanation of your recommendation (1-2 sentences).
 4. "doctor": Pick one name from the Available doctors list whose department (shown in parentheses) matches the "department" you chose above -- prefer a doctor explicitly named in the symptoms if one is mentioned, otherwise pick any doctor from that department. Only return an empty string if no doctor in the Available doctors list belongs to the chosen department.
+5. "suggested_treatment": a same-instant, first-line ER intervention this presentation demands before anything else -- if the presentation involves any of: cardiac/respiratory arrest, unresponsiveness, no pulse, not breathing, choking, severe bleeding, seizure, anaphylaxis, or vitals implying critical instability, you MUST return a concrete intervention here, never null. Only use null for genuinely routine/minor presentations (e.g. mild cold, small cut, routine checkup) where no immediate intervention is clinically indicated. Object shape: {{"intervention_type": one of "oxygen"/"iv_access"/"fluids"/"cpr"/"defibrillation"/"airway_management"/"other", "description": a short clinical note on why}}.
 
 Your response MUST be valid JSON only. Do not include markdown formatting or backticks.
 """
     try:
-        response_text = llm_provider.generate(prompt)
+        # This response is a short structured JSON object (5 short fields) --
+        # the provider's 2048-token default is sized for long-form generation
+        # (OCR extraction, RAG chat) and left unbounded here, a slow/loaded
+        # local model could keep generating well past what's needed before
+        # naturally stopping, taking well over a minute for what should be a
+        # few-second call. 400 tokens comfortably covers this response shape
+        # with room to spare, and json_mode asks the server to constrain
+        # output to valid JSON directly instead of relying solely on the
+        # markdown-fence-stripping fallback below.
+        response_text = llm_provider.generate(prompt, json_mode=True, max_tokens=400)
 
         # Guard: if the AI returned None (API key invalid / no internet / model error)
         if not response_text:
@@ -613,6 +624,55 @@ Your response MUST be valid JSON only. Do not include markdown formatting or bac
             result["doctor"] = match_doctor_to_department(
                 available_doctors, result.get("department", "")
             )
+
+        # Validate suggested_treatment the same way department/doctor are
+        # validated above -- the intervention_type gets written straight into
+        # a <select> on the ER Treatment form, so an unrecognized value would
+        # either silently fail to select anything or (worse) get logged as a
+        # patient's actual treatment record.
+        VALID_INTERVENTION_TYPES = {
+            "oxygen", "iv_access", "fluids", "cpr",
+            "defibrillation", "airway_management", "other",
+        }
+        # Free-text phrasings seen in testing instead of the exact enum value
+        # asked for (e.g. "IV fluids", "resuscitation") -- mapped to the
+        # closest real option rather than dropped, since a rough match staff
+        # can correct is strictly better than silently losing a real
+        # "give this patient something now" signal.
+        INTERVENTION_TYPE_ALIASES = {
+            "iv": "iv_access", "iv fluids": "fluids", "intravenous fluids": "fluids",
+            "fluid": "fluids", "cardiopulmonary resuscitation": "cpr",
+            "resuscitation": "cpr", "shock": "defibrillation",
+            "airway": "airway_management", "intubation": "airway_management",
+            "oxygen therapy": "oxygen", "o2": "oxygen",
+        }
+
+        def _normalize_intervention_type(raw: str) -> str:
+            key = raw.strip().lower()
+            if key in VALID_INTERVENTION_TYPES:
+                return key
+            return INTERVENTION_TYPE_ALIASES.get(key, "other")
+
+        suggested_treatment = result.get("suggested_treatment")
+        normalized_treatment = None
+        if isinstance(suggested_treatment, dict):
+            raw_type = str(suggested_treatment.get("intervention_type") or "").strip()
+            if raw_type:
+                normalized_treatment = {
+                    "intervention_type": _normalize_intervention_type(raw_type),
+                    "description": str(suggested_treatment.get("description") or "").strip()[:300],
+                }
+        elif isinstance(suggested_treatment, str) and suggested_treatment.strip():
+            # The model sometimes returns the bare type as a plain string
+            # instead of the {"intervention_type", "description"} object
+            # shape asked for -- still a real, usable suggestion, just
+            # shaped differently than requested.
+            mapped_type = _normalize_intervention_type(suggested_treatment)
+            normalized_treatment = {
+                "intervention_type": mapped_type,
+                "description": suggested_treatment.strip()[:300] if mapped_type == "other" else "",
+            }
+        result["suggested_treatment"] = normalized_treatment
 
         return jsonify(result)
     except json.JSONDecodeError:

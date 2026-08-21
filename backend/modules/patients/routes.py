@@ -18,6 +18,7 @@ from app import (
 from utils.database import (
     search_patients,
     get_all_patients,
+    get_patient_stream_counts,
     list_departments,
     create_department,
     list_patient_consents,
@@ -100,13 +101,11 @@ def _notify_patient_prescription_ready(patient, ocr_text, doctor_name=None):
         )
 
 
-# NOTE: Add your utils.database imports here after extraction.
-
-
 @patients_bp.get("/api/patients")
 @require_permissions("patients.read")
 def patients_list():
     query = (request.args.get("q") or "").strip()
+    care_type = (request.args.get("care_type") or request.args.get("type") or "all").strip()
     hospital_id = current_hospital_id()
 
     # Enforce isolation for clinicians
@@ -119,11 +118,12 @@ def patients_list():
         doctor_name = current_user.get("full_name") or current_user.get("username")
 
     patients = (
-        search_patients(query, hospital_id=hospital_id, doctor_name=doctor_name)
+        search_patients(query, hospital_id=hospital_id, doctor_name=doctor_name, care_type=care_type)
         if query
-        else get_all_patients(hospital_id=hospital_id, doctor_name=doctor_name)
+        else get_all_patients(hospital_id=hospital_id, doctor_name=doctor_name, care_type=care_type)
     )
-    return jsonify({"patients": rows_to_dicts(patients)})
+    counts = get_patient_stream_counts(hospital_id=hospital_id, doctor_name=doctor_name)
+    return jsonify({"patients": rows_to_dicts(patients), "counts": counts})
 
 
 @patients_bp.get("/api/registration/departments")
@@ -320,8 +320,8 @@ def patients_create():
         "emergency_contact": payload.get("emergency_contact"),
         "aadhar_number": payload.get("aadhar_number"),
     }
-    add_patient(data)
-    admission_id = add_admission(patient_id, "Initial registration")
+    add_patient(data, hospital_id=hospital_id)
+    admission_id = add_admission(patient_id, "Initial registration", hospital_id=hospital_id)
     log_audit_event("create", "patients", patient_id, {"admission_id": admission_id})
     return jsonify({"patient_id": patient_id, "admission_id": admission_id})
 
@@ -400,7 +400,7 @@ def admissions_create(patient_id):
         return jsonify({"error": "Patient not found"}), 404
     payload = request.get_json(force=True)
     notes = payload.get("notes", "")
-    admission_id = add_admission(patient_id, notes)
+    admission_id = add_admission(patient_id, notes, hospital_id=hospital_id)
     log_audit_event(
         "create", "admissions", str(admission_id), {"patient_id": patient_id}
     )

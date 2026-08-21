@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
   Button,
@@ -15,6 +15,7 @@ import {
   TableRow,
   TableCell,
 } from "../components/ui";
+import { apiFetch, reportError } from "../lib/api";
 import type { Notice } from "../types";
 
 type Props = {
@@ -33,6 +34,14 @@ type Transaction = {
   gatewayRef: string;
 };
 
+type DueInvoice = {
+  id: number;
+  invoice_no?: string;
+  patient_id?: string;
+  module?: string;
+  due_amount?: number;
+};
+
 const PAYMENT_MODES = [
   { name: "Cash", icon: "💵" },
   { name: "Card", icon: "💳" },
@@ -40,23 +49,45 @@ const PAYMENT_MODES = [
   { name: "Bank Transfer", icon: "🏦" },
 ];
 
+// This page's own field values ("Cash"/"Card"/"UPI"/"Bank Transfer") vs. what
+// the backend actually stores in invoice_payments.payment_mode -- keeps the
+// dropdown's display labels independent of the stored value's exact casing.
+const PAYMENT_MODE_TO_BACKEND: Record<string, string> = {
+  Cash: "cash",
+  Card: "card",
+  UPI: "upi",
+  "Bank Transfer": "bank_transfer",
+};
+
 export default function PaymentCollectionPage({
   setNotice,
   onNavigate,
 }: Props) {
   // Form State
-  const [patientId, setPatientId] = useState("");
-  const [patientName, setPatientName] = useState("");
-  const [duePaymentFor, setDuePaymentFor] = useState("");
+  const [dueInvoices, setDueInvoices] = useState<DueInvoice[]>([]);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
   const [dueAmount, setDueAmount] = useState("");
   const [paymentMode, setPaymentMode] = useState("Cash");
   const [gatewayRef, setGatewayRef] = useState("");
+  const [recording, setRecording] = useState(false);
   const [selectDate, setSelectDate] = useState(
     new Date().toISOString().split("T")[0],
   );
   const [period, setPeriod] = useState<"Daily" | "Monthly">("Daily");
 
-  // Transactions State
+  // Revenue Summary (all-time totals -- the top stat cards) and Transactions
+  // (actual recorded payments -- everything below) are two different data
+  // sources on purpose: summary comes straight from the invoices table
+  // (billed/due/advance/refunded don't require a payment to exist yet),
+  // transactions comes from invoice_payments (only what's actually been
+  // collected). Neither is derived from the other.
+  const [summary, setSummary] = useState<{
+    total_billed: number;
+    total_collected: number;
+    total_due: number;
+    total_advance: number;
+    total_refunded: number;
+  } | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   // Modal State
@@ -68,77 +99,134 @@ export default function PaymentCollectionPage({
       cash: "Cash",
       card: "Card",
       upi: "UPI",
+      bank_transfer: "Bank Transfer",
       bank: "Bank Transfer",
     };
-    return map[mode?.toLowerCase()] || mode || "Cash";
+    return map[(mode || "").toLowerCase()] || mode || "Cash";
   };
 
   const fetchTransactions = async () => {
     try {
-      const res = await fetch("/api/billing/payments");
-      if (res.ok) {
-        const data = await res.json();
-        setTransactions(
-          (data.payments || []).map((p: any) => ({
-            id: String(p.id),
-            patientId: p.patient_id || "",
-            patientName: p.patient_name || p.patient_id || "Unknown",
-            paymentFor: p.payment_for || "General",
-            amount: parseFloat(p.amount) || 0,
-            mode: normalizeMode(p.mode),
-            date: p.date || "",
-            gatewayRef: p.gateway_ref || "",
-          })),
-        );
-      }
-    } catch (err) {
-      console.error("Failed to fetch payments:", err);
+      const data = await apiFetch<{ payments: any[] }>("/api/billing/payments");
+      setTransactions(
+        (data.payments || []).map((p) => ({
+          id: String(p.id),
+          patientId: p.patient_id || "",
+          patientName: p.patient_name || p.patient_id || "Unknown",
+          paymentFor: p.payment_for || "General",
+          amount: parseFloat(p.amount) || 0,
+          mode: normalizeMode(p.mode),
+          date: p.date || "",
+          gatewayRef: p.gateway_ref || "",
+        })),
+      );
+    } catch (error: any) {
+      reportError(setNotice, error, "Failed to load recorded payments.");
+    }
+  };
+
+  const fetchSummary = async () => {
+    try {
+      const data = await apiFetch<{
+        total_billed: number;
+        total_collected: number;
+        total_due: number;
+        total_advance: number;
+        total_refunded: number;
+      }>("/api/billing/revenue-summary");
+      setSummary(data);
+    } catch (error: any) {
+      reportError(setNotice, error, "Failed to load revenue summary.");
+    }
+  };
+
+  const fetchDueInvoices = async () => {
+    try {
+      const data = await apiFetch<{ invoices: DueInvoice[] }>("/api/billing/invoices");
+      setDueInvoices((data.invoices || []).filter((inv) => (inv.due_amount || 0) > 0));
+    } catch (error: any) {
+      reportError(setNotice, error, "Failed to load due invoices.");
     }
   };
 
   useEffect(() => {
     fetchTransactions();
+    fetchSummary();
+    fetchDueInvoices();
   }, []);
 
+  const selectedInvoice = dueInvoices.find((inv) => String(inv.id) === selectedInvoiceId);
+
+  // Period-filtered view for the "Payment Summary" card below -- the top
+  // stat cards stay all-time (from `summary`); this is specifically what the
+  // Daily/Monthly + date picker controls, so changing them visibly changes
+  // something instead of being decorative.
+  const periodTransactions = useMemo(() => {
+    if (!selectDate) return transactions;
+    const bucketKey = period === "Monthly" ? selectDate.slice(0, 7) : selectDate;
+    return transactions.filter((t) => {
+      if (!t.date) return false;
+      const parsed = new Date(t.date);
+      if (Number.isNaN(parsed.getTime())) return false;
+      const key = period === "Monthly"
+        ? parsed.toISOString().slice(0, 7)
+        : parsed.toISOString().slice(0, 10);
+      return key === bucketKey;
+    });
+  }, [transactions, selectDate, period]);
+
+  const periodCollected = useMemo(
+    () => periodTransactions.reduce((sum, t) => sum + t.amount, 0),
+    [periodTransactions],
+  );
+
   const metrics = {
-    totalBilled: transactions.reduce((s, t) => s + t.amount, 0),
-    collected: transactions.reduce((s, t) => s + t.amount, 0),
-    pendingDue: 0,
-    advances: 0,
-    refunds: 0,
+    totalBilled: summary?.total_billed ?? 0,
+    collected: summary?.total_collected ?? 0,
+    pendingDue: summary?.total_due ?? 0,
+    advances: summary?.total_advance ?? 0,
+    refunds: summary?.total_refunded ?? 0,
   };
 
-  const handleRecordPayment = (e: React.FormEvent) => {
+  const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    const invoiceId = Number(selectedInvoiceId);
     const amount = parseFloat(dueAmount);
+    if (!invoiceId) {
+      setNotice({ type: "error", message: "Select a due invoice first." });
+      return;
+    }
     if (isNaN(amount) || amount <= 0) {
       setNotice({ type: "error", message: "Please enter a valid amount." });
       return;
     }
-    const newTx: Transaction = {
-      id: Math.random().toString(36).substr(2, 9),
-      patientId,
-      patientName: patientName || "Unknown Patient",
-      paymentFor: duePaymentFor || "General",
-      amount,
-      mode: paymentMode,
-      date: selectDate,
-      gatewayRef,
-    };
-    setTransactions((prev) => [newTx, ...prev]);
-    setDueAmount("");
-    setPatientId("");
-    setPatientName("");
-    setDuePaymentFor("");
-    setGatewayRef("");
-    setNotice({
-      type: "success",
-      message: `Payment of ₹${amount.toLocaleString("en-IN")} recorded via ${paymentMode}`,
-    });
+    setRecording(true);
+    try {
+      await apiFetch(`/api/billing/invoices/${invoiceId}/payments`, {
+        method: "POST",
+        body: JSON.stringify({
+          amount,
+          payment_mode: PAYMENT_MODE_TO_BACKEND[paymentMode] || "cash",
+          gateway_ref: gatewayRef.trim() || undefined,
+        }),
+      });
+      setNotice({
+        type: "success",
+        message: `Payment of ₹${amount.toLocaleString("en-IN")} recorded via ${paymentMode}.`,
+      });
+      setSelectedInvoiceId("");
+      setDueAmount("");
+      setGatewayRef("");
+      await Promise.all([fetchTransactions(), fetchSummary(), fetchDueInvoices()]);
+    } catch (error: any) {
+      reportError(setNotice, error, "Failed to record payment.");
+    } finally {
+      setRecording(false);
+    }
   };
 
   const getAmountForMode = (mode: string) =>
-    transactions
+    periodTransactions
       .filter((t) => t.mode === mode)
       .reduce((s, t) => s + t.amount, 0);
 
@@ -149,7 +237,7 @@ export default function PaymentCollectionPage({
     setIsModalOpen(true);
   };
 
-  const filteredTransactions = transactions.filter(
+  const filteredTransactions = periodTransactions.filter(
     (t) => t.mode === selectedMethod,
   );
 
@@ -218,7 +306,7 @@ export default function PaymentCollectionPage({
         <CardHeader>
           <CardTitle>Record Payment</CardTitle>
           <CardDescription>
-            Enter patient details and payment info below.
+            Select the due invoice this payment is against, then enter the amount and mode.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -238,45 +326,29 @@ export default function PaymentCollectionPage({
                   display: "flex",
                   flexDirection: "column",
                   gap: "0.5rem",
+                  gridColumn: "1 / -1",
                 }}
               >
-                <Label htmlFor="patientId">Patient ID / UHID</Label>
-                <Input
-                  id="patientId"
-                  placeholder="e.g. P-001"
-                  value={patientId}
-                  onChange={(e) => setPatientId(e.target.value)}
-                />
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.5rem",
-                }}
-              >
-                <Label htmlFor="patientName">Patient Name</Label>
-                <Input
-                  id="patientName"
-                  placeholder="Full name"
-                  value={patientName}
-                  onChange={(e) => setPatientName(e.target.value)}
-                />
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.5rem",
-                }}
-              >
-                <Label htmlFor="duePaymentFor">Payment For</Label>
-                <Input
-                  id="duePaymentFor"
-                  placeholder="e.g. Pharmacy, Lab..."
-                  value={duePaymentFor}
-                  onChange={(e) => setDuePaymentFor(e.target.value)}
-                />
+                <Label htmlFor="dueInvoice">Due Invoice</Label>
+                <Select
+                  id="dueInvoice"
+                  value={selectedInvoiceId}
+                  onChange={(e) => {
+                    const invoiceId = e.target.value;
+                    setSelectedInvoiceId(invoiceId);
+                    const inv = dueInvoices.find((d) => String(d.id) === invoiceId);
+                    setDueAmount(inv ? String(inv.due_amount ?? "") : "");
+                  }}
+                >
+                  <option value="">
+                    {dueInvoices.length === 0 ? "No due invoices" : "Select a due invoice..."}
+                  </option>
+                  {dueInvoices.map((inv) => (
+                    <option key={inv.id} value={inv.id}>
+                      {inv.invoice_no || `INV-${inv.id}`} — {inv.patient_id || "Unknown"} ({inv.module || "General"}) — ₹{(inv.due_amount || 0).toLocaleString("en-IN")} due
+                    </option>
+                  ))}
+                </Select>
               </div>
               <div
                 style={{
@@ -290,9 +362,11 @@ export default function PaymentCollectionPage({
                   id="dueAmount"
                   type="number"
                   min="0"
+                  max={selectedInvoice?.due_amount}
                   placeholder="0.00"
                   value={dueAmount}
                   onChange={(e) => setDueAmount(e.target.value)}
+                  disabled={!selectedInvoiceId}
                 />
               </div>
               <div
@@ -332,7 +406,9 @@ export default function PaymentCollectionPage({
               </div>
             </div>
             <div>
-              <Button type="submit">Record Payment</Button>
+              <Button type="submit" disabled={recording || !selectedInvoiceId}>
+                {recording ? "Recording..." : "Record Payment"}
+              </Button>
             </div>
           </form>
         </CardContent>
@@ -459,7 +535,7 @@ export default function PaymentCollectionPage({
                     margin: 0,
                   }}
                 >
-                  {formatCurrency(metrics.collected)}
+                  {formatCurrency(periodCollected)}
                 </p>
               </div>
               <div
@@ -545,7 +621,7 @@ export default function PaymentCollectionPage({
           >
             {PAYMENT_MODES.map((mode, idx) => {
               const amount = getAmountForMode(mode.name);
-              const txCount = transactions.filter(
+              const txCount = periodTransactions.filter(
                 (t) => t.mode === mode.name,
               ).length;
               return (
@@ -676,7 +752,7 @@ export default function PaymentCollectionPage({
                 color: "#0f172a",
               }}
             >
-              {formatCurrency(metrics.collected)}
+              {formatCurrency(periodCollected)}
             </span>
           </div>
         </CardContent>

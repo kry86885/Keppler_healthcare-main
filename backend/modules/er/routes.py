@@ -10,6 +10,8 @@ from utils.database import (
     create_er_visit,
     list_er_visits,
     get_er_visit,
+    register_er_patient,
+    generate_er_patient_id,
     merge_er_unknown_patient,
     add_er_complaint,
     set_er_incident,
@@ -45,6 +47,42 @@ def er_visits_list():
         hospital_id=hospital_id, status=status, active_only=active_only
     )
     return jsonify({"visits": [dict(v) for v in visits]})
+
+
+@er_bp.post("/api/er/register-patient")
+@require_permissions("er.registration.write")
+def er_patient_register():
+    """Direct standalone ER patient registration that creates both the
+    patient and ER visit atomically without requiring an OP redirect or merge."""
+    payload = request.get_json(silent=True) or {}
+    hospital_id = current_hospital_id()
+    username = _current_username()
+
+    name = (payload.get("name") or (payload.get("patient") or {}).get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Patient name is required for ER registration"}), 400
+
+    patient_payload = payload.get("patient") if isinstance(payload.get("patient"), dict) else payload
+    visit_payload = payload.get("visit") if isinstance(payload.get("visit"), dict) else payload
+    complaints = payload.get("complaints") or payload.get("complaint")
+    vitals = payload.get("vitals")
+
+    result = register_er_patient(
+        hospital_id=hospital_id,
+        patient_data=patient_payload,
+        visit_data=visit_payload,
+        complaints=complaints,
+        vitals=vitals,
+        registered_by=username,
+    )
+
+    log_audit_event(
+        "er_register",
+        "patients",
+        result["patient_id"],
+        {"visit_no": result["visit"]["visit_no"], "visit_id": result["visit"]["id"]},
+    )
+    return jsonify(result), 201
 
 
 @er_bp.post("/api/er/visits")
@@ -86,7 +124,10 @@ def er_visit_merge_unknown(visit_id):
     if error:
         return error
     hospital_id = current_hospital_id()
-    merged = merge_er_unknown_patient(hospital_id, visit_id, payload["patient_id"])
+    try:
+        merged = merge_er_unknown_patient(hospital_id, visit_id, payload["patient_id"])
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     if not merged:
         return jsonify({"error": "ER visit not found"}), 404
     log_audit_event(

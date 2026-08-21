@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import { FiEye, FiTrash2 } from "react-icons/fi";
+import { FiEye, FiTrash2, FiExternalLink, FiActivity, FiAlertTriangle } from "react-icons/fi";
 import MarkdownReport from "../components/MarkdownReport";
 import DocumentUploadDropzone from "../components/DocumentUploadDropzone";
 import {
@@ -60,6 +60,7 @@ type Props = {
   ocrLanguage: string;
   languages: Record<string, string>;
   refreshToken: number;
+  onNavigate?: (page: string, extraData?: any) => void;
 };
 
 const IMAGE_NAME_PATTERN = /\.(png|jpe?g|webp|bmp|gif|tiff?|heic|heif)$/i;
@@ -145,7 +146,7 @@ function SavedDocumentPreview({ doc }: { doc: DocumentItem }) {
 }
 
 export default function PatientsPage({
-  patients,
+  patients: initialPatients,
   onSelect,
   onDelete,
   onPatientUpdated,
@@ -158,73 +159,52 @@ export default function PatientsPage({
   ocrLanguage,
   languages,
   refreshToken,
+  onNavigate,
 }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [deletingPatient, setDeletingPatient] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Patient[]>([]);
+  const [careType, setCareType] = useState<"all" | "op" | "ip" | "er">("all");
+  const [patientList, setPatientList] = useState<Patient[]>(initialPatients || []);
+  const [counts, setCounts] = useState<{ all: number; op: number; ip: number; er: number }>({
+    all: (initialPatients || []).length,
+    op: 0,
+    ip: 0,
+    er: 0,
+  });
   const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
-  const [activeQuery, setActiveQuery] = useState("");
-  const latestQueryRef = useRef("");
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const runSearch = async (term: string) => {
-    const trimmed = term.trim();
-    if (!trimmed) {
-      latestQueryRef.current = "";
-      setResults([]);
-      setSearched(false);
-      setActiveQuery("");
-      setLoading(false);
-      return;
-    }
-
-    latestQueryRef.current = trimmed;
-    setActiveQuery(trimmed);
+  const fetchPatients = async (term: string, currentCareType: "all" | "op" | "ip" | "er") => {
     setLoading(true);
-    setSearched(true);
     try {
-      const data = await apiFetch<{ patients?: Patient[] }>(
-        `/api/patients?q=${encodeURIComponent(trimmed)}`,
+      const qParam = term.trim() ? `&q=${encodeURIComponent(term.trim())}` : "";
+      const typeParam = currentCareType !== "all" ? `&care_type=${currentCareType}` : "";
+      const data = await apiFetch<{ patients?: Patient[]; counts?: { all: number; op: number; ip: number; er: number } }>(
+        `/api/patients?${qParam}${typeParam}`,
       );
-      if (latestQueryRef.current !== trimmed) return;
-      setResults(data.patients || []);
+      setPatientList(data.patients || []);
+      if (data.counts) {
+        setCounts(data.counts);
+      }
     } catch (error) {
-      if (latestQueryRef.current !== trimmed) return;
-      setResults([]);
       reportError(
         setNotice,
         error as { message?: string; status?: number },
-        "Search failed.",
+        "Failed to load patient records.",
       );
     } finally {
-      if (latestQueryRef.current === trimmed) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
-  };
-
-  const handleSearch = async () => {
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-      searchTimeoutRef.current = null;
-    }
-    await runSearch(query);
   };
 
   useEffect(() => {
-    const term = query.trim();
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
       searchTimeoutRef.current = null;
     }
-    if (!term) {
-      void runSearch("");
-      return;
-    }
     searchTimeoutRef.current = setTimeout(() => {
-      void runSearch(term);
+      void fetchPatients(query, careType);
     }, 300);
     return () => {
       if (searchTimeoutRef.current) {
@@ -232,29 +212,19 @@ export default function PatientsPage({
         searchTimeoutRef.current = null;
       }
     };
-  }, [query]);
+  }, [query, careType, refreshToken]);
 
   const handleClearSearch = () => {
     setQuery("");
-    setResults([]);
-    setSearched(false);
-    setActiveQuery("");
-    setLoading(false);
-    latestQueryRef.current = "";
   };
 
-  const trimmedQuery = query.trim();
-  const displayPatients = trimmedQuery
-    ? activeQuery === trimmedQuery
-      ? results
-      : []
-    : patients;
   const handleConfirmDeletePatient = async () => {
     if (!deleteTarget) return;
     setDeletingPatient(true);
     try {
       await onDelete(deleteTarget.patientId);
       setDeleteTarget(null);
+      void fetchPatients(query, careType);
     } finally {
       setDeletingPatient(false);
     }
@@ -262,74 +232,277 @@ export default function PatientsPage({
 
   return (
     <section className="patient-page">
-      <div className="patient-header panel">
+      {/* Top Care-Stream Selection & Toolbar */}
+      <div className="patient-header panel" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <FiActivity style={{ color: "#3b82f6" }} /> Patient Directory & Care Stream
+            </h2>
+            <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+              Unified patient registry with dedicated Outpatient (OP), Inpatient (IP), and Emergency (ER) separation.
+            </p>
+          </div>
+
+          {/* Care-Stream Dropdown Filter */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#64748b" }}>Filter Stream:</span>
+            <Select
+              value={careType}
+              onChange={(e) => setCareType(e.target.value as "all" | "op" | "ip" | "er")}
+              style={{ width: "230px", fontWeight: 600 }}
+            >
+              <option value="all">All Care Streams ({counts.all})</option>
+              <option value="op">Outpatient · OP ({counts.op})</option>
+              <option value="ip">Inpatient · IP ({counts.ip})</option>
+              <option value="er">Emergency · ER ({counts.er})</option>
+            </Select>
+          </div>
+        </div>
+
+        {/* Quick Segmented Pill Tabs */}
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className={`btn btn-sm ${careType === "all" ? "btn-primary" : "btn-secondary"}`}
+            onClick={() => setCareType("all")}
+            style={{ borderRadius: "20px", padding: "0.35rem 1rem", fontSize: "0.85rem" }}
+          >
+            All Patients <strong>({counts.all})</strong>
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${careType === "op" ? "btn-primary" : "btn-secondary"}`}
+            onClick={() => setCareType("op")}
+            style={{ borderRadius: "20px", padding: "0.35rem 1rem", fontSize: "0.85rem" }}
+          >
+            Outpatient (OP) <strong>({counts.op})</strong>
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${careType === "ip" ? "btn-primary" : "btn-secondary"}`}
+            onClick={() => setCareType("ip")}
+            style={{
+              borderRadius: "20px",
+              padding: "0.35rem 1rem",
+              fontSize: "0.85rem",
+              borderColor: careType === "ip" ? "#6366f1" : undefined,
+              backgroundColor: careType === "ip" ? "#6366f1" : undefined,
+              color: careType === "ip" ? "#fff" : undefined,
+            }}
+          >
+            Inpatient (IP) <strong>({counts.ip})</strong>
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${careType === "er" ? "btn-primary" : "btn-secondary"}`}
+            onClick={() => setCareType("er")}
+            style={{
+              borderRadius: "20px",
+              padding: "0.35rem 1rem",
+              fontSize: "0.85rem",
+              borderColor: careType === "er" ? "#dc2626" : undefined,
+              backgroundColor: careType === "er" ? "#dc2626" : undefined,
+              color: careType === "er" ? "#fff" : undefined,
+            }}
+          >
+            Emergency (ER) <strong>({counts.er})</strong>
+          </button>
+        </div>
+
+        {/* Search and Action Bar */}
         <div className="patient-toolbar">
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void handleSearch();
-              }
-            }}
-            placeholder="Search by name, phone, or ID"
+            placeholder={`Search ${careType.toUpperCase()} patients by name, phone, or ID...`}
+            style={{ flex: 1 }}
           />
-          <Button variant="primary" onClick={() => void handleSearch()}>
-            Search
-          </Button>
-          <Button variant="secondary" onClick={handleClearSearch}>
-            Clear
-          </Button>
+          {query && (
+            <Button variant="secondary" onClick={handleClearSearch}>
+              Clear
+            </Button>
+          )}
           <Button variant="secondary" onClick={() => void onExportCsv(query)}>
             Export CSV
           </Button>
         </div>
       </div>
 
+      {/* Patient List Table */}
       <div className="panel">
-        <div className="list-meta">
-          <p className="muted">
+        <div className="list-meta" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <p className="muted" style={{ margin: 0 }}>
             {query.trim()
-              ? `Showing ${displayPatients.length} search result${displayPatients.length === 1 ? "" : "s"}.`
-              : `Showing ${displayPatients.length} patient${displayPatients.length === 1 ? "" : "s"}.`}
+              ? `Found ${patientList.length} search results in ${careType === "all" ? "All Streams" : careType.toUpperCase()}.`
+              : `Showing ${patientList.length} patient${patientList.length === 1 ? "" : "s"} in ${careType === "all" ? "All Care Streams" : careType.toUpperCase()}.`}
           </p>
-          {loading && <Badge>Searching</Badge>}
+          {loading && <Badge>Loading...</Badge>}
         </div>
 
-        <div className="overflow-x-auto w-full">
+        <div className="overflow-x-auto w-full" style={{ marginTop: "0.5rem" }}>
           <Table className="patient-list-table">
             <TableHead>
               <TableCell>Patient</TableCell>
-              <TableCell className="text-center">Age</TableCell>
-              <TableCell className="text-center">Gender</TableCell>
-              <TableCell>Phone</TableCell>
+              <TableCell className="text-center">Care Stream</TableCell>
+              <TableCell>Current Location / Status</TableCell>
+              <TableCell className="text-center">Age / Gender</TableCell>
+              <TableCell>Contact / Relative</TableCell>
               <TableCell className="text-center">Actions</TableCell>
-              <TableCell>Created</TableCell>
             </TableHead>
-            {displayPatients.map((patient) => {
-              const expanded =
-                selectedPatient?.patient_id === patient.patient_id;
+            {patientList.map((patient) => {
+              const expanded = selectedPatient?.patient_id === patient.patient_id;
+              const isEr = patient.care_stream === "ER" || patient.patient_id.startsWith("ER-PAT-");
+              const isIp = patient.care_stream === "IP" || !!patient.active_bed;
+
               return (
                 <Fragment key={patient.patient_id}>
-                  <TableRow
-                    className={`hover:bg-muted/50 ${expanded ? "active" : ""}`}
-                  >
+                  <TableRow className={`hover:bg-muted/50 ${expanded ? "active" : ""}`}>
                     <TableCell>
-                      <div className="font-medium text-foreground">
+                      <div className="font-medium text-foreground" style={{ fontSize: "0.95rem" }}>
                         {patient.name} {patient.last_name}
                       </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
+                      <div className="text-xs text-muted-foreground mt-0.5" style={{ fontFamily: "monospace", fontWeight: 600 }}>
                         {patient.patient_id}
                       </div>
                     </TableCell>
+
+                    {/* Care Stream Badge */}
                     <TableCell className="text-center">
-                      {patient.age || "—"}
+                      {isEr ? (
+                        <span
+                          style={{
+                            display: "inline-block",
+                            padding: "0.2rem 0.6rem",
+                            borderRadius: "12px",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            backgroundColor: "#fee2e2",
+                            color: "#b91c1c",
+                            border: "1px solid #fca5a5",
+                          }}
+                        >
+                          ER Emergency
+                        </span>
+                      ) : isIp ? (
+                        <span
+                          style={{
+                            display: "inline-block",
+                            padding: "0.2rem 0.6rem",
+                            borderRadius: "12px",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            backgroundColor: "#e0e7ff",
+                            color: "#4338ca",
+                            border: "1px solid #c7d2fe",
+                          }}
+                        >
+                          IP Inpatient
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            display: "inline-block",
+                            padding: "0.2rem 0.6rem",
+                            borderRadius: "12px",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            backgroundColor: "#e0f2fe",
+                            color: "#0369a1",
+                            border: "1px solid #bae6fd",
+                          }}
+                        >
+                          OP Outpatient
+                        </span>
+                      )}
                     </TableCell>
+
+                    {/* Location / Status */}
+                    <TableCell>
+                      {isEr ? (
+                        <div style={{ fontSize: "0.85rem" }}>
+                          {patient.active_er_visit_no && (
+                            <div style={{ fontWeight: 600, color: "#1e293b" }}>
+                              Visit: {patient.active_er_visit_no}
+                            </div>
+                          )}
+                          {patient.er_triage_category && (
+                            <span style={{ fontSize: "0.75rem", color: "#dc2626", fontWeight: 600 }}>
+                              Triage: {patient.er_triage_category}
+                            </span>
+                          )}
+                          {patient.active_er_status && (
+                            <span className="muted" style={{ fontSize: "0.75rem", marginLeft: "0.4rem" }}>
+                              ({patient.active_er_status})
+                            </span>
+                          )}
+                          {onNavigate && (
+                            <div style={{ marginTop: "0.2rem" }}>
+                              <button
+                                type="button"
+                                className="link"
+                                style={{ fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.2rem", background: "none", border: "none", padding: 0, cursor: "pointer", color: "#dc2626" }}
+                                onClick={() => onNavigate("er")}
+                              >
+                                <FiExternalLink /> Open in ER Board
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : isIp ? (
+                        <div style={{ fontSize: "0.85rem" }}>
+                          <div style={{ fontWeight: 600, color: "#4338ca" }}>
+                            {patient.active_bed || "Admitted Ward Patient"}
+                          </div>
+                          {onNavigate && (
+                            <div style={{ marginTop: "0.2rem" }}>
+                              <button
+                                type="button"
+                                className="link"
+                                style={{ fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.2rem", background: "none", border: "none", padding: 0, cursor: "pointer", color: "#6366f1" }}
+                                onClick={() => onNavigate("beds")}
+                              >
+                                <FiExternalLink /> Bed Management
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: "0.85rem" }}>
+                          <div style={{ color: "#334155" }}>
+                            {patient.appointment_doctor ? `Dr. ${patient.appointment_doctor}` : "Ambulatory Patient"}
+                          </div>
+                          {patient.appointment_dept && (
+                            <span className="muted" style={{ fontSize: "0.75rem" }}>
+                              {patient.appointment_dept}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </TableCell>
+
+                    {/* Age / Gender */}
                     <TableCell className="text-center">
-                      {patient.gender || "—"}
+                      <span>{patient.age ? `${patient.age}y` : "—"}</span> / <span>{patient.gender || "—"}</span>
                     </TableCell>
-                    <TableCell>{patient.phone || "—"}</TableCell>
+
+                    {/* Phone & Emergency Contact */}
+                    <TableCell>
+                      <div style={{ fontSize: "0.85rem" }}>
+                        {patient.phone ? (
+                          <div>{patient.phone}</div>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                        {patient.emergency_contact && (
+                          <div style={{ fontSize: "0.75rem", color: "#dc2626", fontWeight: 500 }}>
+                            Emg: {patient.emergency_contact}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+
+                    {/* Actions */}
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-2">
                         <Button
@@ -340,7 +513,7 @@ export default function PatientsPage({
                           title={expanded ? "Hide details" : "View details"}
                         >
                           <FiEye className="h-4 w-4" />
-                          <span>View</span>
+                          <span>{expanded ? "Close" : "View"}</span>
                         </Button>
                         {canDelete && (
                           <Button
@@ -362,9 +535,6 @@ export default function PatientsPage({
                           </Button>
                         )}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      {formatDateTimeIST(patient.created_at)}
                     </TableCell>
                   </TableRow>
                   {expanded && (
@@ -400,7 +570,7 @@ export default function PatientsPage({
           className="module-mobile-list patient-list-mobile"
           aria-label="Patient list cards"
         >
-          {displayPatients.map((patient) => {
+          {patientList.map((patient) => {
             const expanded = selectedPatient?.patient_id === patient.patient_id;
             return (
               <article
@@ -458,10 +628,10 @@ export default function PatientsPage({
           })}
         </div>
 
-        {!loading && searched && displayPatients.length === 0 && (
+        {!loading && query.trim() && patientList.length === 0 && (
           <p className="muted">No patients found.</p>
         )}
-        {!loading && !searched && displayPatients.length === 0 && (
+        {!loading && !query.trim() && patientList.length === 0 && (
           <p className="muted">No patients registered yet.</p>
         )}
       </div>

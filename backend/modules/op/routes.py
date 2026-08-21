@@ -154,5 +154,5 @@ def op_doctors_delete(doctor_id):
 def op_doctors_suggest():
     department = request.args.get("department")
     region = request.args.get("region")
-    doctors = get_suggested_doctors(department=department, region=region)
+    doctors = get_suggested_doctors(department=department, region=region, hospital_id=current_hospital_id())
     return jsonify({"doctors": doctors, "suggested_department": department or region})

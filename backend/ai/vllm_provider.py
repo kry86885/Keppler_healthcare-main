@@ -59,12 +59,14 @@ class VLLMLLMProvider:
         except Exception:
             return False
 
-    def generate(self, prompt: str, context: str = "", json_mode: bool = False):
+    def generate(
+        self, prompt: str, context: str = "", json_mode: bool = False, max_tokens: int = 2048
+    ):
         full_prompt = f"{context}\n\n{prompt}" if context else prompt
         return _chat_completion(
             [{"role": "user", "content": full_prompt}],
             temperature=0.1,
-            max_tokens=2048,
+            max_tokens=max_tokens,
             json_mode=json_mode,
         )
 

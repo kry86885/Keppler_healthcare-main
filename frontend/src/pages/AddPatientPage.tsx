@@ -27,6 +27,11 @@ type Props = {
   // returns to that module (with the new patient handed back) instead of
   // always defaulting to appointment booking.
   returnTo?: string | null;
+  // Set when reached via an unknown ER visit's "Register as New Patient"
+  // button (returnTo "er-merge"). The newly created patient gets merged
+  // into this specific visit on return -- see App.tsx's navigateToPage and
+  // ErPage's mergeTarget handling.
+  mergeVisitId?: number | null;
 };
 
 type Department = {
@@ -57,11 +62,18 @@ export default function AddPatientPage({
   setNotice,
   onNavigate,
   returnTo,
+  mergeVisitId,
 }: Props) {
   const registrationFormId = "patient-registration-form";
   const [form, setForm] = useState<PatientForm>(EMPTY_PATIENT_FORM);
   const [patientId, setPatientId] = useState("");
   const [duplicateInfo, setDuplicateInfo] = useState<any>(null);
+  // Without this, a double-click (or a slow request the user re-tries by
+  // clicking again) fires handleSubmit twice before the first POST /api/patients
+  // resolves -- the duplicate-name check on the backend runs against the
+  // pre-insert state for both requests, so it doesn't catch the second one,
+  // and two patient records get created.
+  const [submitting, setSubmitting] = useState(false);
 
   const refreshPatientId = async () => {
     try {
@@ -114,6 +126,7 @@ export default function AddPatientPage({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (submitting) return;
 
     if (!form.phone || !/^\d{10}$/.test(form.phone.trim())) {
       setNotice({
@@ -145,12 +158,18 @@ export default function AddPatientPage({
     const payload: Record<string, unknown> = {
       ...form,
     };
-    const createdPatient = await onCreate(
-      payload,
-      setForm,
-      setDuplicateInfo,
-      refreshPatientId,
-    );
+    setSubmitting(true);
+    let createdPatient: { patient_id: string; admission_id?: string } | null;
+    try {
+      createdPatient = await onCreate(
+        payload,
+        setForm,
+        setDuplicateInfo,
+        refreshPatientId,
+      );
+    } finally {
+      setSubmitting(false);
+    }
     if (!createdPatient?.patient_id) return;
 
     if (returnTo === "er") {
@@ -164,6 +183,16 @@ export default function AddPatientPage({
           name: form.name,
           last_name: form.last_name,
         },
+      });
+      return;
+    }
+
+    if (returnTo === "er-merge" && mergeVisitId) {
+      // The actual merge-unknown API call happens in ErPage (see
+      // mergeTarget) -- this page's job ends at "patient exists, hand off
+      // which visit it belongs to."
+      onNavigate("er", {
+        mergeIntoVisit: { visitId: mergeVisitId, patientId: createdPatient.patient_id },
       });
       return;
     }
@@ -349,8 +378,8 @@ export default function AddPatientPage({
         </form>
 
         <div className="form-actions patient-form-actions patient-actions-bottom">
-          <Button variant="primary" type="submit" form={registrationFormId}>
-            Register Patient
+          <Button variant="primary" type="submit" form={registrationFormId} disabled={submitting}>
+            {submitting ? "Registering..." : "Register Patient"}
           </Button>
           <Button variant="secondary" type="button" onClick={handleClearForm}>
             Clear

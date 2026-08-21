@@ -148,6 +148,15 @@ export interface Patient {
   aadhar_number?: string;
   created_at?: string;
   status?: string;
+  care_stream?: "OP" | "IP" | "ER";
+  active_bed?: string | null;
+  active_er_visit_id?: number | null;
+  active_er_visit_no?: string | null;
+  active_er_status?: string | null;
+  er_triage_category?: string | null;
+  appointment_status?: string | null;
+  appointment_doctor?: string | null;
+  appointment_dept?: string | null;
 }
 
 export interface Admission {

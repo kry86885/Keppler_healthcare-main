@@ -12,6 +12,7 @@ import {
   TableRow,
   TableCell,
 } from "../components/ui";
+import { apiFetch, reportError } from "../lib/api";
 import type { Notice } from "../types";
 
 type Props = {
@@ -44,58 +45,48 @@ export default function RevenueReportsPage({ setNotice, onNavigate }: Props) {
   const [selectedCategory, setSelectedCategory] = useState("");
 
   const fetchRecords = async () => {
+    // Fetched independently -- a permission/hospital-scope error on one
+    // (previously silently swallowed by an unchecked `.ok` check, which just
+    // rendered ₹0 with no indication why) must not blank out the other.
+    let invoiceRecords: RevenueRecord[] = [];
     try {
-      const [invoicesRes, pharmacySalesRes] = await Promise.all([
-        fetch("/api/billing/invoices"),
-        fetch("/api/pharmacy/sales"),
-      ]);
-
-      const invoiceRecords: RevenueRecord[] = [];
-      if (invoicesRes.ok) {
-        const data = await invoicesRes.json();
-        (data.invoices || []).forEach((inv: any) => {
-          const mod = inv.module || "";
-          // Only OP/IP invoices exist here -- pharmacy revenue is tracked
-          // entirely in pharmacy_sales (merged in below), never as an
-          // invoice, so it's excluded to avoid a dead "PHARMACY" branch that
-          // would never match anything.
-          if (mod !== "OP" && mod !== "IP") return;
-          invoiceRecords.push({
-            id: inv.invoice_no,
-            patientName: inv.patient_id || "Unknown",
-            category: mod === "IP" ? "IP / Bed Charges" : "OP / Billing",
-            amount: parseFloat(inv.total_amount) || 0,
-            date:
-              (inv.created_at || "").split("T")[0] ||
-              (inv.created_at || "").split(" ")[0] ||
-              "",
-            status: inv.payment_status === "paid" ? "Paid" : "Pending",
-          });
-        });
-      }
-
-      const pharmacyRecords: RevenueRecord[] = [];
-      if (pharmacySalesRes.ok) {
-        const data = await pharmacySalesRes.json();
-        (data.sales || []).forEach((sale: any) => {
-          pharmacyRecords.push({
-            id: `pharmacy-${sale.id}`,
-            patientName: sale.patient_name || sale.patient_id || "Walk-in",
-            category: "Pharmacy",
-            amount: parseFloat(sale.amount) || 0,
-            date:
-              (sale.sold_at || "").split("T")[0] ||
-              (sale.sold_at || "").split(" ")[0] ||
-              "",
-            status: "Paid",
-          });
-        });
-      }
-
-      setRecords([...invoiceRecords, ...pharmacyRecords]);
-    } catch (err) {
-      console.error(err);
+      const data = await apiFetch<{ invoices: any[] }>("/api/billing/invoices");
+      invoiceRecords = (data.invoices || [])
+        .filter((inv) => inv.module === "OP" || inv.module === "IP")
+        .map((inv) => ({
+          id: inv.invoice_no,
+          patientName: inv.patient_id || "Unknown",
+          category: inv.module === "IP" ? "IP / Bed Charges" : "OP / Billing",
+          amount: parseFloat(inv.total_amount) || 0,
+          date:
+            (inv.created_at || "").split("T")[0] ||
+            (inv.created_at || "").split(" ")[0] ||
+            "",
+          status: inv.payment_status === "paid" ? "Paid" : "Pending",
+        }));
+    } catch (error: any) {
+      reportError(setNotice, error, "Failed to load billing invoices.");
     }
+
+    let pharmacyRecords: RevenueRecord[] = [];
+    try {
+      const data = await apiFetch<{ sales: any[] }>("/api/pharmacy/sales");
+      pharmacyRecords = (data.sales || []).map((sale) => ({
+        id: `pharmacy-${sale.id}`,
+        patientName: sale.patient_name || sale.patient_id || "Walk-in",
+        category: "Pharmacy",
+        amount: parseFloat(sale.amount) || 0,
+        date:
+          (sale.sold_at || "").split("T")[0] ||
+          (sale.sold_at || "").split(" ")[0] ||
+          "",
+        status: "Paid",
+      }));
+    } catch (error: any) {
+      reportError(setNotice, error, "Failed to load pharmacy sales.");
+    }
+
+    setRecords([...invoiceRecords, ...pharmacyRecords]);
   };
 
   useEffect(() => {
